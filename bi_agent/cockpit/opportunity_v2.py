@@ -2755,6 +2755,9 @@ def default_text_interpreter(payload):
         "优先沿用候选中的作用对象、目标值、验收标准、跟踪指标和原始期限表达。"
         "summary 只写主要经营问题、影响范围、最重要的数字和推进重点，不罗列全部风险；"
         "不得出现 RK/RC/BR/DS/AC 编码、规则核验、阈值、口径、证据、取数、字段缺失、排查、校验等实现说明。"
+        "你只输出分析决策，不要输出卡片排版、HTML、颜色、编号、计数或证据展示结构；卡片由程序组装。"
+        "原因和建议可省略 description/action/evidenceIds，程序会用本体候选字段补齐；"
+        "但成立的风险仍应给出描述和支持证据。"
         "不得使用‘逾期未完成’表述。必须输出单个合法 JSON 对象，不得输出 Markdown、注释或额外解释。"
     )
     try:
@@ -2922,6 +2925,21 @@ def _model_summary_valid(text, limit, allowed_numbers):
             and not _SUMMARY_FORBIDDEN.search(text))
 
 
+def _should_abort_for_model(status, previous):
+    """Transport failures always keep the old card; format failures do too.
+
+    A first-ever format failure can still publish a rule-backed limited card,
+    because the card structure is assembled by the program.  With an existing
+    card, preserving the last accepted analysis is safer than replacing it with
+    a template-only result.
+    """
+    if status == "failed":
+        return True
+    if status == "fallback" and isinstance(previous, dict) and previous.get("result"):
+        return True
+    return False
+
+
 def apply_text_interpretation(evaluated, interpreter=None):
     """Call the model once to generate the card's analysis text, then validate it.
 
@@ -3011,7 +3029,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
     try:
         value = interpreter(payload)
         if not isinstance(value, dict):
-            raise ValueError("模型结果不是对象")
+            raise ModelJSONOutputError("模型结果不是对象")
         model_calls = int(getattr(value, "model_calls", 1) or 1)
         risk_by_code = {risk["code"]: risk for risk in risk_candidates}
         triggered_by_code = {risk["code"]: risk for risk in triggered_risks}
@@ -3039,8 +3057,12 @@ def apply_text_interpretation(evaluated, interpreter=None):
             if not candidate:
                 rejected_risks.append(code or "?")
                 continue
-            include = item.get("include", False)
-            classification = _text(item.get("classification")) or "confirmed"
+            include = item.get("include")
+            classification = _text(item.get("classification"))
+            if include is None and classification:
+                include = classification == "confirmed"
+            if not classification:
+                classification = "confirmed" if include is True else "insufficient"
             if (not isinstance(include, bool)
                     or classification not in {"confirmed", "structural", "insufficient", "not_applicable"}):
                 rejected_risks.append(code)
@@ -3055,6 +3077,12 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 continue
             description = re.sub(r"\s+", " ", _text(item.get("description")))
             cited = item.get("evidenceIds") or []
+            if not description and include:
+                description = re.sub(r"\s+", " ", _text(candidate.get("description")))
+            if not isinstance(cited, list):
+                cited = []
+            if not cited and include:
+                cited = list(candidate.get("evidenceIds") or [])
             cited_ids = ([_text(entry) for entry in cited]
                          if isinstance(cited, list) else [])
             opposing = item.get("opposingEvidenceIds") or []
@@ -3075,7 +3103,11 @@ def apply_text_interpretation(evaluated, interpreter=None):
             risk_specs[code] = dict(include=include, classification=classification,
                                     description=description,
                                     evidenceIds=list(dict.fromkeys(cited_ids)),
-                                    opposingEvidenceIds=list(dict.fromkeys(opposing_ids or [])))
+                                    opposingEvidenceIds=list(dict.fromkeys(opposing_ids or [])),
+                                    descriptionSource=("model" if _text(item.get("description"))
+                                                       else "ontology_fallback"),
+                                    evidenceSource=("model" if item.get("evidenceIds")
+                                                    else "ontology_fallback"))
             applied_risks.append(code)
 
         applied_risks = list(dict.fromkeys(applied_risks))
@@ -3106,6 +3138,8 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 description = spec["description"]
                 evidence_ids = spec["evidenceIds"]
                 opposing_ids = spec["opposingEvidenceIds"]
+                description_source = spec.get("descriptionSource")
+                evidence_source = spec.get("evidenceSource")
             else:
                 assessment_source = "rule_fallback"
                 fallback = _program_risk_assessment(candidate)
@@ -3114,6 +3148,8 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 description = fallback["description"]
                 evidence_ids = fallback["evidenceIds"]
                 opposing_ids = fallback["opposingEvidenceIds"]
+                description_source = "rule_fallback"
+                evidence_source = "rule_fallback"
             risk_assessments.append(dict(
                 code=code, name=candidate.get("name") or code,
                 rule=candidate.get("rule") or "",
@@ -3127,6 +3163,8 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 supportingEvidenceIds=evidence_ids[:20],
                 opposingEvidenceIds=(opposing_ids or [])[:20],
                 assessmentSource=assessment_source,
+                descriptionSource=description_source,
+                evidenceSource=evidence_source,
                 observed=candidate.get("observed") or [],
                 missingEvidence=candidate.get("missingEvidence") or [],
             ))
@@ -3145,6 +3183,12 @@ def apply_text_interpretation(evaluated, interpreter=None):
                               if isinstance(requested, list) and requested else allowed_for_candidate)
             description = re.sub(r"\s+", " ", _text(item.get("description")))
             cited = item.get("evidenceIds") or []
+            if not description:
+                description = re.sub(r"\s+", " ", _text(candidate.get("description")))
+            if not isinstance(cited, list):
+                cited = []
+            if not cited:
+                cited = list(candidate.get("evidenceIds") or [])
             allowed_for_evidence = (cause_evidence.get(code, set())
                                     | set().union(*(risk_evidence.get(value, set())
                                                     for value in selected_codes))
@@ -3168,6 +3212,10 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 riskCodes=sorted(selected_codes),
                 linkedRiskCodes=sorted(allowed_for_candidate),
                 missingEvidence=[],
+                descriptionSource=("model" if _text(item.get("description"))
+                                   else "ontology_fallback"),
+                evidenceSource=("model" if item.get("evidenceIds")
+                                else "ontology_fallback"),
             ))
             applied_causes.append(code)
         if "causes" not in value or not cause_items:
@@ -3200,6 +3248,13 @@ def apply_text_interpretation(evaluated, interpreter=None):
             allowed_risk_codes = set(candidate.get("riskCodes") or []) & included_codes
             allowed_cause_codes = set(candidate.get("causeCodes") or []) & selected_cause_codes
             cited = item.get("evidenceIds") or []
+            if not action:
+                action = re.sub(r"\s+", " ", _text(candidate.get("action")
+                                                   or candidate.get("name")))[:64]
+            if not isinstance(cited, list):
+                cited = []
+            if not cited:
+                cited = list(candidate.get("evidenceIds") or [])
             allowed_for_evidence = (advice_evidence.get(code, set())
                                     | set().union(*(risk_evidence.get(value, set())
                                                     for value in risk_codes))
@@ -3233,6 +3288,10 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 detail=(candidate.get("measure") or "")[:600],
                 ownerConfirmed=False, deadlineConfirmed=False,
                 riskCodes=sorted(risk_codes), linkedRiskCodes=sorted(allowed_risk_codes),
+                actionSource=("model" if _text(item.get("action"))
+                              else "ontology_fallback"),
+                evidenceSource=("model" if item.get("evidenceIds")
+                                else "ontology_fallback"),
             ))
             applied_advice.append(code)
         if "advice" not in value or not recommendations:
@@ -3327,6 +3386,18 @@ def apply_text_interpretation(evaluated, interpreter=None):
                     rejectedAdvice=rejected_advice,
                     validatedCauses=[], validatedAdvice=[],
                     mismatchedCauses=[], mismatchedAdvice=[])
+    except ModelJSONOutputError as exc:
+        raw_text = str(getattr(exc, "raw_text", "") or "")
+        repair_text = str(getattr(exc, "repair_text", "") or "")
+        return dict(
+            status="fallback", error="MODEL_OUTPUT_INVALID",
+            modelCalls=int(getattr(exc, "attempts", 1) or 1),
+            modelErrorMessage=str(exc)[:800],
+            modelRawResponseLength=len(raw_text),
+            modelRawResponseTail=raw_text[-800:],
+            modelStopReason=str(getattr(exc, "stop_reason", "") or ""),
+            modelRepairResponseTail=repair_text[-400:],
+        )
     except Exception as exc:  # noqa: BLE001 - model analysis is optional
         raw_text = str(getattr(exc, "raw_text", "") or "")
         repair_text = str(getattr(exc, "repair_text", "") or "")
@@ -3719,7 +3790,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     _report_progress(progress, "analysing", message="模型分析风险、原因与建议")
     model_status = apply_text_interpretation(evaluated, text_interpreter)
     if (text_interpreter is not None
-            and model_status.get("status") in {"failed", "fallback"}):
+            and _should_abort_for_model(model_status.get("status"), previous)):
         failure = OpportunityV2ModelUnavailable(
             "模型分析未通过校验，保留上一版业务分析",
             status=model_status.get("status"),
@@ -3758,11 +3829,25 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     result = evaluated["result"]
     result["cardContract"] = "cockpit-cards-v1"
     result["engine"] = "opportunity-v3-rules"
+    result["analysisAssembly"] = dict(
+        cardWriter="program",
+        modelContract="minimal-decision-v1",
+        modelStatus=model_status.get("status"),
+        ruleFallbackSections=[name for name, used in (
+            ("summary", model_status.get("summaryFallbackUsed")),
+            ("causes", model_status.get("causeFallbackUsed")),
+            ("advice", model_status.get("adviceFallbackUsed")),
+        ) if used],
+    )
     if model_status.get("status") == "partial":
         result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
             f"模型分析部分采用：已逐项判断 {model_status.get('analysedRiskCount', 0)}/"
             f"{model_status.get('riskCandidateCount', 0)} 个本体候选风险，"
             "未覆盖或未通过校验的摘要、原因和建议由规则模板补充。"
+        ]))[:12]
+    if model_status.get("status") == "fallback":
+        result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
+            "模型输出未通过结构化校验，本轮由程序按本体规则组装卡片；模型分析未采用。"
         ]))[:12]
     if collected_error is not None:
         result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
@@ -3780,7 +3865,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     item = dict(
         id=uuid.uuid4().hex,
         status="limited" if (data.get("errors") or missing or retention
-                              or model_status.get("status") == "partial") else "completed",
+                              or model_status.get("status") in {"partial", "fallback"}) else "completed",
         context=dict(
             stage="opportunity", slotId=SLOT_ID, period=str(period), id=1,
             dataFingerprint=hashlib.sha256(json.dumps(dict(

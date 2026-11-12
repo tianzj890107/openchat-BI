@@ -3,8 +3,9 @@ from datetime import date
 from types import SimpleNamespace
 
 from bi_agent.cockpit.opportunity_v2 import (
-    _customer_tier, _p0_cycle, _p2_cycle, apply_text_interpretation, build_card, collect,
-    config_digest, config_version, default_ap_supplement, evaluate, load_config,
+    ModelJSONOutputError, _customer_tier, _p0_cycle, _p2_cycle, apply_text_interpretation,
+    build_card, collect, config_digest, config_version, default_ap_supplement, evaluate,
+    load_config,
 )
 
 
@@ -49,6 +50,57 @@ def _complete_risk_assessments(value):
                 evidenceIds=[candidate['evidenceIds'][0]] if candidate['evidenceIds'] else [],
             ))
     return items
+
+
+def _model_evaluated():
+    fact_id = 'fact:1'
+    risk_id = 'risk-1'
+    risk = dict(
+        id=risk_id, code='RK01', name='商机预测覆盖不足', title='商机预测覆盖不足',
+        rule='当商机预测低于年度目标时触发', condition='预测 95 亿元 < 目标 319 亿元',
+        ruleStatus='triggered', level='高', description='年度目标与预测存在缺口 10 亿元。',
+        metricCodes=['M01'], observed=[dict(label='预测', value=95, unit='亿元')],
+        missingEvidence=[], evidenceIds=[fact_id], impact={},
+    )
+    cause = dict(
+        id='cause-1', causeCode='RC01', code='RC01', title='客户覆盖不足',
+        description='战略客户商机覆盖不足 10 家。', kind='hypothesis',
+        status='hypothesis', stage='opportunity', riskCodes=['RK01'],
+        findingIds=[risk_id], evidenceIds=[fact_id],
+    )
+    advice = dict(
+        id='advice-1', adviceCode='AC01', code='AC01', name='推进客户覆盖',
+        action='完成战略客户商机覆盖', measure='逐户建立商机', object='战略客户',
+        ownerRole='销售负责人', deadline='30天', deadlineType='days', deadlineDays=30,
+        targetValue='覆盖率 100%', tracking='周度跟踪', priority='高', acceptance='形成清单',
+        causeCodes=['RC01'], riskCodes=['RK01'], evidenceIds=[fact_id],
+        actionType='investigation', governance=False, causeIds=['cause-1'],
+        ownerConfirmed=False, deadlineConfirmed=False, linkedRiskCodes=['RK01'],
+        detail='逐户建立商机',
+    )
+    result = dict(
+        businessSummary='年度目标与预测存在缺口 10 亿元。',
+        summary='年度目标与预测存在缺口 10 亿元。',
+        causes=[dict(cause)], recommendations=[dict(advice)],
+    )
+    return dict(
+        risks=[dict(risk)], riskCandidates=[dict(risk)],
+        causeCandidates=[{key: cause[key] for key in (
+            'code', 'title', 'description', 'kind', 'status', 'stage', 'riskCodes', 'evidenceIds'
+        )}],
+        adviceCandidates=[{key: advice[key] for key in (
+            'code', 'name', 'action', 'measure', 'object', 'ownerRole', 'deadline',
+            'deadlineType', 'deadlineDays', 'targetValue', 'tracking', 'priority',
+            'acceptance', 'causeCodes', 'riskCodes', 'evidenceIds'
+        )}],
+        result=result,
+        evidence=dict(
+            facts=[dict(id=fact_id, label='目标缺口', value=10, unit='亿元',
+                        definition='目标减预测')],
+            records=[], evidence=[], counts={}, limitations=[],
+        ),
+        textSamples=[],
+    )
 
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
@@ -596,6 +648,116 @@ def test_model_runs_without_text_samples_and_generates_nonempty_analysis():
     assert value['result']['summary'].startswith('商机风险需要')
     assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
     assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'AC04')['action'] == '推动客户补齐资质文件后进入投标'
+
+
+def test_minimal_model_decision_is_completed_by_program_assembly():
+    value = _model_evaluated()
+    generated = apply_text_interpretation(value, lambda payload: {
+        'summary': '商机获取存在覆盖缺口，需要优先推进战略客户转化。',
+        'risks': [dict(code='RK01', classification='confirmed')],
+        'causes': [dict(code='RC01')],
+        'advice': [dict(code='AC01')],
+    })
+    assert generated['status'] == 'completed'
+    assert generated['appliedRisks'] == ['RK01']
+    assert generated['appliedCauses'] == ['RC01']
+    assert generated['appliedAdvice'] == ['AC01']
+
+    assessment = next(item for item in generated['riskAssessments'] if item['code'] == 'RK01')
+    assert assessment['include'] is True
+    assert assessment['classification'] == 'confirmed'
+    assert assessment['evidenceIds'] == ['fact:1']
+    assert assessment['descriptionSource'] == 'ontology_fallback'
+    assert assessment['evidenceSource'] == 'ontology_fallback'
+
+    cause = next(item for item in value['result']['causes'] if item['causeCode'] == 'RC01')
+    assert cause['descriptionSource'] == 'ontology_fallback'
+    assert cause['evidenceSource'] == 'ontology_fallback'
+    assert cause['evidenceIds'] == ['fact:1']
+
+    advice = next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'AC01')
+    assert advice['actionSource'] == 'ontology_fallback'
+    assert advice['evidenceSource'] == 'ontology_fallback'
+    assert advice['action'] == '完成战略客户商机覆盖'
+    assert advice['evidenceIds'] == ['fact:1']
+
+    # Card-facing structure, numbering and counts come from the program, not the model.
+    assert value['result']['riskTotalCount'] == 1
+    assert value['result']['riskCodes'] == ['RK01']
+    assert value['result']['findings'][0]['id'] == 'risk-1'
+    assert value['result']['findings'][0]['riskCode'] == 'RK01'
+    assert value['result']['analysisDimensions'][0]['causeCode'] == 'RC01'
+
+
+def test_invalid_model_json_is_a_format_fallback_not_a_transport_failure():
+    value = _model_evaluated()
+    before = deepcopy(value['result'])
+
+    def broken(_payload):
+        raise ModelJSONOutputError('模型未返回合法 JSON', raw_text='{"risks": [',
+                                   repair_text='{"risks"', attempts=2)
+
+    generated = apply_text_interpretation(value, broken)
+    assert generated['status'] == 'fallback'
+    assert generated['error'] == 'MODEL_OUTPUT_INVALID'
+    assert generated['modelCalls'] == 2
+    assert generated['modelRawResponseTail'] == '{"risks": ['
+    # A failed model call never mutates the program-assembled fallback card.
+    assert value['result'] == before
+
+
+def test_first_format_failure_publishes_a_program_assembled_limited_card():
+    class EmptyResult:
+        truncated = False
+        rows = []
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def run(self, sql, params, timeout_ms=0):
+            return EmptyResult()
+
+    def broken(_payload):
+        raise ModelJSONOutputError('模型未返回合法 JSON', raw_text='not json', attempts=1)
+
+    card = build_card('2026', database=Database(), measurement_date='2026-11-11',
+                      text_interpreter=broken)
+    assert card['status'] == 'limited'
+    assert card['result']['analysisAssembly'] == dict(
+        cardWriter='program', modelContract='minimal-decision-v1',
+        modelStatus='fallback', ruleFallbackSections=[],
+    )
+    assert any('由程序按本体规则组装卡片' in item
+               for item in card['result']['dataDiagnostics'])
+
+
+def test_format_failure_with_previous_card_is_not_published():
+    from bi_agent.cockpit.opportunity_v2 import OpportunityV2ModelUnavailable
+
+    class EmptyResult:
+        truncated = False
+        rows = []
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def run(self, sql, params, timeout_ms=0):
+            return EmptyResult()
+
+    def broken(_payload):
+        raise ModelJSONOutputError('模型未返回合法 JSON', raw_text='not json', attempts=1)
+
+    try:
+        build_card('2026', database=Database(), measurement_date='2026-11-11',
+                   text_interpreter=broken, previous=dict(result=dict(summary='上一版')))
+    except OpportunityV2ModelUnavailable as exc:
+        assert exc.model_status == 'fallback'
+        assert exc.model_error == 'MODEL_OUTPUT_INVALID'
+    else:
+        raise AssertionError('format failure must keep the previous published card')
+
 
 def test_unknown_acneed_status_is_not_a_verified_cause():
     opportunity = _opportunity(acneed='', stage='11', stage1End=None)
