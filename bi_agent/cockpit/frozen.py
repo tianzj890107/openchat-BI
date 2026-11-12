@@ -109,7 +109,8 @@ class FrozenAnnualStore:
 
     def publish(self, body):
         body = deepcopy(validate_release(body))
-        raw = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        raw = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(',', ':'),
+                         default=str)
         version = hashlib.sha256(raw.encode()).hexdigest()
         with self.lock, self.db() as db:
             db.execute('BEGIN IMMEDIATE')

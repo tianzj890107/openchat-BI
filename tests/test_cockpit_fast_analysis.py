@@ -26,11 +26,13 @@ def test_model_parameters_are_thread_scoped_and_restore(monkeypatch):
     monkeypatch.setenv('TEAM_DEEPSEEK_ENABLE_THINKING', 'true')
     with request_config(thinking=False, max_tokens=4096):
         assert get_config().max_tokens == 4096
-        assert _thinking_extra_body('DeepSeek-V4-Flash-0731', True) == {'thinking':{'type':'disabled'}}
+        assert _thinking_extra_body('direct-deepseek-v4-pro', True) == {'thinking':{'type':'disabled'}}
+        # The 0731 route rejects the thinking parameter, so it must be omitted.
+        assert _thinking_extra_body('deepseek-v4-flash-0731', True) is None
         with ThreadPoolExecutor(1) as pool:
             assert pool.submit(lambda: get_config() is original).result()
     assert get_config() is original and original.to_dict() == before
-    assert _thinking_extra_body('DeepSeek-V4-Flash-0731', False) == {'thinking':{'type':'enabled'}}
+    assert _thinking_extra_body('direct-deepseek-v4-pro', False) == {'thinking':{'type':'enabled'}}
     with pytest.raises(RuntimeError):
         with request_config(thinking=False):
             raise RuntimeError('model failed')

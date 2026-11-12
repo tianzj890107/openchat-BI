@@ -4812,7 +4812,6 @@ class TeamThinkingRoutingTests(unittest.TestCase):
             "doubao-seed-2-1-pro-260628",
             "direct-deepseek-v4-pro",
             "direct-deepseek-v4-flash",
-            "deepseek-v4-flash-0731",
         }
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("TEAM_THINKING_MODELS", None)
@@ -4822,6 +4821,10 @@ class TeamThinkingRoutingTests(unittest.TestCase):
                 )
             self.assertFalse(registry.team_model_supports_thinking("glm-5.2"))
             self.assertFalse(registry.team_model_supports_thinking("kimi-k2.6"))
+            # Verified 2026-11-12: this route rejects the thinking parameter.
+            self.assertFalse(registry.team_model_supports_thinking(
+                "deepseek-v4-flash-0731"
+            ))
             self.assertFalse(registry.team_model_supports_thinking(
                 "doubao-seed-2-0-pro-260215"
             ))

@@ -689,6 +689,46 @@ def test_model_json_failure_keeps_raw_tail_for_diagnostics(monkeypatch):
         raise AssertionError('malformed model JSON must not be accepted')
 
 
+def test_transport_timeout_retries_the_next_model_route(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    seen = []
+
+    def fake_stream(messages, system_prompt, allowed, key, **kwargs):
+        seen.append(key)
+        if key == 'route-a':
+            raise RuntimeError('Team API stream error: ReadTimeout: timed out')
+        return iter([
+            dict(type='text_delta', text='{"summary":"备用路由摘要","risks":[],"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a', 'route-b'])
+    value = module.default_text_interpreter({'progressSamples': []})
+    assert value['summary'] == '备用路由摘要'
+    assert seen == ['route-a', 'route-b']
+
+
+def test_opportunity_card_prefers_the_non_thinking_deepseek_route(monkeypatch):
+    from bi_agent.llm import registry
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    models = [
+        dict(key='team-configured', provider='team', model_id='direct-deepseek-v4-flash',
+             supports_thinking=True),
+        dict(key='team-deepseek-v4-flash-0731', provider='team',
+             model_id='deepseek-v4-flash-0731', supports_thinking=False),
+    ]
+    monkeypatch.setattr(registry, 'MODELS', models)
+    monkeypatch.setattr(registry, 'get_default_model_key', lambda: 'team-configured')
+    monkeypatch.delenv(module._MODEL_KEY_ENV, raising=False)
+    assert module._model_candidate_keys() == [
+        'team-deepseek-v4-flash-0731', 'team-configured',
+    ]
+
+
 def test_target_rows_are_summed_not_distincted_by_customer_or_product():
     config = load_config()
 

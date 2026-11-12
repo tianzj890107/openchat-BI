@@ -33,7 +33,6 @@ _VERIFIED_TEAM_THINKING_MODELS = frozenset({
     "doubao-seed-2-1-pro-260628",
     "direct-deepseek-v4-pro",
     "direct-deepseek-v4-flash",
-    "deepseek-v4-flash-0731",
 })
 
 
@@ -45,7 +44,19 @@ def _team_thinking_models() -> set[str]:
 
 
 def team_model_supports_thinking(model_id: str) -> bool:
-    return str(model_id or "").strip() in _team_thinking_models()
+    return str(model_id or "").strip().lower() in {
+        item.lower() for item in _team_thinking_models()
+    }
+
+
+# Routes that reject the provider ``thinking`` parameter with a 400 instead of
+# honouring it (verified 2026-11-12 against the shared Team gateway).
+_TEAM_THINKING_PARAM_REJECTED = frozenset({"deepseek-v4-flash-0731"})
+
+
+def team_model_accepts_thinking_param(model_id: str) -> bool:
+    return (str(model_id or "").strip().lower()
+            not in _TEAM_THINKING_PARAM_REJECTED)
 
 
 MODELS: list[dict[str, Any]] = [

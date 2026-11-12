@@ -87,6 +87,10 @@ def _thinking_extra_body(model_id: str, runtime_thinking: bool) -> Optional[dict
     override = scoped_thinking()
     family = _model_family(model_id)
     if family == "deepseek":
+        from .registry import team_model_accepts_thinking_param
+        if not team_model_accepts_thinking_param(model_id):
+            # This route rejects the ``thinking`` parameter outright.
+            return None
         enabled = override if override is not None else _env_flag("TEAM_DEEPSEEK_ENABLE_THINKING")
         if enabled is None:
             enabled = _env_flag("TEAM_ENABLE_THINKING")

@@ -2550,6 +2550,40 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
     return text, str(ends[-1].get("stop_reason") or ""), ends[-1].get("usage") or {}
 
 
+# Direct DeepSeek chat routes accept ``thinking: disabled`` but keep reasoning
+# over the whole output budget.  On a 34 KB payload with ten candidate risks
+# that produced zero text before the read timeout.  This is the same gateway
+# route without the thinking control, so it answers the same JSON contract in
+# well under a minute.  It is only a routing preference: when the deployment
+# does not expose it, the configured default model is tried next.
+_NON_THINKING_PREFERENCE = ("deepseek-v4-flash-0731",)
+_MODEL_KEY_ENV = "COCKPIT_OPPORTUNITY_V2_MODEL_KEY"
+
+
+def _model_candidate_keys():
+    """Model routes for this card, preferred non-thinking route first."""
+    from ..llm.registry import MODELS, get_default_model_key, get_model
+
+    default_key = get_default_model_key()
+    explicit = os.environ.get(_MODEL_KEY_ENV, "").strip()
+    if explicit:
+        if get_model(explicit):
+            return [explicit]
+        for model in MODELS:
+            if str(model.get("model_id") or "") == explicit:
+                return [model["key"]]
+        return [default_key]
+    default = get_model(default_key) or {}
+    if str(default.get("provider") or "") != "team":
+        return [default_key]
+    keys = [model["key"] for model in MODELS
+            if str(model.get("provider") or "") == "team"
+            and str(model.get("model_id") or "") in _NON_THINKING_PREFERENCE
+            and not model.get("supports_thinking")]
+    keys.append(default_key)
+    return list(dict.fromkeys(keys))
+
+
 def default_text_interpreter(payload):
     """Use the deployment model to produce the card's analysis text.
 
@@ -2592,19 +2626,41 @@ def default_text_interpreter(payload):
         "不得出现 RK/RC/BR/DS/AC 编码、规则核验、阈值、口径、证据、取数、字段缺失、排查、校验等实现说明。"
         "不得使用‘逾期未完成’表述。必须输出单个合法 JSON 对象，不得输出 Markdown、注释或额外解释。"
     )
-    key = get_default_model_key()
+    try:
+        candidate_keys = _model_candidate_keys()
+    except Exception:  # noqa: BLE001 - model routing must not break analysis
+        candidate_keys = [get_default_model_key()]
     try:
         max_tokens = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", "12000"))
     except ValueError:
         max_tokens = 12000
     max_tokens = max(1200, min(max_tokens, 32000))
     try:
-        timeout = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS", "120"))
+        timeout = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS", "180"))
     except ValueError:
-        timeout = 120
+        timeout = 180
     timeout = max(30, min(timeout, 180))
     messages = [dict(role="user", content=json.dumps(payload, ensure_ascii=False))]
 
+    last_transport_error = None
+    for index, key in enumerate(candidate_keys):
+        attempt_timeout = timeout if index == 0 else min(timeout, 90)
+        try:
+            return _analyse_with_model(
+                provider, key, messages, system_prompt,
+                max_tokens=max_tokens, timeout=attempt_timeout,
+            )
+        except ModelJSONOutputError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - transport failure on this route
+            last_transport_error = exc
+            if index + 1 >= len(candidate_keys):
+                raise
+    raise last_transport_error or RuntimeError("模型未返回结果")
+
+
+def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, timeout):
+    """Run one model route: generate JSON and repair a malformed answer once."""
     first_text = ""
     first_stop = ""
     try:
@@ -2658,6 +2714,11 @@ def default_text_interpreter(payload):
                 )
             value = _decode_model_json(retry_text, stop_reason=retry_stop)
         except Exception as retry_error:
+            if (isinstance(retry_error, RuntimeError)
+                    and not isinstance(retry_error, ModelJSONOutputError)):
+                # Transport failures stay retryable on another route instead
+                # of being reported as an unrepairable JSON answer.
+                raise
             raise ModelJSONOutputError(
                 "模型 JSON 输出无效，自动恢复未成功；"
                 f"first={type(first_error).__name__}: {first_error}; "
