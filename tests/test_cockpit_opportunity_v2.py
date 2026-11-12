@@ -719,6 +719,60 @@ def test_transport_timeout_retries_the_next_model_route(monkeypatch):
     assert seen == ['route-a', 'route-b']
 
 
+def test_local_model_uses_only_the_configured_route(monkeypatch):
+    from bi_agent.llm import registry
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    models = [dict(key='team-configured', provider='team',
+                   model_id='customer-local-qwen', supports_thinking=False)]
+    monkeypatch.setattr(registry, 'MODELS', models)
+    monkeypatch.setattr(registry, 'get_default_model_key', lambda: 'team-configured')
+    monkeypatch.delenv(module._MODEL_KEY_ENV, raising=False)
+    monkeypatch.delenv(module._MODEL_PREFERENCE_ENV, raising=False)
+    assert module._model_candidate_keys() == ['team-configured']
+
+
+def test_configured_fallback_route_gets_the_full_local_model_timeout(monkeypatch):
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    calls = []
+
+    def fake_analyse(provider, key, messages, system_prompt, *, max_tokens, timeout):
+        calls.append((key, timeout))
+        if key == 'route-a':
+            raise RuntimeError('Team API stream error: ReadTimeout: timed out')
+        return module.ModelJSONResult(
+            dict(summary='备用路由摘要', risks=[], causes=[], advice=[]),
+        )
+
+    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a', 'route-b'])
+    monkeypatch.setattr(module, '_analyse_with_model', fake_analyse)
+    monkeypatch.setenv(module._MODEL_TIMEOUT_ENV, '600')
+    value = module.default_text_interpreter({'progressSamples': []})
+    assert value['summary'] == '备用路由摘要'
+    assert calls == [('route-a', 180), ('route-b', 600)]
+
+
+def test_model_prompt_keeps_excluded_risks_compact(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    captured = []
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        captured.append(system_prompt)
+        return iter([
+            dict(type='text_delta', text='{"summary":"摘要","risks":[],"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a'])
+    module.default_text_interpreter({'progressSamples': []})
+    assert 'include=false' in captured[0]
+    assert '不要输出 description、evidenceIds' in captured[0]
+
+
 def test_opportunity_card_prefers_the_non_thinking_deepseek_route(monkeypatch):
     from bi_agent.llm import registry
     from bi_agent.cockpit import opportunity_v2 as module

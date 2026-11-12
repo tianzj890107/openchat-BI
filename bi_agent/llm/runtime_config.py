@@ -138,7 +138,7 @@ def request_config(**overrides):
     for key, value in overrides.items():
         if key not in {'max_tokens', 'temperature', 'thinking', 'reasoning_effort', 'request_timeout'}:
             raise ValueError('Unsupported scoped model parameter')
-        if key=='request_timeout' and (not isinstance(value,(int,float)) or not 0 < value <= 180):
+        if key=='request_timeout' and (not isinstance(value,(int,float)) or not 0 < value <= 1800):
             raise ValueError('Unsupported request timeout')
         if key=='reasoning_effort' and value not in {'low','medium','high','max'}:
             raise ValueError('Unsupported reasoning effort')

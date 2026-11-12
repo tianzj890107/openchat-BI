@@ -2697,6 +2697,29 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
 # does not expose it, the configured default model is tried next.
 _NON_THINKING_PREFERENCE = ("deepseek-v4-flash-0731",)
 _MODEL_KEY_ENV = "COCKPIT_OPPORTUNITY_V2_MODEL_KEY"
+_MODEL_PREFERENCE_ENV = "COCKPIT_OPPORTUNITY_V2_PREFER_NON_THINKING_ROUTE"
+_MODEL_TIMEOUT_ENV = "COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS"
+_DEFAULT_MODEL_TIMEOUT_SECONDS = 600
+_MAX_MODEL_TIMEOUT_SECONDS = 1800
+_PREFERRED_ROUTE_PROBE_SECONDS = 180
+
+
+def _prefer_non_thinking_route(default_model: dict) -> bool:
+    """Only use the hosted DeepSeek probe for the hosted default route.
+
+    Customer deployments can point ``TEAM_BASE_URL`` at a local
+    OpenAI-compatible model.  Sending that endpoint a hard-coded hosted model
+    name either fails or makes the gateway hang until the read timeout, so the
+    preference is opt-in for the known hosted default and auto-disabled for
+    every other configured model.  ``auto`` keeps the previous behaviour for
+    the standard deployment while local models use only their configured key.
+    """
+    raw = os.environ.get(_MODEL_PREFERENCE_ENV, "auto").strip().lower()
+    if raw in {"0", "false", "no", "off", "disabled"}:
+        return False
+    if raw in {"1", "true", "yes", "on", "enabled"}:
+        return True
+    return str(default_model.get("model_id") or "").strip() == "direct-deepseek-v4-flash"
 
 
 def _model_candidate_keys():
@@ -2710,7 +2733,9 @@ def _model_candidate_keys():
     default = get_model(default_key) or {}
     if str(default.get("provider") or "") != "team":
         return [default_key]
-    keys = [ensure_team_model(model_id) for model_id in _NON_THINKING_PREFERENCE]
+    keys = []
+    if _prefer_non_thinking_route(default):
+        keys.extend(ensure_team_model(model_id) for model_id in _NON_THINKING_PREFERENCE)
     keys.append(default_key)
     return list(dict.fromkeys(keys))
 
@@ -2740,7 +2765,8 @@ def default_text_interpreter(payload):
         '{"summary":"不超过220字的业务经营摘要",'
         '"risks":[{"code":"RK01","include":true,"classification":"confirmed|structural|insufficient|not_applicable",'
         '"description":"不超过320字","evidenceIds":["支持证据编号"],'
-        '"opposingEvidenceIds":["反对或反例证据编号"]}],'
+        '"opposingEvidenceIds":["反对或反例证据编号"]},'
+        '{"code":"RK02","include":false,"classification":"insufficient"}],'
         '"causes":[{"code":"RC01","description":"不超过160字",'
         '"riskCodes":["RK01"],"evidenceIds":["输入中的证据编号"]}],'
         '"advice":[{"code":"AC01","action":"不超过64字",'
@@ -2748,6 +2774,9 @@ def default_text_interpreter(payload):
         "每个 risk 的 code 必须来自 ruleOutcomes。只有 ruleStatus=triggered 且 classification=confirmed 时 include 才能为 true；"
         "structural、insufficient、not_applicable 必须 include=false。数值规则未命中的风险不得被模型改判为成立。"
         "必须对 ruleOutcomes 中的每一条风险恰好返回一次判断，不得遗漏或重复；覆盖不足视为模型分析未完成。"
+        "include=false 的风险只返回 code、include、classification，不要输出 description、evidenceIds、"
+        "opposingEvidenceIds，以缩短输出；include=true 的风险必须给出 description、至少一条支持证据和 "
+        "opposingEvidenceIds。"
         "成立的风险至少引用一条支持证据；opposingEvidenceIds 记录与该判断相反或限制结论的证据，必须来自输入事实、记录或进展。"
         "每个 cause 必须来自 causeCandidates，riskCodes 必须是该原因允许关联且本次包含的风险。"
         "每个 advice 必须来自 adviceCandidates，必须绑定其允许的 causeCodes/riskCodes。"
@@ -2767,15 +2796,21 @@ def default_text_interpreter(payload):
         max_tokens = 12000
     max_tokens = max(1200, min(max_tokens, 32000))
     try:
-        timeout = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS", "180"))
+        timeout = int(os.environ.get(_MODEL_TIMEOUT_ENV, str(_DEFAULT_MODEL_TIMEOUT_SECONDS)))
     except ValueError:
-        timeout = 180
-    timeout = max(30, min(timeout, 180))
+        timeout = _DEFAULT_MODEL_TIMEOUT_SECONDS
+    timeout = max(30, min(timeout, _MAX_MODEL_TIMEOUT_SECONDS))
     messages = [dict(role="user", content=json.dumps(payload, ensure_ascii=False))]
 
     last_transport_error = None
     for index, key in enumerate(candidate_keys):
-        attempt_timeout = timeout if index == 0 else min(timeout, 90)
+        # The hosted non-thinking probe gets a bounded first attempt, but the
+        # configured customer model must always receive the full timeout.  A
+        # local model may legitimately need several minutes for a complete
+        # risk-by-risk answer; the old 90 second fallback cut it off.
+        preferred_probe = index == 0 and len(candidate_keys) > 1
+        attempt_timeout = (min(timeout, _PREFERRED_ROUTE_PROBE_SECONDS)
+                           if preferred_probe else timeout)
         try:
             return _analyse_with_model(
                 provider, key, messages, system_prompt,

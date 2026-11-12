@@ -57,8 +57,9 @@ def test_probe_timeout_is_local_and_does_not_modify_normal_requests():
     with request_config(request_timeout=20):assert scoped_request_timeout()==20
     with request_config(request_timeout=120):assert scoped_request_timeout()==120
     assert scoped_request_timeout() is None
+    with request_config(request_timeout=600):assert scoped_request_timeout()==600
     with pytest.raises(ValueError):
-        with request_config(request_timeout=600):pass
+        with request_config(request_timeout=2000):pass
 
 
 def test_failed_probe_is_not_http_success(tmp_path,monkeypatch):
