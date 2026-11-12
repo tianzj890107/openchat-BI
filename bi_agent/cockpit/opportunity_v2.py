@@ -2869,7 +2869,15 @@ def default_text_interpreter(payload):
         '"riskCodes":["RK01"],"causeCodes":["RC01"],"evidenceIds":["输入中的证据编号"]}]}。'
         "每个 risk 的 code 必须来自 ruleOutcomes。只有 ruleStatus=triggered 且 classification=confirmed 时 include 才能为 true；"
         "structural、insufficient、not_applicable 必须 include=false。数值规则未命中的风险不得被模型改判为成立。"
-        "必须对 ruleOutcomes 中的每一条风险恰好返回一次判断，不得遗漏或重复；覆盖不足视为分析失败。"
+        "注意两套取值不要混用：ruleStatus（triggered/not_triggered/insufficient/not_applicable）是程序给出的规则状态，"
+        "classification 是你的判断，只能取 confirmed、structural、insufficient、not_applicable 四个值，"
+        "不得填写 triggered 或 not_triggered。"
+        "ruleStatus=triggered 的每一条风险都必须恰好返回一次判断，不得遗漏或重复，遗漏视为分析失败；"
+        "ruleStatus 不是 triggered 的风险一律 include=false（ruleStatus=insufficient 用 insufficient，"
+        "其余用 not_applicable），也可以省略。"
+        "如果输入中带有 validationFeedback，说明你上一次的回答没有通过程序校验："
+        "previousAnswer 是上一次的回答，issues 是逐条问题。请只修正 issues 指出的问题，"
+        "其余内容保持不变，重新输出完整 JSON；不得为了通过校验而编造数字或证据编号。"
         "include=false 的风险只返回 code、include、classification；include=true 的风险必须给出 title、"
         "description、至少一条支持证据和 opposingEvidenceIds。"
         "存在成立的风险时，必须给出至少一条根因和一条建议。"
@@ -2926,6 +2934,8 @@ def default_text_interpreter(payload):
                 result = _analyse_with_model(
                     provider, key, messages, system_prompt,
                     max_tokens=max_tokens, timeout=attempt_timeout,
+                    step=("按校验意见修正" if isinstance(payload, dict)
+                          and payload.get("validationFeedback") else "生成分析"),
                 )
                 result.call_trace = trace
                 result.request_info = request_info
@@ -2962,7 +2972,8 @@ def _annotate_model_error(exc, key, messages, started, timeout, max_tokens):
     exc.max_tokens = max_tokens
 
 
-def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, timeout):
+def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, timeout,
+                        step="生成分析"):
     """Run one model route: generate JSON and repair a malformed answer once."""
     deadline = time.monotonic() + max(1, int(timeout))
     first_text = ""
@@ -2970,7 +2981,7 @@ def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, t
     try:
         first_text, first_stop, _ = _read_model_stream(
             provider, messages, system_prompt, key,
-            max_tokens=max_tokens, timeout=timeout,
+            max_tokens=max_tokens, timeout=timeout, step=step,
         )
         if first_stop in {"max_tokens", "length"}:
             raise ModelJSONOutputError(
@@ -3137,7 +3148,9 @@ def classify_model_failure(model_status):
         return ("未启用模型分析", "COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED 已关闭，商机卡片必须由模型生成。",
                 "在 .env 中开启该开关后重新分析。")
     if error == "MODEL_ANALYSIS_REJECTED":
-        return ("模型分析不符合要求", "模型有返回，但内容没有通过校验：" + message,
+        return ("模型分析不符合要求",
+                ("模型按校验意见修正一次后仍未通过校验：" if model_status.get("repairAttempted")
+                 else "模型有返回，但内容没有通过校验：") + message,
                 "检查模型是否逐条判断了全部本体风险、是否为成立风险给出根因和建议；可换用更强的模型。")
     if _has(lowered, "context_length", "context length", "maximum context", "too many tokens",
             "prompt is too long", "input is too long", "token limit", "exceeds the model",
@@ -3270,10 +3283,17 @@ def _model_failure_details(model_status):
         sections.append(dict(title="错误原文", lines=lines))
     reasons = model_status.get("rejectionReasons") or {}
     labels = dict(risks="风险", causes="根因", advice="建议", summary="摘要")
+    first_reasons = model_status.get("firstRejectionReasons") or {}
+    lines = [f"{labels[kind]} {clean(item, 200)}" for kind in ("risks", "causes", "advice", "summary")
+             for item in (first_reasons.get(kind) or [])[:12]]
+    if model_status.get("repairAttempted"):
+        sections.append(dict(title="第一次回答的校验问题（已发回模型修正）",
+                             lines=lines or [clean(model_status.get("firstErrorMessage"), 300)]))
     lines = [f"{labels[kind]} {clean(item, 200)}" for kind in ("risks", "causes", "advice", "summary")
              for item in (reasons.get(kind) or [])[:12]]
     if lines:
-        sections.append(dict(title="校验未通过明细", lines=lines))
+        sections.append(dict(title=("修正后仍未通过的明细" if model_status.get("repairAttempted")
+                                    else "校验未通过明细"), lines=lines))
     answered = [call for call in trace if call.get("textChars")]
     head = clean(answered[-1].get("textHead"), 600) if answered else ""
     tail = clean(answered[-1].get("textTail"), 300) if answered else ""
@@ -3317,6 +3337,18 @@ def _model_failure_message(model_status):
     return "\n".join(lines)
 
 
+_CLASSIFICATION_SYNONYMS = {
+    "triggered": "confirmed", "not_triggered": "not_applicable",
+    "untriggered": "not_applicable", "indeterminate": "insufficient",
+}
+
+
+def _rule_settled_classification(candidate):
+    """Classification of a risk whose rule did not trigger."""
+    return "insufficient" if candidate.get("ruleStatus") in {"insufficient", "indeterminate"} \
+        else "not_applicable"
+
+
 def _text_issue(label, text, limit, allowed_numbers):
     """Why a model text is unusable, or '' when it is acceptable."""
     if not text:
@@ -3337,7 +3369,39 @@ def _evidence_issue(label, cited, allowed):
 
 
 def apply_text_interpretation(evaluated, interpreter=None):
-    """Call the model to write the card's analysis, then validate it.
+    """Write and validate the card's analysis, with one model repair round.
+
+    When the first answer is rejected by validation, the exact issues and the
+    answer are sent back once so the model corrects its own text.  Nothing is
+    filled in by the program; a second rejection fails the card.
+    """
+    first = _interpret_once(evaluated, interpreter)
+    answer = first.pop("_answer", None)
+    if first.get("error") != "MODEL_ANALYSIS_REJECTED" or not isinstance(answer, dict):
+        return first
+    labels = dict(risks="风险", causes="根因", advice="建议", summary="摘要")
+    reasons = first.get("rejectionReasons") or {}
+    issues = [f"{labels.get(kind, kind)} {item}" for kind in ("risks", "causes", "advice", "summary")
+              for item in reasons.get(kind) or []] or [_text(first.get("modelErrorMessage"))]
+    if not reasons.get("causes") and not reasons.get("advice") and "根因与建议" in _text(
+            first.get("modelErrorMessage")):
+        issues.append("存在成立的风险时必须至少给出一条可用的根因和一条可用的建议")
+    second = _interpret_once(evaluated, interpreter, feedback=dict(
+        issues=issues[:30], previousAnswer=answer))
+    second.pop("_answer", None)
+    second["repairAttempted"] = True
+    second["firstRejectionReasons"] = reasons
+    second["firstErrorMessage"] = _text(first.get("modelErrorMessage"))
+    second["modelCalls"] = int(first.get("modelCalls") or 1) + int(second.get("modelCalls") or 1)
+    second["modelCallTrace"] = (list(first.get("modelCallTrace") or [])
+                                + list(second.get("modelCallTrace") or []))
+    if not second.get("modelRequest"):
+        second["modelRequest"] = first.get("modelRequest") or {}
+    return second
+
+
+def _interpret_once(evaluated, interpreter=None, feedback=None):
+    """Call the model once and validate its answer.
 
     The ontology supplies the analysis chain (candidate risks, causes, advice
     and their links) as context only.  Every summary, risk, cause and advice
@@ -3423,7 +3487,11 @@ def apply_text_interpretation(evaluated, interpreter=None):
         records=records,
         progressSamples=samples[:6],
     )
+    # Numbers are checked against the evidence only, never against the
+    # model's own previous answer carried in the repair feedback.
     allowed_numbers = _allowed_model_numbers(payload)
+    if feedback:
+        payload = dict(payload, validationFeedback=feedback)
     value = None
     try:
         value = interpreter(payload)
@@ -3462,11 +3530,19 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 reject("risks", rejected_risks, code or "?", "不是本体候选风险编码")
                 continue
             include = item.get("include")
-            classification = _text(item.get("classification"))
+            # Models sometimes answer with the ruleStatus vocabulary.
+            classification = _text(item.get("classification")).lower()
+            classification = _CLASSIFICATION_SYNONYMS.get(classification, classification)
             if include is None and classification:
                 include = classification == "confirmed"
             if not classification:
                 classification = "confirmed" if include is True else "insufficient"
+            if candidate.get("ruleStatus") != "triggered" and include is not True:
+                # The program already settled this risk as not established;
+                # the model's label cannot change it and must not fail the card.
+                include = False
+                if classification not in {"structural", "insufficient", "not_applicable"}:
+                    classification = _rule_settled_classification(candidate)
             if not isinstance(include, bool):
                 reject("risks", rejected_risks, code, "include 不是 true/false")
                 continue
@@ -3516,15 +3592,25 @@ def apply_text_interpretation(evaluated, interpreter=None):
             applied_risks.append(code)
 
         applied_risks = list(dict.fromkeys(applied_risks))
+        for candidate in risk_candidates:
+            code = candidate["code"]
+            if (code in risk_specs or code in rejected_risks
+                    or candidate.get("ruleStatus") == "triggered"):
+                continue
+            # Only program-triggered risks need a model judgement.
+            risk_specs[code] = dict(include=False, source="rule",
+                                    classification=_rule_settled_classification(candidate),
+                                    title="", description="", evidenceIds=[],
+                                    opposingEvidenceIds=[])
         missing_risk_codes = [candidate["code"] for candidate in risk_candidates
                               if candidate["code"] not in risk_specs]
         risk_coverage_complete = not missing_risk_codes
         if missing_risk_codes or rejected_risks:
             for code in missing_risk_codes:
                 if code not in rejected_risks:
-                    rejection_reasons["risks"].append(f"{code}：模型没有返回该风险的判断")
+                    rejection_reasons["risks"].append(f"{code}：程序规则已命中，但模型没有返回该风险的判断")
             raise ModelAnalysisRejected(
-                "模型未完成全部本体风险判断："
+                "模型未完成全部已命中风险的判断："
                 + "、".join(dict.fromkeys(missing_risk_codes + rejected_risks)),
                 rejected_risks=rejected_risks, missing_risk_codes=missing_risk_codes,
                 reasons=rejection_reasons)
@@ -3562,7 +3648,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 evidenceIds=evidence_ids[:20],
                 supportingEvidenceIds=evidence_ids[:20],
                 opposingEvidenceIds=(opposing_ids or [])[:20],
-                assessmentSource="model",
+                assessmentSource=spec.get("source") or "model",
                 observed=candidate.get("observed") or [],
                 missingEvidence=candidate.get("missingEvidence") or [],
             ))
@@ -3790,6 +3876,8 @@ def apply_text_interpretation(evaluated, interpreter=None):
             rejectedCauses=list(getattr(exc, "rejected_causes", []) or []),
             rejectedAdvice=list(getattr(exc, "rejected_advice", []) or []),
             missingRiskCodes=list(getattr(exc, "missing_risk_codes", []) or []),
+            _answer=(json.loads(json.dumps(dict(value), ensure_ascii=False, default=str))
+                     if isinstance(exc, ModelAnalysisRejected) and isinstance(value, dict) else None),
             **_model_error_context(exc, value),
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),

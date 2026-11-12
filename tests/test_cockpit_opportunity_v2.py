@@ -734,7 +734,7 @@ def test_fallback_route_uses_the_remaining_180_second_budget(monkeypatch):
 
     calls = []
 
-    def fake_analyse(provider, key, messages, system_prompt, *, max_tokens, timeout):
+    def fake_analyse(provider, key, messages, system_prompt, *, max_tokens, timeout, step=''):
         calls.append((key, timeout))
         if key == 'route-a':
             raise RuntimeError('Team API stream error: ReadTimeout: timed out')
@@ -1305,19 +1305,23 @@ def test_model_text_is_never_filled_from_ontology_candidates():
     assert status['status'] == 'rejected'
     assert status['error'] == 'MODEL_ANALYSIS_REJECTED'
     assert status['rejectedRisks'] == ['RK01']
-    assert '模型未完成全部本体风险判断' in status['modelErrorMessage']
+    assert '模型未完成全部已命中风险的判断' in status['modelErrorMessage']
 
 
 def test_missing_or_invalid_risk_judgement_rejects_the_whole_analysis():
     value = _strategic_value()
     interpreter, _ = _payload_answer(value)
 
-    def omit_one(payload):
+    triggered = next(item['code'] for item in value['riskCandidates']
+                     if item['ruleStatus'] == 'triggered')
+
+    def omit_triggered(payload):
         answer = interpreter(payload)
-        answer['risks'].pop()
+        answer['risks'] = [item for item in answer['risks'] if item['code'] != triggered]
         return answer
-    status = apply_text_interpretation(value, omit_one)
-    assert status['status'] == 'rejected' and len(status['missingRiskCodes']) == 1
+    status = apply_text_interpretation(value, omit_triggered)
+    assert status['status'] == 'rejected' and status['missingRiskCodes'] == [triggered]
+    assert status['repairAttempted'] is True
 
     value = _strategic_value()
     candidate = next(item for item in value['riskCandidates'] if item['ruleStatus'] != 'triggered')
@@ -1567,15 +1571,19 @@ def test_failure_details_cover_request_calls_answer_and_rejections(monkeypatch):
     status = apply_text_interpretation(_model_evaluated(), module.default_text_interpreter)
     assert status['status'] == 'rejected'
     assert status['rejectionReasons'] == {'risks': ['RK01：缺少风险说明']}
+    assert status['repairAttempted'] is True and status['modelCalls'] == 2
     sections = {item['title']: item['lines'] for item in module._model_failure_details(status)}
-    assert list(sections) == ['请求内容', '调用过程', '错误原文', '校验未通过明细', '模型原始返回（节选）']
+    assert list(sections) == ['请求内容', '调用过程', '错误原文', '第一次回答的校验问题（已发回模型修正）',
+                              '修正后仍未通过的明细', '模型原始返回（节选）']
+    assert sections['第一次回答的校验问题（已发回模型修正）'] == ['风险 RK01：缺少风险说明']
+    assert sections['调用过程'][1].startswith('第 2 次 · 按校验意见修正')
     request = '\n'.join(sections['请求内容'])
     assert '模型：route-a' in request and '附带工具：0 个' in request
     assert '本体风险候选 1 条' in request and 'max_tokens=12000' in request
     call = sections['调用过程'][0]
     assert call.startswith('第 1 次 · 生成分析') and '结束原因 stop' in call
     assert '输入 11809 token' in call and '输出 96 token' in call
-    assert sections['校验未通过明细'] == ['风险 RK01：缺少风险说明']
+    assert sections['修正后仍未通过的明细'] == ['风险 RK01：缺少风险说明']
     assert sections['模型原始返回（节选）'] == [
         '开头：{"summary":"商机存在缺口","risks":[{"code":"RK01","include":true,'
         '"classification":"confirmed","title":"覆盖不足"}],"causes":[],"advice":[]}']
@@ -1596,3 +1604,64 @@ def test_rejection_reasons_name_the_exact_problem():
     reasons = status['rejectionReasons']
     assert any('引用了不允许的证据编号 model-invented-evidence' in item for item in reasons['causes'])
     assert all('deadlineDays 不是 1-365 的整数（实际 0）' in item for item in reasons['advice'])
+
+
+def test_rule_settled_risks_never_fail_the_card_for_their_label():
+    """Customer case: classification 'not_triggered' on a risk the rule did not trigger."""
+    value = _strategic_value()
+    base, _ = _payload_answer(value)
+    settled = [item['code'] for item in value['riskCandidates'] if item['ruleStatus'] != 'triggered']
+    assert len(settled) >= 2
+
+    def confused(payload):
+        answer = base(payload)
+        # One rule-settled risk carries the ruleStatus vocabulary, another is omitted.
+        answer['risks'] = [item for item in answer['risks'] if item['code'] != settled[1]]
+        for item in answer['risks']:
+            if item['code'] == settled[0]:
+                item['classification'] = 'not_triggered'
+        return answer
+    status = apply_text_interpretation(value, confused)
+    assert status['status'] == 'completed'
+    assert 'repairAttempted' not in status
+    assessments = {item['code']: item for item in status['riskAssessments']}
+    assert assessments[settled[0]]['include'] is False
+    assert assessments[settled[0]]['classification'] in {'insufficient', 'not_applicable'}
+    assert assessments[settled[1]]['assessmentSource'] == 'rule'
+    assert settled[0] not in value['result']['riskCodes']
+
+
+def test_rejected_analysis_is_repaired_once_by_the_model():
+    value = _strategic_value()
+    base, _ = _payload_answer(value)
+    seen = []
+
+    def interpreter(payload):
+        seen.append(payload.get('validationFeedback'))
+        answer = base(payload)
+        if payload.get('validationFeedback') is None:
+            answer['summary'] = '年度目标数据缺失，战略客户推进需要重点关注。'
+        return answer
+    status = apply_text_interpretation(value, interpreter)
+    assert status['status'] == 'completed'
+    assert status['repairAttempted'] is True and status['modelCalls'] == 2
+    assert seen[0] is None
+    feedback = seen[1]
+    assert feedback['issues'] == ['摘要 摘要含实现说明用语“缺失”']
+    assert feedback['previousAnswer']['summary'].startswith('年度目标数据缺失')
+    assert status['firstRejectionReasons'] == {'summary': ['摘要含实现说明用语“缺失”']}
+    assert '缺失' not in value['result']['summary']
+
+
+def test_repair_feedback_numbers_are_not_whitelisted():
+    value = _strategic_value()
+    base, _ = _payload_answer(value)
+
+    def interpreter(payload):
+        answer = base(payload)
+        answer['summary'] = '新增 999 家客户风险。'
+        return answer
+    status = apply_text_interpretation(value, interpreter)
+    # 999 appears in previousAnswer on the repair round but is still not evidence.
+    assert status['status'] == 'rejected' and status['repairAttempted'] is True
+    assert status['rejectionReasons']['summary'] == ['摘要含输入中不存在的数字 999']
