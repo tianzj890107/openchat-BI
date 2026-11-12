@@ -11,11 +11,13 @@ OUTPUT=${OUTPUT:-}
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/build_customer_image.sh --ontology DIR --seed DIR --wheels DIR [options]
+Usage: scripts/build_customer_image.sh --ontology DIR --wheels DIR [--seed DIR] [options]
 
 Options:
   --ontology DIR    Directory containing catalog.json, manifest.json and the source Excel.
-  --seed DIR        Directory containing frozen-annual.json.
+  --seed DIR        Optional directory containing frozen-annual.json. Without it the
+                    customer page starts with no AI cards; each stage is published
+                    after its first manual analysis.
   --wheels DIR      Offline wheelhouse for linux/amd64.
   --image NAME      Image tag to build. Default: cockpit-process360:customer-20261103
   --platform ARCH   Build platform. Default: linux/amd64
@@ -36,20 +38,26 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$ONTOLOGY" ] && [ -n "$SEED" ] && [ -n "$WHEELS" ] || {
+[ -n "$ONTOLOGY" ] && [ -n "$WHEELS" ] || {
   usage >&2
   echo "missing required build context" >&2
   exit 2
 }
 [ -f "$ONTOLOGY/catalog.json" ] || { echo "missing $ONTOLOGY/catalog.json" >&2; exit 2; }
 [ -f "$ONTOLOGY/manifest.json" ] || { echo "missing $ONTOLOGY/manifest.json" >&2; exit 2; }
-[ -f "$SEED/frozen-annual.json" ] || { echo "missing $SEED/frozen-annual.json" >&2; exit 2; }
+if [ -n "$SEED" ]; then
+  [ -f "$SEED/frozen-annual.json" ] || { echo "missing $SEED/frozen-annual.json" >&2; exit 2; }
+  set -- --build-context "cockpit-seed=$SEED"
+else
+  echo "no --seed: image starts without published AI cards" >&2
+  set --
+fi
 [ -d "$WHEELS" ] || { echo "missing wheelhouse: $WHEELS" >&2; exit 2; }
 OUTPUT=${OUTPUT:-"$PWD/images/cockpit-linux-amd64.tar"}
 
 docker buildx build --platform "$PLATFORM" \
   --build-context "wheelhouse=$WHEELS" \
-  --build-context "cockpit-seed=$SEED" \
+  "$@" \
   --build-context "builtin-ontology=$ONTOLOGY" \
   -f "$ROOT/deploy/customer/Dockerfile" \
   -t "$IMAGE" --load "$ROOT"

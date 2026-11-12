@@ -50,12 +50,20 @@ def _release_item(release, spec):
     return item, (key if items.get(key) else spec['stage'])
 
 
-def validate_release(body):
+def validate_release(body, partial=False):
+    """A delivered seed must cover every stage; ``partial`` admits unanalysed stages.
+
+    Partial releases exist only when the image ships without a seed: stages
+    are filled one by one by explicit manual analysis.  A stage that is
+    present must still be a complete, same-year card.
+    """
     if not isinstance(body, dict) or not str(body.get('period', '')).isdigit() or len(str(body['period'])) != 4:
         raise ValueError('年度发布版必须有明确的四位年度')
     items = body.get('items') or {}
     for stage in STAGES:
         item = items.get(stage)
+        if partial and item is None:
+            continue
         context = (item or {}).get('context') or {}
         if (not valid_card(item) or item.get('status') not in {'completed', 'limited'}
                 or context.get('stage') != stage or context.get('period') != body['period']):
@@ -72,13 +80,18 @@ def validate_release(body):
             raise ValueError('独立卡片发布内容不合法：' + key)
     for spec in slot_registry():
         item, _ = _release_item(body, spec)
+        if partial and item is None:
+            continue
         if not card_delivery_state(publication_payload(project_card(item, spec['slotId'])), spec['slotId'])['renderable']:
             raise ValueError('年度发布版未覆盖全部AI插槽')
     return body
 
 
+UNSEEDED_BASIS = '镜像未内置年度发布版；各环节需点击“分析”生成，成功一个环节发布一个环节。'
+
+
 class FrozenAnnualStore:
-    def __init__(self, path, seed):
+    def __init__(self, path, seed=None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
@@ -95,7 +108,14 @@ class FrozenAnnualStore:
         with self.db() as db:
             initialized = db.execute('SELECT 1 FROM annual_head WHERE id=1').fetchone()
         if not initialized:
-            self.publish(json.loads(Path(seed).read_text(encoding='utf-8')))
+            if seed and Path(seed).is_file():
+                self.publish(json.loads(Path(seed).read_text(encoding='utf-8')))
+            else:
+                # No delivered seed: open with an empty annual release whose
+                # cards are produced only by explicit manual analysis.
+                from .periods import default_period
+                self.publish(dict(period=default_period()[:4], createdAt=time.time(),
+                                  basis=UNSEEDED_BASIS, items={}), partial=True)
 
     @contextmanager
     def db(self):
@@ -107,8 +127,8 @@ class FrozenAnnualStore:
         finally:
             db.close()
 
-    def publish(self, body):
-        body = deepcopy(validate_release(body))
+    def publish(self, body, partial=False):
+        body = deepcopy(validate_release(body, partial=partial))
         raw = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(',', ':'),
                          default=str)
         version = hashlib.sha256(raw.encode()).hexdigest()
@@ -156,7 +176,9 @@ class FrozenAnnualStore:
             release['items'][stage] = deepcopy(item)
             release['createdAt'] = time.time()
             release['basis'] = 'Customer manual annual analysis; stages publish independently. Evidence times and limitations belong to each card.'
-            return self.publish(release)
+            # Other stages keep their last generation; an unseeded release
+            # may still lack stages that were never analysed.
+            return self.publish(release, partial=True)
 
     def claim(self):
         with self.db() as db:
@@ -359,9 +381,12 @@ class FrozenAnnualService:
                 envelope=self.envelope(identity)
                 grouped={}
                 for sid,slot in envelope['slots'].items():
+                    payload=slot['payload']
+                    if payload is None:
+                        # Not analysed yet; the manifest still lists it as missing.
+                        continue
                     stage=slot.get('publicationKey') or slot['stage']
                     bundle=grouped.setdefault(stage,{'slots':{},'evidence':None})
-                    payload=slot['payload']
                     if bundle['evidence'] is None:
                         bundle['evidence']=browser_evidence(payload.get('evidence') or {})
                     value={k:v for k,v in slot.items() if k not in {'lastSuccessfulPublication','payload'}}
@@ -416,6 +441,15 @@ class FrozenAnnualService:
         slots = {}
         for spec in slot_registry():
             item, publication_key = _release_item(release, spec)
+            if item is None:
+                # Unseeded image: this stage has not been analysed yet.
+                slots[spec['slotId']] = dict(**spec, publicationKey=publication_key,
+                    status='missing', contentStatus='missing', contentComplete=False,
+                    contentGaps=[], evidenceCount=0, riskFindingCount=0,
+                    scopeMatch=True, periodMatch=True, displayScope='fixed-annual',
+                    refreshStatus='missing', lastRefreshError='',
+                    update=dict(status='missing', active=False, nextCheckAt=0), payload=None)
+                continue
             item = compact_analysis(item)
             item['context']['id'] = identity
             item['context']['publicationBasis'] = release.get('basis', '')
@@ -431,6 +465,7 @@ class FrozenAnnualService:
                 refreshStatus='published', lastRefreshError='',
                 update=dict(status='published', active=False, nextCheckAt=0), payload=payload)
         complete = sum(s['contentComplete'] for s in slots.values())
+        ready = sum(s['status'] == 'ready' for s in slots.values())
         risk_counts = summarize_risk_counts(slots)
         # A presentation shortlist; preserve the full analysis and original total.
         for domain in ('sales', 'shipment'):
@@ -444,9 +479,9 @@ class FrozenAnnualService:
             scopeMatch=True, displayScope='fixed-annual', publicationMode='fixed-annual',
             appliesToPageFilters=False, basis=release.get('basis', ''), manualUpdate=self.store.job(),
             registryVersion=REGISTRY_VERSION, contractVersion=CONTRACT, version=release['version'],
-            expectedCount=len(slots), targetCount=len(slots), readyCount=len(slots),
-            renderableCount=len(slots), publishedCount=len(slots), missingCount=0,
-            completeCount=complete, limitedCount=len(slots)-complete, incompleteCount=len(slots)-complete,
+            expectedCount=len(slots), targetCount=len(slots), readyCount=ready,
+            renderableCount=ready, publishedCount=ready, missingCount=len(slots)-ready,
+            completeCount=complete, limitedCount=ready-complete, incompleteCount=len(slots)-complete,
             updatingCount=0, generatedAt=release['createdAt'], dataAsOf=release['createdAt'],
             riskCounts=risk_counts, update=dict(status='published', nextCheckAt=0, error=''), slots=slots)
 
@@ -668,6 +703,8 @@ class FrozenCockpitSurface:
                     response=await asyncio.to_thread(lambda:JSONResponse(dict(analysisId=item['id'],stage=stage,period=release['period'],dataAsOf=item.get('updatedAt'),evidence=item.get('evidence') or {}),headers={'Cache-Control':'private, no-store'}))
                     return await response(scope,receive,send)
                 manifest,groups=await asyncio.to_thread(self.service.compact_publications,identity)
+                if stage not in manifest['stageVersions']:
+                    raise HTTPException(404,'该环节尚未分析')
                 version=manifest['stageVersions'][stage]
                 headers=dict(scope.get('headers') or [])
                 if headers.get(b'if-none-match',b'').decode()==('"'+version+'"'):

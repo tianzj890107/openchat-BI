@@ -480,3 +480,36 @@ def test_stage_failure_message_uses_public_model_reason_only():
     exc.public_message='模型调用中断：模型未返回完整文本。'
     assert stage_failure_message(exc,True)=='模型调用中断：模型未返回完整文本。本轮未发布，已保留上一版结果。'
     assert stage_failure_message(RuntimeError('db password=x'),False)=='后台分析未完成，详细原因已记录到诊断。本轮未发布，请稍后重试。'
+
+
+def test_unseeded_store_opens_empty_and_publishes_stages_one_by_one(tmp_path):
+    (tmp_path/'seeded').mkdir();seeded,_,body=fixture(tmp_path/'seeded')
+    store=FrozenAnnualStore(tmp_path/'release.db',tmp_path/'absent.json')
+    release=store.read()
+    assert release['items']=={} and len(release['period'])==4
+    service=FrozenAnnualService(store,lambda period:None)
+    envelope=service.envelope(1)
+    assert (envelope['readyCount'],envelope['missingCount'])==(0,envelope['expectedCount'])
+    assert all(slot['status']=='missing' and slot['payload'] is None for slot in envelope['slots'].values())
+    manifest,groups=service.compact_publications(1)
+    assert manifest['stageVersions']=={} and groups=={}
+    client=TestClient(FrozenCockpitSurface(FastAPI(),service))
+    assert client.get('/api/cockpit/ai-publications/stages/order',params={'id':1}).status_code==404
+    item=deepcopy(body['items']['order']);item['context']['period']=release['period']
+    store.publish_stage('order',item)
+    envelope=service.envelope(1)
+    ready={sid for sid,slot in envelope['slots'].items() if slot['status']=='ready'}
+    assert ready and all(envelope['slots'][sid]['stage']=='order' for sid in ready)
+    assert envelope['readyCount']==len(ready)
+    assert client.get('/api/cockpit/ai-publications/stages/order',params={'id':1}).status_code==200
+    # A restart keeps the partial release instead of resetting it.
+    assert FrozenAnnualStore(store.path,None).read()['items'].keys()=={'order'}
+
+
+def test_delivered_seed_must_still_cover_every_stage(tmp_path):
+    _,seed,body=fixture(tmp_path)
+    body['items'].pop('order')
+    partial=tmp_path/'partial.json';partial.write_text(json.dumps(body))
+    import pytest
+    with pytest.raises(ValueError):
+        FrozenAnnualStore(tmp_path/'other.db',partial)
