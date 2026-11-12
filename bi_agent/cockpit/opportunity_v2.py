@@ -2689,55 +2689,25 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
     return text, str(ends[-1].get("stop_reason") or ""), ends[-1].get("usage") or {}
 
 
-# Direct DeepSeek chat routes accept ``thinking: disabled`` but keep reasoning
-# over the whole output budget.  On a 34 KB payload with ten candidate risks
-# that produced zero text before the read timeout.  This is the same gateway
-# route without the thinking control, so it answers the same JSON contract in
-# well under a minute.  It is only a routing preference: when the deployment
-# does not expose it, the configured default model is tried next.
-_NON_THINKING_PREFERENCE = ("deepseek-v4-flash-0731",)
 _MODEL_KEY_ENV = "COCKPIT_OPPORTUNITY_V2_MODEL_KEY"
-_MODEL_PREFERENCE_ENV = "COCKPIT_OPPORTUNITY_V2_PREFER_NON_THINKING_ROUTE"
 _MODEL_TIMEOUT_ENV = "COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS"
-_DEFAULT_MODEL_TIMEOUT_SECONDS = 600
-_MAX_MODEL_TIMEOUT_SECONDS = 1800
-_PREFERRED_ROUTE_PROBE_SECONDS = 180
-
-
-def _prefer_non_thinking_route(default_model: dict) -> bool:
-    """Only use the hosted DeepSeek probe for the hosted default route.
-
-    Customer deployments can point ``TEAM_BASE_URL`` at a local
-    OpenAI-compatible model.  Sending that endpoint a hard-coded hosted model
-    name either fails or makes the gateway hang until the read timeout, so the
-    preference is opt-in for the known hosted default and auto-disabled for
-    every other configured model.  ``auto`` keeps the previous behaviour for
-    the standard deployment while local models use only their configured key.
-    """
-    raw = os.environ.get(_MODEL_PREFERENCE_ENV, "auto").strip().lower()
-    if raw in {"0", "false", "no", "off", "disabled"}:
-        return False
-    if raw in {"1", "true", "yes", "on", "enabled"}:
-        return True
-    return str(default_model.get("model_id") or "").strip() == "direct-deepseek-v4-flash"
+_DEFAULT_MODEL_TIMEOUT_SECONDS = 180
+_MAX_MODEL_TIMEOUT_SECONDS = 180
 
 
 def _model_candidate_keys():
-    """Model routes for this card, preferred non-thinking route first."""
+    """Use only the deployment-configured model, with an optional env override.
+
+    The model id lives in ``TEAM_MODEL`` / the provider configuration, never in
+    this module.  ``COCKPIT_OPPORTUNITY_V2_MODEL_KEY`` can pin a registry key
+    or a model id when the configured route cannot disable thinking.
+    """
     from ..llm.registry import ensure_team_model, get_default_model_key, get_model
 
-    default_key = get_default_model_key()
     explicit = os.environ.get(_MODEL_KEY_ENV, "").strip()
     if explicit:
         return [explicit] if get_model(explicit) else [ensure_team_model(explicit)]
-    default = get_model(default_key) or {}
-    if str(default.get("provider") or "") != "team":
-        return [default_key]
-    keys = []
-    if _prefer_non_thinking_route(default):
-        keys.extend(ensure_team_model(model_id) for model_id in _NON_THINKING_PREFERENCE)
-    keys.append(default_key)
-    return list(dict.fromkeys(keys))
+    return [get_default_model_key()]
 
 
 def default_text_interpreter(payload):
@@ -2748,8 +2718,9 @@ def default_text_interpreter(payload):
     evidence.  Its output is parsed and validated by the caller.  A malformed
     or truncated JSON response gets one bounded recovery attempt: truncated
     output is regenerated with a compact response contract; otherwise the raw
-    JSON is sent to a repair-only call.  Network/model errors are not retried
-    here.
+    JSON is sent to a repair-only call.  Network/model errors consume the same
+    180-second budget and can only move to another explicitly configured route;
+    the card never adds a model route on its own.
     """
     from ..llm import provider
     from ..llm.registry import get_default_model_key
@@ -2803,14 +2774,12 @@ def default_text_interpreter(payload):
     messages = [dict(role="user", content=json.dumps(payload, ensure_ascii=False))]
 
     last_transport_error = None
+    remaining_budget = float(timeout)
     for index, key in enumerate(candidate_keys):
-        # The hosted non-thinking probe gets a bounded first attempt, but the
-        # configured customer model must always receive the full timeout.  A
-        # local model may legitimately need several minutes for a complete
-        # risk-by-risk answer; the old 90 second fallback cut it off.
-        preferred_probe = index == 0 and len(candidate_keys) > 1
-        attempt_timeout = (min(timeout, _PREFERRED_ROUTE_PROBE_SECONDS)
-                           if preferred_probe else timeout)
+        if remaining_budget <= 0:
+            break
+        attempt_timeout = max(1, int(remaining_budget))
+        started = time.monotonic()
         try:
             return _analyse_with_model(
                 provider, key, messages, system_prompt,
@@ -2820,7 +2789,8 @@ def default_text_interpreter(payload):
             raise
         except Exception as exc:  # noqa: BLE001 - transport failure on this route
             last_transport_error = exc
-            if index + 1 >= len(candidate_keys):
+            remaining_budget -= time.monotonic() - started
+            if index + 1 >= len(candidate_keys) or remaining_budget <= 0:
                 raise
     raise last_transport_error or RuntimeError("模型未返回结果")
 

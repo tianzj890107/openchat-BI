@@ -728,11 +728,10 @@ def test_local_model_uses_only_the_configured_route(monkeypatch):
     monkeypatch.setattr(registry, 'MODELS', models)
     monkeypatch.setattr(registry, 'get_default_model_key', lambda: 'team-configured')
     monkeypatch.delenv(module._MODEL_KEY_ENV, raising=False)
-    monkeypatch.delenv(module._MODEL_PREFERENCE_ENV, raising=False)
     assert module._model_candidate_keys() == ['team-configured']
 
 
-def test_configured_fallback_route_gets_the_full_local_model_timeout(monkeypatch):
+def test_fallback_route_uses_the_remaining_180_second_budget(monkeypatch):
     from bi_agent.cockpit import opportunity_v2 as module
 
     calls = []
@@ -747,10 +746,11 @@ def test_configured_fallback_route_gets_the_full_local_model_timeout(monkeypatch
 
     monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a', 'route-b'])
     monkeypatch.setattr(module, '_analyse_with_model', fake_analyse)
-    monkeypatch.setenv(module._MODEL_TIMEOUT_ENV, '600')
+    monkeypatch.setenv(module._MODEL_TIMEOUT_ENV, '180')
     value = module.default_text_interpreter({'progressSamples': []})
     assert value['summary'] == '备用路由摘要'
-    assert calls == [('route-a', 180), ('route-b', 600)]
+    assert [key for key, _ in calls] == ['route-a', 'route-b']
+    assert all(0 < timeout <= 180 for _, timeout in calls)
 
 
 def test_model_prompt_keeps_excluded_risks_compact(monkeypatch):
@@ -773,25 +773,7 @@ def test_model_prompt_keeps_excluded_risks_compact(monkeypatch):
     assert '不要输出 description、evidenceIds' in captured[0]
 
 
-def test_opportunity_card_prefers_the_non_thinking_deepseek_route(monkeypatch):
-    from bi_agent.llm import registry
-    from bi_agent.cockpit import opportunity_v2 as module
-
-    models = [
-        dict(key='team-configured', provider='team', model_id='direct-deepseek-v4-flash',
-             supports_thinking=True),
-        dict(key='team-deepseek-v4-flash-0731', provider='team',
-             model_id='deepseek-v4-flash-0731', supports_thinking=False),
-    ]
-    monkeypatch.setattr(registry, 'MODELS', models)
-    monkeypatch.setattr(registry, 'get_default_model_key', lambda: 'team-configured')
-    monkeypatch.delenv(module._MODEL_KEY_ENV, raising=False)
-    assert module._model_candidate_keys() == [
-        'team-deepseek-v4-flash-0731', 'team-configured',
-    ]
-
-
-def test_non_thinking_route_is_registered_when_the_allowlist_omits_it(monkeypatch):
+def test_opportunity_card_uses_only_the_configured_model(monkeypatch):
     from bi_agent.llm import registry
     from bi_agent.cockpit import opportunity_v2 as module
 
@@ -800,11 +782,23 @@ def test_non_thinking_route_is_registered_when_the_allowlist_omits_it(monkeypatc
     monkeypatch.setattr(registry, 'MODELS', models)
     monkeypatch.setattr(registry, 'get_default_model_key', lambda: 'team-configured')
     monkeypatch.delenv(module._MODEL_KEY_ENV, raising=False)
-    assert module._model_candidate_keys() == [
-        'team-deepseek-v4-flash-0731', 'team-configured',
+    assert module._model_candidate_keys() == ['team-configured']
+
+
+def test_explicit_model_key_env_pins_a_route(monkeypatch):
+    from bi_agent.llm import registry
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    models = [
+        dict(key='team-configured', provider='team',
+             model_id='direct-deepseek-v4-flash', supports_thinking=True),
+        dict(key='customer-local', provider='team',
+             model_id='customer-local-model', supports_thinking=False),
     ]
-    assert registry.get_model('team-deepseek-v4-flash-0731')['model_id'] == 'deepseek-v4-flash-0731'
-    assert registry.get_model('team-deepseek-v4-flash-0731')['supports_thinking'] is False
+    monkeypatch.setattr(registry, 'MODELS', models)
+    monkeypatch.setattr(registry, 'get_default_model_key', lambda: 'team-configured')
+    monkeypatch.setenv(module._MODEL_KEY_ENV, 'customer-local')
+    assert module._model_candidate_keys() == ['customer-local']
 
 
 def test_target_rows_are_summed_not_distincted_by_customer_or_product():
