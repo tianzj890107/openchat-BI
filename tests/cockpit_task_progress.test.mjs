@@ -31,13 +31,13 @@ test('stage failures pop once and only for a round this page saw running',()=>{
  assert.deepEqual(newStageFailures({runId:'r1',status:'running',stageProgress:{
    'opportunity-risk':{status:'running',phase:'analysing'}}},watch),[]);
  const failed={runId:'r1',status:'partial',stageProgress:{
-   'opportunity-risk':{status:'failed',diagnosticId:'d1',hadPrevious:true,
-     error:'模型调用中断：模型未返回完整文本。本轮未发布，已保留上一版结果。'},
-   order:{status:'failed',hadPrevious:false}}};
+   'opportunity-risk':{status:'failed',diagnosticId:'d1',
+     error:'模型调用中断：模型未返回完整文本。本轮未发布，卡片已清空，请稍后重试。'},
+   order:{status:'failed'}}};
  assert.deepEqual(newStageFailures(failed,watch),[
    {key:'r1:opportunity-risk',stage:'商机获取',diagnosticId:'d1',
-    message:'模型调用中断：模型未返回完整文本。本轮未发布，已保留上一版结果。'},
-   {key:'r1:order',stage:'订单接收',diagnosticId:'',message:'分析未完成，请稍后重试。'},
+    message:'模型调用中断：模型未返回完整文本。本轮未发布，卡片已清空，请稍后重试。'},
+   {key:'r1:order',stage:'订单接收',diagnosticId:'',message:'分析失败，本轮未发布，卡片已清空，请稍后重试。'},
  ]);
  assert.deepEqual(newStageFailures(failed,watch),[]);
 });

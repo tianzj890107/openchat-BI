@@ -166,6 +166,19 @@ class FrozenAnnualStore:
                        (json.dumps(body, ensure_ascii=False),))
             db.execute('UPDATE annual_job SET updated=? WHERE id=1', (time.time(),))
 
+    def clear_stage(self, stage):
+        """Remove one stage's card so a failed round shows nothing for it."""
+        if stage not in PUBLICATION_KEYS:
+            raise ValueError('Unknown analysis stage')
+        with self.lock:
+            release = self.read()
+            if stage not in (release.get('items') or {}):
+                return release['version']
+            release.pop('version', None)
+            release['items'].pop(stage)
+            release['createdAt'] = time.time()
+            return self.publish(release, partial=True)
+
     def publish_stage(self, stage, item):
         # Keep every other stage at its last successful generation.
         if stage not in PUBLICATION_KEYS:
@@ -194,11 +207,10 @@ class FrozenAnnualStore:
             db.execute('UPDATE annual_job SET status=?,error=?,updated=? WHERE id=1', (status, error, time.time()))
 
 
-def stage_failure_message(exc, had_previous):
+def stage_failure_message(exc):
     """Explain a failed stage without exposing raw driver or upstream text."""
     reason = getattr(exc, 'public_message', '') or '后台分析未完成，详细原因已记录到诊断'
-    outcome = '本轮未发布，已保留上一版结果。' if had_previous else '本轮未发布，请稍后重试。'
-    return f"{reason.rstrip('。.；; ')}。{outcome}"
+    return f"{reason.rstrip('。.；; ')}。本轮未发布，卡片已清空，请稍后重试。"
 
 
 class FrozenAnnualService:
@@ -322,15 +334,14 @@ class FrozenAnnualService:
                         phase='stage_execution'
                         try:
                             with diagnostic_scope(runId=self.round_id,stage=stage):
-                                if hasattr(self.recompute, 'previous_items'):
-                                    self.recompute.previous_items[stage] = (
-                                        self.store.read().get('items') or {}).get(stage)
                                 if hasattr(self.recompute, 'run_slot'):
                                     item = self.recompute.run_slot(self.store.read()['period'], stage)
                                 else:
                                     item = self.recompute.run_stage(self.store.read()['period'], stage)
                             if (item.get('execution') or {}).get('stopReason')=='stage_no_evidence':
-                                raise RuntimeError('No matching evidence; retain previous published card')
+                                missing_evidence = RuntimeError('No matching evidence for this stage')
+                                missing_evidence.public_message = '本环节没有取到匹配的看板证据'
+                                raise missing_evidence
                             phase='publication'
                             self.report_progress('publishing')
                             self.store.publish_stage(stage, item)
@@ -341,14 +352,18 @@ class FrozenAnnualService:
                             from .store import Store
                             diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
                                 phase=phase,stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
-                            had_previous = bool((self.store.read().get('items') or {}).get(stage))
-                            message = stage_failure_message(exc, had_previous)
+                            # A failed round never keeps showing the last card.
+                            try:
+                                self.store.clear_stage(stage)
+                            except Exception as clear_exc:  # noqa: BLE001 - still report the stage failure
+                                record_failure(Store(self.store.path.parent/'history.sqlite3'),clear_exc,
+                                    phase='clear_stage',stage=stage,run_id=self.round_id)
+                            message = stage_failure_message(exc)
                             with self.queue_lock:
                                 self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId'],message=message))
                                 self.stage_progress[stage].update(
                                     status='failed', phase='failed', finishedAt=time.time(),
-                                    diagnosticId=diagnostic['diagnosticId'], hadPrevious=had_previous,
-                                    error=message)
+                                    diagnosticId=diagnostic['diagnosticId'], error=message)
                         with self.queue_lock:
                             self.active = ''
                             self._progress()
@@ -810,7 +825,6 @@ def recompute_from_router(app, cwd):
     class Runner:
         def __init__(self):
             self._progress_callback = None
-            self.previous_items = {}
 
         def begin_round(self, period):
             manager.round_queries={}
@@ -825,7 +839,6 @@ def recompute_from_router(app, cwd):
                 from .store import Store
                 enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
                 supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
-                previous = self.previous_items.get('opportunity-risk')
                 diagnostic_store = Store(store.path.parent / 'history.sqlite3')
 
                 def report_diagnostic(entry):
@@ -834,7 +847,7 @@ def recompute_from_router(app, cwd):
 
                 return build_card(period, text_interpreter=default_text_interpreter if enabled else None,
                                   supplement=default_ap_supplement if supplement_enabled else None,
-                                  progress=self._progress_callback, previous=previous,
+                                  progress=self._progress_callback,
                                   diagnostic_reporter=report_diagnostic)
             return self.run_stage(period, stage)
 

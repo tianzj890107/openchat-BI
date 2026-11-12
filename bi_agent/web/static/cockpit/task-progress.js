@@ -13,7 +13,7 @@ export function taskProgressText(manual, stage, now = Date.now()) {
   if (!work) {
     if (manual.running && manual.activeStage === stage) return manual.progress?.message || '后台更新中';
     if (manual.running && manual.pendingStages?.includes(stage)) return '排队等待';
-    return manual.failedStages?.some(item => item.stage === stage) ? '沿用上次结果' : '';
+    return manual.failedStages?.some(item => item.stage === stage) ? '分析失败，本轮无结果' : '';
   }
   const started = Number(work.startedAt || work.queuedAt || 0) * 1000;
   const end = work.finishedAt ? Number(work.finishedAt)*1000 : now;
@@ -29,7 +29,7 @@ export function taskProgressText(manual, stage, now = Date.now()) {
   const queryTime = Number.isFinite(querySeconds) && querySeconds >= 0
     ? ` · 本查询 ${duration(Math.round(querySeconds))}` : '';
   let label;
-  if (work.status === 'failed') label = work.hadPrevious === false ? '分析未完成，请重试' : '更新未完成，沿用上次结果';
+  if (work.status === 'failed') label = '分析失败，本轮无结果';
   else if (work.status === 'completed') label = '已更新';
   else if (work.status === 'queued') label = '排队等待';
   else if (work.phase === 'fetching') label = `查询数据库${Number.isFinite(work.total) ? ` ${work.completed || 0}/${work.total}` : ''}${query}${queryTime}`;
@@ -57,8 +57,7 @@ export function newStageFailures(manual, watch) {
     fresh.push({
       key,
       stage: FAILURE_STAGE_LABELS[stage] || stage,
-      message: work.error || manual.error
-        || (work.hadPrevious === false ? '分析未完成，请稍后重试。' : '更新未完成，已保留上一版结果。'),
+      message: work.error || manual.error || '分析失败，本轮未发布，卡片已清空，请稍后重试。',
       diagnosticId: work.diagnosticId || '',
     });
   }

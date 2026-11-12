@@ -388,6 +388,10 @@
         const slotNotice=stale?(notice||mismatchNotice):'';
         next[slotId]={...slot,stale,scopeNotice:slotNotice};
         applyServerCard(slotId,slot,{stale,notice:slotNotice});
+      } else if(frozenAnnualMode && slot.status==='missing') {
+        // Fixed-annual cards never fall back to an older result: a stage
+        // that failed or was never analysed shows no card.
+        next[slotId]=slot;
       } else if(preserve && prior?.status==='ready') {
         // Missing means "no usable card for this scope", not "clear the card".
         // Keep the last successful payload explicitly labelled as old scope.
@@ -400,6 +404,7 @@
       }
     }
     aiPublicationStore.slots=next;
+    if(frozenAnnualMode)clearMissingFrozenStages(next);
     Object.assign(aiPublicationStore,{
       expectedCount:Number(value.expectedCount||Object.keys(incoming).length||15),
       readyCount:Number(value.readyCount||0),missingCount:Number(value.missingCount||0),
@@ -413,6 +418,19 @@
     syncBoundRiskCountLabels();
     settleMissingSlotStages();
     resolveAiPublicationReady?.();resolveAiPublicationReady=null;
+  }
+  function clearMissingFrozenStages(slots) {
+    const readyStages=new Set(), missingStages=new Set();
+    for(const [slotId,slot] of Object.entries(slots)) {
+      const stage=slot?.stage||SLOT_STAGE[slotId];
+      if(slot?.status==='ready')readyStages.add(stage);
+      else if(slot?.status==='missing')missingStages.add(stage);
+    }
+    for(const stage of missingStages) {
+      if(readyStages.has(stage))continue;
+      const state=stateFor(stage);
+      if(state.item)Object.assign(state,{item:null,status:'idle',cached:false,stale:false,refreshing:false,scopeNotice:'',error:''});
+    }
   }
   function markAiPublicationsStale(notice) {
     for(const [slotId,slot] of Object.entries(aiPublicationStore.slots)) {

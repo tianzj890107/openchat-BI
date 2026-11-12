@@ -137,7 +137,8 @@ def test_priority_incremental_publication_and_failure_isolation(tmp_path):
     assert service.envelope(1)['readyCount']==15
     finish_second.set();assert done.wait(3)
     current=store.read()
-    assert current['items']['order']['updatedAt']==1
+    # A failed stage is cleared instead of keeping its last card.
+    assert 'order' not in current['items']
     assert current['items']['bid']['updatedAt']==2
     assert len(calls)==len(set(calls))==6
     assert store.job()['status']=='partial'
@@ -148,7 +149,7 @@ def test_priority_incremental_publication_and_failure_isolation(tmp_path):
     failure=store.job()['failedStages'][0]
     assert failure['stage']=='order' and failure['code']=='RuntimeError'
     # The dialog text is generic for non-model failures; raw errors stay in diagnostics.
-    assert work['order']['error']==failure['message']=='后台分析未完成，详细原因已记录到诊断。本轮未发布，已保留上一版结果。'
+    assert work['order']['error']==failure['message']=='后台分析未完成，详细原因已记录到诊断。本轮未发布，卡片已清空，请稍后重试。'
     assert 'stage source unavailable' not in work['order']['error']
     from bi_agent.cockpit.store import Store
     assert Store(store.path.parent/'history.sqlite3').list_diagnostics()[0]['diagnosticId']==failure['diagnosticId']
@@ -232,8 +233,10 @@ def test_independent_combined_failure_does_not_retry_or_block_other_stages(tmp_p
     assert done.wait(3)
     assert calls[0]=='combined' and calls.count('combined')==1
     assert store.job()['status']=='partial'
-    assert store.read()['items']['combined']['updatedAt']==1
+    assert 'combined' not in store.read()['items']
     assert store.read()['items']['opportunity']['updatedAt']==3
+    envelope=service.envelope(1)
+    assert envelope['slots']['sales-shipment-issues']['status']=='missing'
 
 
 def test_visibility_updates_and_page_reads_cannot_start_analysis(tmp_path):
@@ -326,7 +329,7 @@ def test_full_evidence_pages_reuse_the_canvas_renderer_and_escape_records(tmp_pa
     assert client.get(path.replace('analysisId=shipment','analysisId=outdated')).status_code==409
 
 
-def test_combined_can_run_first_without_other_successes_and_empty_result_retains_old(tmp_path):
+def test_combined_can_run_first_without_other_successes_and_empty_result_clears_old(tmp_path):
     store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
     class Runner:
         def run_slot(self,period,stage):
@@ -350,7 +353,7 @@ def test_combined_can_run_first_without_other_successes_and_empty_result_retains
     assert done.wait(3)
     assert calls[0]=='combined' and calls.count('combined')==1
     assert store.read()['items']['combined']['updatedAt']==10
-    assert store.read()['items']['quotation']['updatedAt']==1
+    assert 'quotation' not in store.read()['items']
     assert 'quotation' not in store.job()['completedStages']
     assert store.job()['failedStages'][0]['stage']=='quotation'
     assert store.job()['heartbeatAt']>0
@@ -476,10 +479,10 @@ def test_independent_card_refresh_targets_only_its_own_slot(tmp_path):
 def test_stage_failure_message_uses_public_model_reason_only():
     from bi_agent.cockpit.frozen import stage_failure_message
     from bi_agent.cockpit.opportunity_v2 import OpportunityV2ModelUnavailable
-    exc=OpportunityV2ModelUnavailable('模型分析未通过校验，保留上一版业务分析')
+    exc=OpportunityV2ModelUnavailable('模型分析未完成，本轮不发布商机卡片')
     exc.public_message='模型调用中断：模型未返回完整文本。'
-    assert stage_failure_message(exc,True)=='模型调用中断：模型未返回完整文本。本轮未发布，已保留上一版结果。'
-    assert stage_failure_message(RuntimeError('db password=x'),False)=='后台分析未完成，详细原因已记录到诊断。本轮未发布，请稍后重试。'
+    assert stage_failure_message(exc)=='模型调用中断：模型未返回完整文本。本轮未发布，卡片已清空，请稍后重试。'
+    assert stage_failure_message(RuntimeError('db password=x'))=='后台分析未完成，详细原因已记录到诊断。本轮未发布，卡片已清空，请稍后重试。'
 
 
 def test_unseeded_store_opens_empty_and_publishes_stages_one_by_one(tmp_path):

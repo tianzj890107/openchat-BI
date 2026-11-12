@@ -103,6 +103,64 @@ def _model_evaluated():
     )
 
 
+def _answer_from_payload(payload, summary='商机经营存在需重点推进的问题，需要结合项目进展逐项核实。'):
+    """A complete, contract-conforming model answer built from the model payload."""
+    included, risks, risk_evidence = set(), [], {}
+    for item in payload['ruleOutcomes']:
+        if item['ruleStatus'] == 'triggered' and item['evidenceIds']:
+            included.add(item['code'])
+            risk_evidence[item['code']] = item['evidenceIds'][:1]
+            risks.append(dict(code=item['code'], include=True, classification='confirmed',
+                              title='本轮风险需重点核实',
+                              description='本轮数据显示该风险成立，需要结合项目进展核实。',
+                              evidenceIds=item['evidenceIds'][:1], opposingEvidenceIds=[]))
+        else:
+            risks.append(dict(code=item['code'], include=False,
+                              classification=('insufficient' if item['ruleStatus'] == 'insufficient'
+                                              else 'not_applicable')))
+    causes, cause_codes = [], set()
+    for item in payload['causeCandidates']:
+        linked = set(item['riskCodes']) & included
+        if linked:
+            cited = item['evidenceIds'][:1] or risk_evidence[sorted(linked)[0]]
+            causes.append(dict(code=item['code'], title='推进卡点待核实',
+                               description='本轮项目进展显示推进存在卡点，需要人工复核。',
+                               riskCodes=sorted(linked), evidenceIds=cited))
+            cause_codes.add(item['code'])
+    advice = []
+    for item in payload['adviceCandidates']:
+        linked = set(item['riskCodes']) & included
+        if linked:
+            cited = item['evidenceIds'][:1] or risk_evidence[sorted(linked)[0]]
+            advice.append(dict(code=item['code'], action='逐项核实受影响商机并制定推进计划',
+                               ownerRole='销售负责人', deadlineDays=15,
+                               acceptance='形成逐项核查清单并确认结果',
+                               riskCodes=sorted(linked),
+                               causeCodes=sorted(set(item['causeCodes']) & cause_codes),
+                               evidenceIds=cited))
+    return dict(summary=summary, risks=risks, causes=causes, advice=advice)
+
+
+def _strategic_value(**updates):
+    return evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+        **updates,
+    ))
+
+
+def _payload_answer(value, **changes):
+    """Capture the payload the model receives and answer it completely."""
+    captured = []
+
+    def interpreter(payload):
+        captured.append(payload)
+        answer = _answer_from_payload(payload)
+        answer.update(changes)
+        return answer
+    return interpreter, captured
+
+
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
     assert config_version() == 'opportunity-v3-rules-3'
@@ -371,7 +429,7 @@ def test_build_card_reports_internal_steps_in_execution_order():
 
     events = []
     card = build_card('2026', database=Database(), measurement_date='2026-11-11',
-                      text_interpreter=None,
+                      text_interpreter=_answer_from_payload,
                       progress=lambda phase, **detail: events.append((phase, detail)))
     phases = [phase for phase, _ in events]
     assert phases[0] == 'ontology'
@@ -383,389 +441,30 @@ def test_build_card_reports_internal_steps_in_execution_order():
     assert all(item['sql'] for item in card['result']['queryCatalog'])
 
 
-def test_model_generated_text_is_validated_against_evidence_numbers_and_links():
-    opportunity = dict(id='opp-1', name='测试商机', accountId='account-1', accountName='客户A',
-                       tier='strategic', productType='1', stage='11', status='0',
-                       contract='not_confirmed', createdAt='2026-01-01',
-                       forecastAmount=10.0, forecastEnergy=5.0)
-    data = _data(
-        opportunities=[deepcopy(opportunity)], allOpportunities=[opportunity],
-        accounts=[dict(id='account-1', name='客户A', level='1', tier='strategic')],
-        progress={'opp-1': [dict(id='p1', description='客户要求补充资质文件', startAt='2026-10-01')]},
-    )
-    value = evaluate(data)
-    risk = value['risks'][0]
-    cause = next(item for item in value['causeCandidates'] if item['code'] == 'RC02')
-    advice = next(item for item in value['adviceCandidates'] if item['code'] == 'AC04')
-    progress_id = value['textSamples'][0]['evidenceId']
-    risks = _complete_risk_assessments(value)
-    for item in risks:
-        if item['code'] == risk['code']:
-            item.update(description='规则证据显示该风险需要优先核查。',
-                        evidenceIds=[risk['evidenceIds'][0]])
-    generated = apply_text_interpretation(value, lambda payload: {
-        'summary': '商机合同签订进度落后于年度时间进度，四季度需要重点推进合同转化。',
-        'risks': risks,
-        'causes': [dict(code=cause['code'], description='项目进展显示客户要求补充资质文件，需人工复核。',
-                        riskCodes=['RK08'], evidenceIds=[progress_id])],
-        'advice': [dict(code=advice['code'], action='推动客户补齐资质文件后进入投标',
-                        riskCodes=['RK08'], causeCodes=['RC02'], evidenceIds=[progress_id])],
-    })
-    assert generated['status'] == 'completed'
-    assert generated['analysisMode'] == 'model'
-    assert generated['summaryApplied'] is True
-    assert generated['analysedRiskCount'] == len(value['riskCandidates'])
-    assert generated['coverageComplete'] is True
-    assert value['result']['riskTotalCount'] == len(value['result']['riskCodes'])
-    assert risk['code'] in generated['appliedRisks']
-    assert len(generated['appliedRisks']) == len(value['riskCandidates'])
-    assert generated['appliedCauses'] == ['RC02']
-    assert generated['appliedAdvice'] == ['AC04']
-    assert value['result']['summary'].startswith('商机合同签订进度')
-    assert next(item for item in value['risks'] if item['code'] == risk['code'])['description'] == '规则证据显示该风险需要优先核查。'
-    assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
-    assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'AC04')['action'] == '推动客户补齐资质文件后进入投标'
-
-    bad_value = evaluate(data)
-    bad_risk = bad_value['risks'][0]
-    bad = apply_text_interpretation(bad_value, lambda payload: {
-        'summary': '新增 999 家客户逾期未完成',
-        'risks': [dict(code='RK99', include=True, classification='confirmed',
-                       description='模型自造风险', evidenceIds=[bad_risk['evidenceIds'][0]])],
-        'causes': [dict(code='RC02', description='新增 999 家客户逾期未完成',
-                        riskCodes=['RK01'], evidenceIds=[progress_id])],
-        'advice': [dict(code='DS99', action='模型自造建议', riskCodes=['RK08'],
-                        causeCodes=[], evidenceIds=[progress_id])],
-    })
-    assert bad['status'] == 'fallback'
-    assert bad['summaryApplied'] is False
-    assert 'RK99' in bad['rejectedRisks']
-    assert 'RC02' in bad['rejectedCauses']
-    assert 'DS99' in bad['rejectedAdvice']
-    assert '999' not in bad_value['result']['summary']
-    assert all('999' not in item['description'] for item in bad_value['result']['causes'])
-
-    uncited_value = evaluate(data)
-    uncited = apply_text_interpretation(uncited_value, lambda payload: {
-        'causes': [dict(code='RC02', description='项目进展显示客户要求补充资质文件，需人工复核。',
-                        riskCodes=['RK08'], evidenceIds=['model-invented-evidence'])],
-    })
-    assert uncited['appliedCauses'] == []
-    assert uncited['rejectedCauses'] == ['RC02']
-    assert uncited['status'] == 'fallback'
-
-    failed_value = evaluate(data)
-    before = failed_value['result']['summary']
-    def failure(_payload):
-        raise RuntimeError('provider down')
-    failed = apply_text_interpretation(failed_value, failure)
-    assert failed['status'] == 'failed' and failed['modelCalls'] == 1
-    assert failed_value['result']['summary'] == before
 
 
-def test_all_ontology_candidates_are_sent_to_the_model_and_assessed():
-    value = evaluate(_data(
-        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-    ))
-    calls = []
-    completed = apply_text_interpretation(value, lambda payload: calls.append(payload) or {})
-
-    assert completed['status'] == 'fallback'
-    assert completed['analysedRiskCount'] == 0
-    assert set(completed['missingRiskCodes']) == set(load_config()['risks'])
-    assert len(calls) == 1
-    candidates = calls[0]['ruleOutcomes']
-    assert len(candidates) == 10
-    assert {item['code'] for item in candidates} == set(load_config()['risks'])
-    assert {item['ruleStatus'] for item in candidates} >= {'triggered', 'not_triggered'}
-    assert any(item['ruleStatus'] == 'insufficient' for item in candidates)
-
-    assessments = {item['code']: item for item in completed['riskAssessments']}
-    assert set(assessments) == set(load_config()['risks'])
-    assert value['result']['riskCandidateCount'] == 10
-    assert value['result']['analysedRiskCount'] == 0
-    assert assessments['RK04']['include'] is False
-    assert assessments['RK04']['classification'] == 'not_applicable'
-    assert assessments['RK05']['classification'] == 'insufficient'
-    assert assessments['RK05']['opposingEvidenceIds'] == []
-    assert value['result']['excludedRiskCodes']
 
 
-def test_model_cannot_confirm_a_rule_the_program_did_not_trigger():
-    value = evaluate(_data(
-        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-    ))
-    candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK04')
-    assert candidate['ruleStatus'] == 'not_triggered'
-    completed = apply_text_interpretation(value, lambda payload: {
-        'risks': [dict(code='RK04', include=True, classification='confirmed',
-                       description='模型认为产品结构风险成立。',
-                       evidenceIds=[candidate['evidenceIds'][0]])],
-    })
-
-    assert 'RK04' in completed['rejectedRisks']
-    assert completed['status'] == 'fallback'
-    assessment = next(item for item in completed['riskAssessments'] if item['code'] == 'RK04')
-    assert assessment['include'] is False
-    assert assessment['classification'] == 'not_applicable'
-    assert 'RK04' not in value['result']['riskCodes']
 
 
-def test_model_missing_a_candidate_is_partial_and_reports_exact_coverage():
-    value = evaluate(_data(
-        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-    ))
-    risks = _complete_risk_assessments(value)
-    omitted = risks.pop()['code']
-    completed = apply_text_interpretation(value, lambda payload: {
-        'summary': '模型完成部分本体候选风险判断。',
-        'risks': risks,
-    })
-
-    assert completed['status'] == 'partial'
-    assert completed['coverageComplete'] is False
-    assert completed['analysedRiskCount'] == len(value['riskCandidates']) - 1
-    assert completed['missingRiskCodes'] == [omitted]
-    assert value['result']['analysedRiskCount'] == len(value['riskCandidates']) - 1
-    assert value['result']['riskTotalCount'] == len(value['result']['riskCodes'])
-    fallback = next(item for item in completed['riskAssessments'] if item['code'] == omitted)
-    assert fallback['assessmentSource'] == 'rule_fallback'
 
 
-def test_rejected_summary_marks_partial_instead_of_completed():
-    value = evaluate(_data(
-        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-    ))
-    completed = apply_text_interpretation(value, lambda payload: {
-        'summary': '模型新增 999 家客户风险。',
-        'risks': _complete_risk_assessments(value),
-    })
-
-    assert completed['status'] == 'partial'
-    assert completed['summaryApplied'] is False
-    assert completed['summaryFallbackUsed'] is True
-    assert completed['coverageComplete'] is True
-    assert '999' not in value['result']['summary']
 
 
-def test_model_can_downgrade_a_triggered_rule_and_records_opposing_evidence():
-    value = evaluate(_data(
-        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-    ))
-    candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK01')
-    support = candidate['evidenceIds'][0]
-    opposing = next(iter(value['evidence']['facts']))['id'] if value['evidence']['facts'] else support
-    completed = apply_text_interpretation(value, lambda payload: {
-        'risks': [dict(code='RK01', include=False, classification='insufficient',
-                       description='目标与预测口径仍需核对，暂不确认风险成立。',
-                       evidenceIds=[support], opposingEvidenceIds=[opposing])],
-    })
-
-    assessment = next(item for item in completed['riskAssessments'] if item['code'] == 'RK01')
-    assert assessment['include'] is False
-    assert assessment['classification'] == 'insufficient'
-    assert assessment['supportingEvidenceIds'] == [support]
-    assert assessment['opposingEvidenceIds'] == [opposing]
-    assert 'RK01' in completed['modelExcludedRisks']
-    assert completed['status'] == 'partial'
-    assert completed['analysedRiskCount'] == 1
-    assert value['result']['riskTotalCount'] == len(value['result']['riskCodes'])
-    assert value['result']['ruleTriggeredRiskCount'] > value['result']['riskTotalCount']
-    assert 'RK01' in value['result']['modelExcludedRiskCodes']
-    assert 'RK01' not in value['result']['riskCodes']
 
 
-def test_model_cannot_cite_support_or_opposing_evidence_outside_the_payload():
-    value = evaluate(_data(
-        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-    ))
-    candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK01')
-    support = candidate['evidenceIds'][0]
-    generated = apply_text_interpretation(value, lambda payload: {
-        'risks': [dict(code='RK01', include=True, classification='confirmed',
-                       description='模型引用未知证据支持风险。',
-                       evidenceIds=[support], opposingEvidenceIds=['model-invented-evidence'])],
-    })
-    assert 'RK01' in generated['rejectedRisks']
-    assessment = next(item for item in generated['riskAssessments'] if item['code'] == 'RK01')
-    assert assessment['opposingEvidenceIds'] == []
 
 
-def test_missing_target_facts_make_rk01_insufficient_and_block_confirmation():
-    value = evaluate(_data(
-        targets=dict(amount=None, energy=None, byProduct={}, byAccount={}),
-        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-    ))
-    candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK01')
-    assert candidate['ruleStatus'] in {'insufficient', 'not_triggered'}
-    completed = apply_text_interpretation(value, lambda payload: {
-        'risks': [dict(code='RK01', include=True, classification='confirmed',
-                       description='模型在目标缺失时确认覆盖不足。',
-                       evidenceIds=[candidate['evidenceIds'][0]])],
-    })
-    assessment = next(item for item in completed['riskAssessments'] if item['code'] == 'RK01')
-    assert assessment['include'] is False
-    assert assessment['classification'] in {'insufficient', 'not_applicable'}
 
 
-def test_model_runs_without_text_samples_and_generates_nonempty_analysis():
-    opportunity = _opportunity(acneed='', stage='11', stage1End=None)
-    value = evaluate(_data(
-        opportunities=[opportunity], allOpportunities=[deepcopy(opportunity)],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-    ))
-    calls = []
-    completed = apply_text_interpretation(value, lambda payload: calls.append(payload) or {})
-    assert len(calls) == 1 and calls[0]['progressSamples'] == []
-    assert completed['status'] == 'fallback' and completed['modelCalls'] == 1
-    assert completed['appliedCauses'] == []
-    assert completed['analysedRiskCount'] == 0
-
-    value = evaluate(_data(
-        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-        progress={'opp-1': [dict(id='p1', description='客户要求补充资质文件', startAt='2026-10-01')]},
-    ))
-    risk = value['risks'][0]
-    progress_id = value['textSamples'][0]['evidenceId']
-    filled = apply_text_interpretation(value, lambda payload: {
-        'summary': '商机风险需要结合项目进展优先核查，重点推进合同转化。',
-        'risks': [dict(code=risk['code'], include=True, classification='confirmed',
-                       description='规则证据显示该风险需要优先核查。', evidenceIds=[risk['evidenceIds'][0]])],
-        'causes': [dict(code='RC02', description='项目进展显示客户要求补充资质文件，需人工复核。',
-                        riskCodes=['RK08'], evidenceIds=[progress_id])],
-        'advice': [dict(code='AC04', action='推动客户补齐资质文件后进入投标',
-                        riskCodes=['RK08'], causeCodes=['RC02'], evidenceIds=[progress_id])],
-    })
-    assert filled['appliedCauses'] == ['RC02'] and filled['appliedAdvice'] == ['AC04']
-    assert filled['status'] == 'partial'
-    assert value['result']['summary'].startswith('商机风险需要')
-    assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
-    assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'AC04')['action'] == '推动客户补齐资质文件后进入投标'
 
 
-def test_minimal_model_decision_is_completed_by_program_assembly():
-    value = _model_evaluated()
-    generated = apply_text_interpretation(value, lambda payload: {
-        'summary': '商机获取存在覆盖缺口，需要优先推进战略客户转化。',
-        'risks': [dict(code='RK01', classification='confirmed')],
-        'causes': [dict(code='RC01')],
-        'advice': [dict(code='AC01')],
-    })
-    assert generated['status'] == 'completed'
-    assert generated['appliedRisks'] == ['RK01']
-    assert generated['appliedCauses'] == ['RC01']
-    assert generated['appliedAdvice'] == ['AC01']
-
-    assessment = next(item for item in generated['riskAssessments'] if item['code'] == 'RK01')
-    assert assessment['include'] is True
-    assert assessment['classification'] == 'confirmed'
-    assert assessment['evidenceIds'] == ['fact:1']
-    assert assessment['descriptionSource'] == 'ontology_fallback'
-    assert assessment['evidenceSource'] == 'ontology_fallback'
-
-    cause = next(item for item in value['result']['causes'] if item['causeCode'] == 'RC01')
-    assert cause['descriptionSource'] == 'ontology_fallback'
-    assert cause['evidenceSource'] == 'ontology_fallback'
-    assert cause['evidenceIds'] == ['fact:1']
-
-    advice = next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'AC01')
-    assert advice['actionSource'] == 'ontology_fallback'
-    assert advice['evidenceSource'] == 'ontology_fallback'
-    assert advice['action'] == '完成战略客户商机覆盖'
-    assert advice['evidenceIds'] == ['fact:1']
-
-    # Card-facing structure, numbering and counts come from the program, not the model.
-    assert value['result']['riskTotalCount'] == 1
-    assert value['result']['riskCodes'] == ['RK01']
-    assert value['result']['findings'][0]['id'] == 'risk-1'
-    assert value['result']['findings'][0]['riskCode'] == 'RK01'
-    assert value['result']['analysisDimensions'][0]['causeCode'] == 'RC01'
-    assert value['result']['modelAssessment']['textFallbackUsed'] is True
-    assert set(value['result']['textFallbackSections']) == {
-        'riskDescriptions', 'riskEvidence', 'causeDescriptions', 'adviceActions'}
 
 
-def test_invalid_model_json_is_a_format_fallback_not_a_transport_failure():
-    value = _model_evaluated()
-    before = deepcopy(value['result'])
-
-    def broken(_payload):
-        raise ModelJSONOutputError('模型未返回合法 JSON', raw_text='{"risks": [',
-                                   repair_text='{"risks"', attempts=2)
-
-    generated = apply_text_interpretation(value, broken)
-    assert generated['status'] == 'fallback'
-    assert generated['error'] == 'MODEL_OUTPUT_INVALID'
-    assert generated['modelCalls'] == 2
-    assert generated['modelRawResponseTail'] == '{"risks": ['
-    assert generated['textFallbackUsed'] is True
-    # A failed model call never mutates the program-assembled fallback card.
-    assert value['result'] == before
 
 
-def test_first_format_failure_publishes_a_program_assembled_limited_card():
-    class EmptyResult:
-        truncated = False
-        rows = []
-
-    class Database:
-        available = True
-        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
-
-        def run(self, sql, params, timeout_ms=0):
-            return EmptyResult()
-
-    def broken(_payload):
-        raise ModelJSONOutputError('模型未返回合法 JSON', raw_text='not json', attempts=1)
-
-    card = build_card('2026', database=Database(), measurement_date='2026-11-11',
-                      text_interpreter=broken)
-    assert card['status'] == 'limited'
-    assembly = card['result']['analysisAssembly']
-    assert assembly['cardWriter'] == 'program'
-    assert assembly['modelContract'] == 'minimal-decision-v1'
-    assert assembly['modelStatus'] == 'fallback'
-    assert assembly['modelAnalysisUsed'] is False
-    assert assembly['ruleFallbackSections'] == []
-    assert assembly['textFallbackSections']
-    assert card['result']['modelAssessment']['analysisMode'] == 'rule_fallback'
-    assert any('由程序按本体规则组装卡片' in item
-               for item in card['result']['dataDiagnostics'])
 
 
-def test_format_failure_with_previous_card_is_not_published():
-    from bi_agent.cockpit.opportunity_v2 import OpportunityV2ModelUnavailable
-
-    class EmptyResult:
-        truncated = False
-        rows = []
-
-    class Database:
-        available = True
-        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
-
-        def run(self, sql, params, timeout_ms=0):
-            return EmptyResult()
-
-    def broken(_payload):
-        raise ModelJSONOutputError('模型未返回合法 JSON', raw_text='not json', attempts=1)
-
-    try:
-        build_card('2026', database=Database(), measurement_date='2026-11-11',
-                   text_interpreter=broken, previous=dict(result=dict(summary='上一版')))
-    except OpportunityV2ModelUnavailable as exc:
-        assert exc.model_status == 'fallback'
-        assert exc.model_error == 'MODEL_OUTPUT_INVALID'
-        assert exc.public_message == '模型输出未通过结构化校验：模型未返回合法 JSON'
-    else:
-        raise AssertionError('format failure must keep the previous published card')
 
 
 def test_unknown_acneed_status_is_not_a_verified_cause():
@@ -1052,24 +751,6 @@ def test_fallback_route_uses_the_remaining_180_second_budget(monkeypatch):
     assert all(0 < timeout <= 180 for _, timeout in calls)
 
 
-def test_model_prompt_keeps_excluded_risks_compact(monkeypatch):
-    import bi_agent.llm.provider as provider
-    from bi_agent.cockpit import opportunity_v2 as module
-
-    captured = []
-
-    def fake_stream(messages, system_prompt, *args, **kwargs):
-        captured.append(system_prompt)
-        return iter([
-            dict(type='text_delta', text='{"summary":"摘要","risks":[],"causes":[],"advice":[]}'),
-            dict(type='message_end', stop_reason='end_turn'),
-        ])
-
-    monkeypatch.setattr(provider, 'stream_message', fake_stream)
-    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a'])
-    module.default_text_interpreter({'progressSamples': []})
-    assert 'include=false' in captured[0]
-    assert '不要输出 description、evidenceIds' in captured[0]
 
 
 def test_opportunity_card_uses_only_the_configured_model(monkeypatch):
@@ -1225,7 +906,7 @@ def test_ap_supplement_can_keep_a_limited_card_but_never_invents_detail_rows():
         }
 
     item = build_card('2026', database=Database(), measurement_date='2026-11-11',
-                      supplement=supplement)
+                      supplement=supplement, text_interpreter=_answer_from_payload)
     assert item['status'] == 'limited'
     assert item['metrics']['B01'] == dict(amount=100.0, energy=100.0)
     assert item['metrics']['B02'] == dict(amount=20.0, energy=10.0)
@@ -1456,41 +1137,6 @@ def test_model_failure_does_not_replace_the_published_card():
     assert captured and captured[0]['phase'] == 'model'
 
 
-def test_unjudged_risk_retains_previous_published_time_and_source():
-    from bi_agent.cockpit.opportunity_v2 import _merge_previous_card
-
-    value = evaluate(_data())
-    for assessment in value['riskAssessments']:
-        if assessment['code'] == 'RK07':
-            assessment['assessmentSource'] = 'rule_fallback'
-    previous = dict(
-        updatedAt=1234.5,
-        result=dict(
-            findings=[dict(id='opp-v2:risk:RK07', kind='risk_fact', riskCode='RK07',
-                           title='战略客户待突破', description='上一版已确认',
-                           evidenceIds=['opp-v2:metric:R09', 'opp-v2:record:previous-1'])],
-            causes=[dict(id='cause-rk07', title='客户跟进', description='上一版原因',
-                         riskCodes=['RK07'], findingIds=['opp-v2:risk:RK07'],
-                         evidenceIds=['opp-v2:metric:R09'])],
-            recommendations=[dict(id='advice-rk07', action='核查客户', riskCodes=['RK07'],
-                                  evidenceIds=['opp-v2:metric:R09'])],
-        ),
-        risks=[dict(code='RK07', id='opp-v2:risk:RK07', title='战略客户待突破',
-                    description='上一版已确认',
-                    evidenceIds=['opp-v2:metric:R09', 'opp-v2:record:previous-1'])],
-        evidence=dict(facts=[dict(id='opp-v2:metric:R09', label='无商机数', value=1),
-                             dict(id='opp-v2:record:previous-1', label='上期明细', value=2)],
-                      records=[], evidence=[]),
-    )
-    retention = _merge_previous_card(value, previous)
-    assert retention and retention[0]['riskCode'] == 'RK07'
-    carried = next(item for item in value['risks'] if item['code'] == 'RK07')
-    assert carried['retained'] is True
-    assert carried['retainedFrom'] == 1234.5
-    assert value['result']['retainedRiskCodes'] == ['RK07']
-    fact_ids = [item['id'] for item in value['evidence']['facts']]
-    assert fact_ids.count('opp-v2:metric:R09') == 1
-    assert fact_ids.count('opp-v2:record:previous-1') == 1
 
 
 def test_evidence_counts_distinguish_facts_records_and_references():
@@ -1559,22 +1205,6 @@ def test_collect_uses_three_snapshot_readers_and_reports_query_progress():
     assert data['queryStatus']['商机预测'] == 'ok'
 
 
-def test_model_summary_rejects_rule_language_and_falls_back_to_business_facts():
-    value = evaluate(_data(
-        targets=dict(amount=319.0, energy=91.0, byProduct={}, byAccount={}),
-        opportunities=[_opportunity(id='o1', forecastAmount=60.0, forecastEnergy=30.0)],
-        allOpportunities=[_opportunity(id='o1', forecastAmount=60.0, forecastEnergy=30.0)],
-    ))
-    assessments = _complete_risk_assessments(value)
-    apply_text_interpretation(value, lambda _payload: {
-        'summary': '规则核验 10 项风险：RK01-RK04 触发，阈值和口径见证据。',
-        'risks': assessments,
-    })
-    summary = value['result']['summary']
-    assert '规则核验' not in summary
-    assert 'RK01' not in summary
-    assert summary == value['result']['businessSummary']
-    assert value['result']['modelAssessment']['summaryFallbackUsed'] is True
 
 
 def test_query_catalog_keeps_execution_record_and_result_snapshot():
@@ -1592,7 +1222,7 @@ def test_query_catalog_keeps_execution_record_and_result_snapshot():
             return RowResult()
 
     card = build_card('2026', database=Database(), measurement_date='2026-11-11',
-                      text_interpreter=None)
+                      text_interpreter=_answer_from_payload)
     catalog = card['result']['queryCatalog']
     assert len(catalog) == 9
     for item in catalog:
@@ -1628,10 +1258,208 @@ def test_query_catalog_sample_rows_are_capped_and_flagged():
             return RowResult()
 
     card = build_card('2026', database=Database(), measurement_date='2026-11-11',
-                      text_interpreter=None)
+                      text_interpreter=_answer_from_payload)
     item = next(q for q in card['result']['queryCatalog'] if q['label'] == '销售目标')
     assert item['truncated'] is True
     assert item['rowCount'] == 150
     assert item['sampleRowCount'] == item['sampleLimit']
     assert item['sampleTruncated'] is True
     assert len(item['sampleRows']) == item['sampleLimit']
+
+
+def test_model_writes_every_card_text_from_ontology_context():
+    value = _strategic_value(
+        progress={'opp-1': [dict(id='p1', description='客户要求补充资质文件', startAt='2026-10-01')]})
+    interpreter, captured = _payload_answer(value)
+    status = apply_text_interpretation(value, interpreter)
+    assert status['status'] == 'completed' and status['analysisMode'] == 'model'
+    payload = captured[0]
+    # The ontology chain is sent as context: every candidate risk, cause and advice.
+    assert {item['code'] for item in payload['ruleOutcomes']} == set(load_config()['risks'])
+    assert payload['causeCandidates'] and payload['adviceCandidates']
+    result = value['result']
+    assert result['summary'] == result['businessSummary'] == _answer_from_payload(payload)['summary']
+    assert result['findings']
+    assert all(item['title'] == '本轮风险需重点核实' for item in result['findings'])
+    assert all(item['description'] == '本轮数据显示该风险成立，需要结合项目进展核实。'
+               for item in result['findings'])
+    assert result['causes'] and all(item['title'] == '推进卡点待核实' for item in result['causes'])
+    for item in result['recommendations']:
+        assert item['action'] == '逐项核实受影响商机并制定推进计划'
+        assert item['ownerRole'] == '销售负责人' and item['deadlineDays'] == 15
+        assert item['acceptance'] == '形成逐项核查清单并确认结果'
+        assert 'targetValue' not in item and 'tracking' not in item
+    assert result['analysisDimensions']
+    assert 'textFallbackSections' not in result
+
+
+def test_model_text_is_never_filled_from_ontology_candidates():
+    value = _model_evaluated()
+    status = apply_text_interpretation(value, lambda payload: {
+        'summary': '商机获取存在覆盖缺口，需要优先推进战略客户转化。',
+        'risks': [dict(code='RK01', include=True, classification='confirmed')],
+        'causes': [dict(code='RC01')],
+        'advice': [dict(code='AC01')],
+    })
+    assert status['status'] == 'rejected'
+    assert status['error'] == 'MODEL_ANALYSIS_REJECTED'
+    assert status['rejectedRisks'] == ['RK01']
+    assert '模型未完成全部本体风险判断' in status['modelErrorMessage']
+
+
+def test_missing_or_invalid_risk_judgement_rejects_the_whole_analysis():
+    value = _strategic_value()
+    interpreter, _ = _payload_answer(value)
+
+    def omit_one(payload):
+        answer = interpreter(payload)
+        answer['risks'].pop()
+        return answer
+    status = apply_text_interpretation(value, omit_one)
+    assert status['status'] == 'rejected' and len(status['missingRiskCodes']) == 1
+
+    value = _strategic_value()
+    candidate = next(item for item in value['riskCandidates'] if item['ruleStatus'] != 'triggered')
+
+    def confirm_untriggered(payload):
+        answer = interpreter(payload)
+        for item in answer['risks']:
+            if item['code'] == candidate['code']:
+                item.update(include=True, classification='confirmed', title='模型改判成立',
+                            description='模型认为风险成立。',
+                            evidenceIds=candidate['evidenceIds'][:1])
+        return answer
+    status = apply_text_interpretation(value, confirm_untriggered)
+    assert status['status'] == 'rejected' and candidate['code'] in status['rejectedRisks']
+
+
+def test_invented_numbers_or_evidence_reject_instead_of_falling_back():
+    value = _strategic_value()
+    interpreter, _ = _payload_answer(value, summary='新增 999 家客户风险。')
+    before = deepcopy(value['result'])
+    status = apply_text_interpretation(value, interpreter)
+    assert status['status'] == 'rejected'
+    assert '摘要' in status['modelErrorMessage']
+    assert value['result'] == before
+
+    value = _strategic_value()
+    base, _ = _payload_answer(value)
+
+    def invented_evidence(payload):
+        answer = base(payload)
+        for item in answer['risks']:
+            if item['include']:
+                item['opposingEvidenceIds'] = ['model-invented-evidence']
+        return answer
+    status = apply_text_interpretation(value, invented_evidence)
+    assert status['status'] == 'rejected' and status['rejectedRisks']
+
+
+def test_included_risks_need_model_causes_and_advice():
+    value = _strategic_value()
+    interpreter, _ = _payload_answer(value, causes=[], advice=[])
+    status = apply_text_interpretation(value, interpreter)
+    assert status['status'] == 'rejected'
+    assert '根因' in status['modelErrorMessage']
+
+    value = _strategic_value()
+    base, _ = _payload_answer(value)
+
+    def advice_without_owner(payload):
+        answer = base(payload)
+        for item in answer['advice']:
+            item.pop('ownerRole')
+        return answer
+    status = apply_text_interpretation(value, advice_without_owner)
+    assert status['status'] == 'rejected' and status['rejectedAdvice']
+
+
+def test_invalid_model_json_is_rejected_and_does_not_touch_the_card():
+    value = _model_evaluated()
+    before = deepcopy(value['result'])
+
+    def broken(_payload):
+        raise ModelJSONOutputError('模型未返回合法 JSON', raw_text='{"risks": [',
+                                   repair_text='{"risks"', attempts=2)
+
+    status = apply_text_interpretation(value, broken)
+    assert status['status'] == 'rejected'
+    assert status['error'] == 'MODEL_OUTPUT_INVALID'
+    assert status['modelCalls'] == 2
+    assert status['modelRawResponseTail'] == '{"risks": ['
+    assert value['result'] == before
+
+
+def _empty_database():
+    class EmptyResult:
+        truncated = False
+        rows = []
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def run(self, sql, params, timeout_ms=0):
+            return EmptyResult()
+    return Database()
+
+
+def test_build_card_without_model_raises_instead_of_using_templates():
+    from bi_agent.cockpit.opportunity_v2 import OpportunityV2ModelUnavailable
+    try:
+        build_card('2026', database=_empty_database(), measurement_date='2026-11-11')
+    except OpportunityV2ModelUnavailable as exc:
+        assert exc.model_error == 'MODEL_DISABLED'
+        assert '必须由模型生成' in exc.public_message
+    else:
+        raise AssertionError('a card without model analysis must not be built')
+
+
+def test_rejected_model_answer_is_not_published():
+    from bi_agent.cockpit.opportunity_v2 import OpportunityV2ModelUnavailable
+
+    def broken(_payload):
+        raise ModelJSONOutputError('模型未返回合法 JSON', raw_text='not json', attempts=1)
+
+    try:
+        build_card('2026', database=_empty_database(), measurement_date='2026-11-11',
+                   text_interpreter=broken)
+    except OpportunityV2ModelUnavailable as exc:
+        assert exc.model_status == 'rejected'
+        assert exc.model_error == 'MODEL_OUTPUT_INVALID'
+        assert exc.public_message == '模型分析未通过校验：模型未返回合法 JSON'
+    else:
+        raise AssertionError('a rejected model answer must not publish a card')
+
+
+def test_published_card_is_written_by_the_model():
+    card = build_card('2026', database=_empty_database(), measurement_date='2026-11-11',
+                      text_interpreter=_answer_from_payload)
+    assembly = card['result']['analysisAssembly']
+    assert assembly == dict(cardWriter='model', modelContract='ontology-context-v1',
+                            modelStatus='completed', modelAnalysisUsed=True)
+    assert card['result']['businessSummary'] == card['result']['summary']
+    assert 'retention' not in card['execution']
+
+
+def test_model_prompt_treats_ontology_as_context_not_template(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    captured = []
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        captured.append(system_prompt)
+        return iter([
+            dict(type='text_delta', text='{"summary":"摘要","risks":[],"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a'])
+    module.default_text_interpreter({'progressSamples': []})
+    prompt = captured[0]
+    assert '分析链与上下文约束' in prompt and '不是结论模板' in prompt
+    assert '不得照抄候选' in prompt
+    assert 'ownerRole' in prompt and 'acceptance' in prompt and 'deadlineDays' in prompt
+    assert '程序会用本体候选字段补齐' not in prompt

@@ -80,9 +80,8 @@ class OpportunityV2Unavailable(RuntimeError):
 class OpportunityV2ModelUnavailable(OpportunityV2Unavailable):
     """The model step did not produce a validated business analysis.
 
-    Callers must keep the previous published card rather than replacing it
-    with rule templates.  When no previous card exists the task remains a
-    retryable, visible analysis failure.
+    The card is not published: no previous card and no ontology template
+    replaces the model's analysis.  The failure is shown to the user.
     """
 
     def __init__(self, message, *, status="failed", error="", missing=None):
@@ -107,6 +106,21 @@ class ModelJSONOutputError(RuntimeError):
         self.repair_text = str(repair_text or "")
         self.stop_reason = str(stop_reason or "")
         self.attempts = int(attempts or 1)
+
+
+class ModelAnalysisRejected(ValueError):
+    """The model answered, but its analysis does not satisfy the card contract.
+
+    Nothing from the ontology is substituted: the card fails instead.
+    """
+
+    def __init__(self, message, *, rejected_risks=(), missing_risk_codes=(),
+                 rejected_causes=(), rejected_advice=()):
+        super().__init__(message)
+        self.rejected_risks = list(rejected_risks)
+        self.missing_risk_codes = list(missing_risk_codes)
+        self.rejected_causes = list(rejected_causes)
+        self.rejected_advice = list(rejected_advice)
 
 
 class ModelJSONResult(dict):
@@ -2454,7 +2468,7 @@ def evaluate(data, config=None, measured=None):
         "投标关联按本体 BR-Q07 使用商机名称与投标项目名称原值精确匹配；同名歧义不判未投标。",
         "RC04 产品部销售缺口需跨发货环节实际销售，本次不把不可得数据推成原因。",
         "动态均值按本体 BR-Q06 执行：" + (clean_cycle_sample or "样本范围未提供") + "。",
-        "建议中的责任角色与期限为模板草稿，须人工确认后才能下发任务令。",
+        "建议中的责任角色与期限为模型给出的建议值，须人工确认后才能下发任务令。",
     ])
     if unknown_contract_count:
         data_issues.append(
@@ -2510,7 +2524,25 @@ def evaluate(data, config=None, measured=None):
         evidenceIds=list(dict.fromkeys(candidate.get("evidence") or []))[:20],
         riskCodes=sorted(candidate.get("risks") or []),
         missingEvidence=list(candidate.get("missingEvidence") or []),
+        ruleStatus="triggered",
     ) for code, candidate in sorted(candidates.items())]
+    # The ontology's risk→cause chain is model context even when a cause rule
+    # did not fire: the model may still find that cause in this round's
+    # evidence, citing the linked risk's evidence.  Rule outcome stays visible.
+    for code, spec in sorted((config.get("causes") or {}).items()):
+        if code in candidates:
+            continue
+        linked = sorted(allowed_by_cause.get(code, set()) & active_risk_codes)
+        if not linked:
+            continue
+        cause_candidates.append(dict(
+            code=code, title=spec.get("name") or code,
+            description="；".join(_text(part) for part in (
+                spec.get("condition"), spec.get("aiFocus")) if _text(part) and _text(part) != "—"),
+            kind="hypothesis", status="hypothesis",
+            stage=_CAUSE_STAGE.get(code, "opportunity"), evidenceIds=[],
+            riskCodes=linked, missingEvidence=[], ruleStatus="not_triggered",
+        ))
     advice_candidates = []
     risk_by_code = {risk["code"]: risk for risk in risks}
     cause_candidate_by_code = {item["code"]: item for item in cause_candidates}
@@ -2747,38 +2779,42 @@ def default_text_interpreter(payload):
     from ..llm.registry import get_default_model_key
 
     system_prompt = (
-        "你是证据约束的商机经营分析助手。程序已按本体规则完成阈值和数值计算，"
-        "输入中的 ruleOutcomes 是全部本体候选风险及其 "
+        "你是证据约束的商机经营分析助手。程序已按本体规则完成阈值和数值计算。"
+        "本体提供的是分析链与上下文约束：ruleOutcomes 列出全部本体候选风险及"
         "ruleStatus=triggered/not_triggered/insufficient/not_applicable，"
-        "causeCandidates/adviceCandidates 是允许使用的原因和建议边界。"
-        "你的任务是结合 facts、records、progressSamples 判断风险证据是否充分、哪些只是结构表现，"
-        "并生成摘要、风险说明、原因和建议。不得新增风险、原因或建议代码，不得猜测或重算数字，"
-        "不得引用输入之外的证据编号。数字只能原样引用输入中出现的值。只返回 JSON："
+        "causeCandidates/adviceCandidates 给出本体中风险→根因→建议的关联与参考说明；"
+        "causeCandidates 的 ruleStatus=triggered 表示程序规则已命中，not_triggered 表示规则未命中，"
+        "只有本轮证据确实显示该卡点时才可采用，并引用所关联风险的证据、写成待核实的分析。"
+        "这些候选只是分析参考，不是结论模板：卡片上的风险说明、根因、建议和摘要必须由你"
+        "根据 facts、records、progressSamples 中本轮的实际数据重新分析并用自己的话写出，"
+        "不得照抄候选中的描述、措施、目标值或验收文字。"
+        "不得新增风险、原因或建议代码，不得猜测或重算数字，不得引用输入之外的证据编号；"
+        "数字只能原样引用输入中出现的值，且必须属于所描述的那项风险、客户、产品或环节，"
+        "金额与电量、不同产品、不同客户的数字不得互相借用。只返回 JSON："
         '{"summary":"不超过220字的业务经营摘要",'
-        '"risks":[{"code":"RK01","include":true,"classification":"confirmed|structural|insufficient|not_applicable",'
-        '"description":"不超过320字","evidenceIds":["支持证据编号"],'
-        '"opposingEvidenceIds":["反对或反例证据编号"]},'
-        '{"code":"RK02","include":false,"classification":"insufficient"}],'
-        '"causes":[{"code":"RC01","description":"不超过160字",'
+        '"risks":[{"code":"RK01","include":true,"classification":"confirmed",'
+        '"title":"不超过24字的风险标题","description":"不超过320字",'
+        '"evidenceIds":["支持证据编号"],"opposingEvidenceIds":["反对或反例证据编号"]},'
+        '{"code":"RK02","include":false,"classification":"insufficient|structural|not_applicable"}],'
+        '"causes":[{"code":"RC01","title":"不超过24字","description":"不超过160字",'
         '"riskCodes":["RK01"],"evidenceIds":["输入中的证据编号"]}],'
-        '"advice":[{"code":"AC01","action":"不超过64字",'
+        '"advice":[{"code":"AC01","action":"不超过64字","ownerRole":"一个责任角色，不超过20字",'
+        '"deadlineDays":15,"acceptance":"不超过80字的可检查验收标准","detail":"可选，不超过200字",'
         '"riskCodes":["RK01"],"causeCodes":["RC01"],"evidenceIds":["输入中的证据编号"]}]}。'
         "每个 risk 的 code 必须来自 ruleOutcomes。只有 ruleStatus=triggered 且 classification=confirmed 时 include 才能为 true；"
         "structural、insufficient、not_applicable 必须 include=false。数值规则未命中的风险不得被模型改判为成立。"
-        "必须对 ruleOutcomes 中的每一条风险恰好返回一次判断，不得遗漏或重复；覆盖不足视为模型分析未完成。"
-        "include=false 的风险只返回 code、include、classification，不要输出 description、evidenceIds、"
-        "opposingEvidenceIds，以缩短输出；include=true 的风险必须给出 description、至少一条支持证据和 "
-        "opposingEvidenceIds。"
-        "成立的风险至少引用一条支持证据；opposingEvidenceIds 记录与该判断相反或限制结论的证据，必须来自输入事实、记录或进展。"
-        "每个 cause 必须来自 causeCandidates，riskCodes 必须是该原因允许关联且本次包含的风险。"
-        "每个 advice 必须来自 adviceCandidates，必须绑定其允许的 causeCodes/riskCodes。"
-        "原因必须说明证据中已出现的商务、技术或流程卡点；建议必须给出可核对的对象和动作，"
-        "优先沿用候选中的作用对象、目标值、验收标准、跟踪指标和原始期限表达。"
+        "必须对 ruleOutcomes 中的每一条风险恰好返回一次判断，不得遗漏或重复；覆盖不足视为分析失败。"
+        "include=false 的风险只返回 code、include、classification；include=true 的风险必须给出 title、"
+        "description、至少一条支持证据和 opposingEvidenceIds。"
+        "存在成立的风险时，必须给出至少一条根因和一条建议。"
+        "每个 cause 的 code 必须来自 causeCandidates，riskCodes 必须是该原因允许关联且本次成立的风险；"
+        "根因要说明本轮证据中已出现的商务、技术或流程卡点，必须给出 title、description 和 evidenceIds。"
+        "每个 advice 的 code 必须来自 adviceCandidates，必须绑定其允许的 causeCodes/riskCodes；"
+        "建议要针对本轮数据中的具体对象，必须给出 action、ownerRole、deadlineDays（1-365 的整数）、"
+        "acceptance 和 evidenceIds；责任角色与期限是建议值，待人工确认。"
         "summary 只写主要经营问题、影响范围、最重要的数字和推进重点，不罗列全部风险；"
         "不得出现 RK/RC/BR/DS/AC 编码、规则核验、阈值、口径、证据、取数、字段缺失、排查、校验等实现说明。"
-        "你只输出分析决策，不要输出卡片排版、HTML、颜色、编号、计数或证据展示结构；卡片由程序组装。"
-        "原因和建议可省略 description/action/evidenceIds，程序会用本体候选字段补齐；"
-        "但成立的风险仍应给出描述和支持证据。"
+        "不要输出卡片排版、HTML、颜色、编号或计数。"
         "不得使用‘逾期未完成’表述。必须输出单个合法 JSON 对象，不得输出 Markdown、注释或额外解释。"
     )
     try:
@@ -2961,32 +2997,18 @@ def _model_failure_message(model_status):
     status = model_status.get("status")
     detail = re.sub(r"\s+", " ", redact(model_status.get("modelErrorMessage")
                                         or model_status.get("error") or "")).strip()[:200]
-    head = "模型调用中断" if status == "failed" else "模型输出未通过结构化校验"
+    head = "模型调用中断" if status == "failed" else "模型分析未通过校验"
     return f"{head}：{detail}" if detail else head
 
 
-def _should_abort_for_model(status, previous):
-    """Transport failures always keep the old card; format failures do too.
-
-    A first-ever format failure can still publish a rule-backed limited card,
-    because the card structure is assembled by the program.  With an existing
-    card, preserving the last accepted analysis is safer than replacing it with
-    a template-only result.
-    """
-    if status == "failed":
-        return True
-    if status == "fallback" and isinstance(previous, dict) and previous.get("result"):
-        return True
-    return False
-
-
 def apply_text_interpretation(evaluated, interpreter=None):
-    """Call the model once to generate the card's analysis text, then validate it.
+    """Call the model to write the card's analysis, then validate it.
 
-    The deterministic result remains a complete fallback. Model text replaces
-    it only when its codes, numbers, evidence ids and ontology relations pass
-    program validation. Every call is recorded, including when no model item
-    is accepted.
+    The ontology supplies the analysis chain (candidate risks, causes, advice
+    and their links) as context only.  Every summary, risk, cause and advice
+    text on the card is written by the model; nothing is filled in from the
+    ontology.  If the model does not judge every candidate risk or its text
+    fails validation, the status is ``rejected`` and the card is not built.
     """
     if interpreter is None:
         return dict(status="skipped", error="", modelCalls=0)
@@ -3046,6 +3068,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
                            missingEvidence=risk.get("missingEvidence") or [],
                            evidenceIds=risk.get("evidenceIds") or []) for risk in risk_candidates],
         causeCandidates=[dict(code=item.get("code"), title=item.get("title") or "",
+                              ruleStatus=item.get("ruleStatus") or "triggered",
                               description=item.get("description") or "", kind=item.get("kind") or "",
                               status=item.get("status") or "", stage=item.get("stage") or "",
                               riskCodes=item.get("riskCodes") or [],
@@ -3116,13 +3139,14 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 rejected_risks.append(code)
                 continue
             description = re.sub(r"\s+", " ", _text(item.get("description")))
+            title = re.sub(r"\s+", " ", _text(item.get("title")))
             cited = item.get("evidenceIds") or []
-            if not description and include:
-                description = re.sub(r"\s+", " ", _text(candidate.get("description")))
             if not isinstance(cited, list):
                 cited = []
-            if not cited and include:
-                cited = list(candidate.get("evidenceIds") or [])
+            if include and (not title or len(title) > 24
+                            or not _model_text_valid(title, 24, allowed_numbers)):
+                rejected_risks.append(code)
+                continue
             cited_ids = ([_text(entry) for entry in cited]
                          if isinstance(cited, list) else [])
             opposing = item.get("opposingEvidenceIds") or []
@@ -3141,27 +3165,28 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 rejected_risks.append(code)
                 continue
             risk_specs[code] = dict(include=include, classification=classification,
-                                    description=description,
+                                    title=title, description=description,
                                     evidenceIds=list(dict.fromkeys(cited_ids)),
-                                    opposingEvidenceIds=list(dict.fromkeys(opposing_ids or [])),
-                                    descriptionSource=("model" if _text(item.get("description"))
-                                                       else "ontology_fallback"),
-                                    evidenceSource=("model" if item.get("evidenceIds")
-                                                    else "ontology_fallback"))
+                                    opposingEvidenceIds=list(dict.fromkeys(opposing_ids or [])))
             applied_risks.append(code)
 
         applied_risks = list(dict.fromkeys(applied_risks))
         missing_risk_codes = [candidate["code"] for candidate in risk_candidates
                               if candidate["code"] not in risk_specs]
         risk_coverage_complete = not missing_risk_codes
+        if missing_risk_codes or rejected_risks:
+            raise ModelAnalysisRejected(
+                "模型未完成全部本体风险判断："
+                + "、".join(dict.fromkeys(missing_risk_codes + rejected_risks)),
+                rejected_risks=rejected_risks, missing_risk_codes=missing_risk_codes)
 
         excluded_codes = {code for code, spec in risk_specs.items() if not spec["include"]}
         included_risks = [risk for risk in triggered_risks if risk["code"] not in excluded_codes]
         for risk in included_risks:
-            spec = risk_specs.get(risk["code"]) or {}
-            if spec.get("description"):
-                risk["description"] = spec["description"]
-                risk["evidenceIds"] = spec["evidenceIds"][:20]
+            spec = risk_specs[risk["code"]]
+            risk["title"] = spec["title"]
+            risk["description"] = spec["description"]
+            risk["evidenceIds"] = spec["evidenceIds"][:20]
             risk["classification"] = "confirmed"
             risk["opposingEvidenceIds"] = list(spec.get("opposingEvidenceIds") or [])[:20]
         model_excluded_risks = sorted(excluded_codes)
@@ -3170,47 +3195,30 @@ def apply_text_interpretation(evaluated, interpreter=None):
         risk_assessments = []
         for candidate in risk_candidates:
             code = candidate["code"]
-            spec = risk_specs.get(code)
-            if spec:
-                assessment_source = "model"
-                include = spec["include"]
-                classification = spec["classification"]
-                description = spec["description"]
-                evidence_ids = spec["evidenceIds"]
-                opposing_ids = spec["opposingEvidenceIds"]
-                description_source = spec.get("descriptionSource")
-                evidence_source = spec.get("evidenceSource")
-            else:
-                assessment_source = "rule_fallback"
-                fallback = _program_risk_assessment(candidate)
-                include = fallback["include"]
-                classification = fallback["classification"]
-                description = fallback["description"]
-                evidence_ids = fallback["evidenceIds"]
-                opposing_ids = fallback["opposingEvidenceIds"]
-                description_source = "rule_fallback"
-                evidence_source = "rule_fallback"
+            spec = risk_specs[code]
+            include = spec["include"]
+            classification = spec["classification"]
+            description = spec["description"]
+            evidence_ids = spec["evidenceIds"]
+            opposing_ids = spec["opposingEvidenceIds"]
             risk_assessments.append(dict(
                 code=code, name=candidate.get("name") or code,
                 rule=candidate.get("rule") or "",
                 condition=candidate.get("condition") or "",
                 ruleStatus=candidate.get("ruleStatus") or "",
                 include=include, classification=classification,
-                title=candidate.get("title") or code,
+                title=spec["title"] or candidate.get("name") or code,
                 description=description,
                 metricCodes=candidate.get("metricCodes") or [],
                 evidenceIds=evidence_ids[:20],
                 supportingEvidenceIds=evidence_ids[:20],
                 opposingEvidenceIds=(opposing_ids or [])[:20],
-                assessmentSource=assessment_source,
-                descriptionSource=description_source,
-                evidenceSource=evidence_source,
+                assessmentSource="model",
                 observed=candidate.get("observed") or [],
                 missingEvidence=candidate.get("missingEvidence") or [],
             ))
 
         cause_items, applied_causes, rejected_causes = [], [], []
-        cause_fallback_used = False
         for item in _model_items(value.get("causes")):
             code = _text(item.get("code"))
             candidate = cause_by_code.get(code)
@@ -3222,13 +3230,13 @@ def apply_text_interpretation(evaluated, interpreter=None):
             selected_codes = (set(_text(value) for value in requested)
                               if isinstance(requested, list) and requested else allowed_for_candidate)
             description = re.sub(r"\s+", " ", _text(item.get("description")))
+            title = re.sub(r"\s+", " ", _text(item.get("title")))
             cited = item.get("evidenceIds") or []
-            if not description:
-                description = re.sub(r"\s+", " ", _text(candidate.get("description")))
             if not isinstance(cited, list):
                 cited = []
-            if not cited:
-                cited = list(candidate.get("evidenceIds") or [])
+            if not title or not _model_text_valid(title, 24, allowed_numbers):
+                rejected_causes.append(code)
+                continue
             allowed_for_evidence = (cause_evidence.get(code, set())
                                     | set().union(*(risk_evidence.get(value, set())
                                                     for value in selected_codes))
@@ -3245,31 +3253,18 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 kind=candidate.get("kind") or "hypothesis",
                 status=candidate.get("status") or "hypothesis",
                 stage=candidate.get("stage") or "opportunity",
-                title=(candidate.get("title") or code)[:80],
+                title=title,
                 description=description,
                 findingIds=[risk_id_by_code[value] for value in sorted(selected_codes)],
                 evidenceIds=evidence_ids,
                 riskCodes=sorted(selected_codes),
                 linkedRiskCodes=sorted(allowed_for_candidate),
                 missingEvidence=[],
-                descriptionSource=("model" if _text(item.get("description"))
-                                   else "ontology_fallback"),
-                evidenceSource=("model" if item.get("evidenceIds")
-                                else "ontology_fallback"),
             ))
             applied_causes.append(code)
-        if "causes" not in value or not cause_items:
-            cause_items = [deepcopy(item) for item in result.get("causes") or []
-                           if (set(item.get("riskCodes") or []) & included_codes)]
-            cause_items = [dict(item, findingIds=[finding_id for finding_id in item.get("findingIds") or []
-                                                  if finding_id in risk_id_by_code.values()])
-                           for item in cause_items]
-            cause_items = [item for item in cause_items if item.get("findingIds")]
-            cause_fallback_used = bool(cause_items)
 
         selected_cause_codes = {item["causeCode"] for item in cause_items}
         recommendations, applied_advice, rejected_advice = [], [], []
-        advice_fallback_used = False
         for item in _model_items(value.get("advice")):
             code = _text(item.get("code"))
             candidate = advice_by_code.get(code)
@@ -3288,13 +3283,19 @@ def apply_text_interpretation(evaluated, interpreter=None):
             allowed_risk_codes = set(candidate.get("riskCodes") or []) & included_codes
             allowed_cause_codes = set(candidate.get("causeCodes") or []) & selected_cause_codes
             cited = item.get("evidenceIds") or []
-            if not action:
-                action = re.sub(r"\s+", " ", _text(candidate.get("action")
-                                                   or candidate.get("name")))[:64]
             if not isinstance(cited, list):
                 cited = []
-            if not cited:
-                cited = list(candidate.get("evidenceIds") or [])
+            owner_role = re.sub(r"\s+", " ", _text(item.get("ownerRole")))
+            acceptance = re.sub(r"\s+", " ", _text(item.get("acceptance")))
+            detail = re.sub(r"\s+", " ", _text(item.get("detail")))
+            deadline_days = item.get("deadlineDays")
+            if (not owner_role or len(owner_role) > 20
+                    or isinstance(deadline_days, bool) or not isinstance(deadline_days, int)
+                    or not 1 <= deadline_days <= 365
+                    or not acceptance or not _model_text_valid(acceptance, 80, allowed_numbers)
+                    or (detail and not _model_text_valid(detail, 200, allowed_numbers))):
+                rejected_advice.append(code)
+                continue
             allowed_for_evidence = (advice_evidence.get(code, set())
                                     | set().union(*(risk_evidence.get(value, set())
                                                     for value in risk_codes))
@@ -3316,46 +3317,26 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 governance=bool(candidate.get("governance")) or code in _GOVERNANCE_ADVICE,
                 causeIds=[cause["id"] for cause in linked_causes],
                 evidenceIds=list(dict.fromkeys(_text(entry) for entry in cited))[:20],
-                action=action, ownerRole=(candidate.get("ownerRole") or "待确认")[:40],
-                object=(candidate.get("object") or "")[:120],
-                targetValue=(candidate.get("targetValue") or "")[:180],
-                tracking=(candidate.get("tracking") or "")[:180],
-                priority=(candidate.get("priority") or "")[:20],
-                deadline=(candidate.get("deadline") or "")[:80],
-                deadlineType=(candidate.get("deadlineType") or "days"),
-                deadlineDays=int(candidate.get("deadlineDays") or 30),
-                acceptance=(candidate.get("acceptance") or _acceptance(code))[:180],
-                detail=(candidate.get("measure") or "")[:600],
+                action=action, ownerRole=owner_role,
+                deadline=f"{deadline_days} 个工作日", deadlineType="days",
+                deadlineDays=deadline_days,
+                acceptance=acceptance, detail=detail,
                 ownerConfirmed=False, deadlineConfirmed=False,
                 riskCodes=sorted(risk_codes), linkedRiskCodes=sorted(allowed_risk_codes),
-                actionSource=("model" if _text(item.get("action"))
-                              else "ontology_fallback"),
-                evidenceSource=("model" if item.get("evidenceIds")
-                                else "ontology_fallback"),
             ))
             applied_advice.append(code)
-        if "advice" not in value or not recommendations:
-            recommendations = [deepcopy(item) for item in result.get("recommendations") or []
-                               if set(item.get("riskCodes") or []) & included_codes]
-            advice_fallback_used = bool(recommendations)
+        if included_codes and (not cause_items or not recommendations):
+            raise ModelAnalysisRejected(
+                "模型未给出可用的根因与建议："
+                + f"根因 {len(cause_items)} 条（拒绝 {'、'.join(rejected_causes) or '无'}），"
+                + f"建议 {len(recommendations)} 条（拒绝 {'、'.join(rejected_advice) or '无'}）",
+                rejected_causes=rejected_causes, rejected_advice=rejected_advice)
 
         summary = re.sub(r"\s+", " ", _text(value.get("summary")))
-        summary_applied = _model_summary_valid(summary, 240, allowed_numbers)
-        summary_fallback_used = not summary_applied
-        if not summary_applied:
-            summary = _text(result.get("businessSummary") or result.get("summary"))
+        if not _model_summary_valid(summary, 240, allowed_numbers):
+            raise ModelAnalysisRejected("模型摘要未通过校验（为空、过长、含实现说明或含输入之外的数字）")
 
-        accepted_model_items = (len(applied_risks) + len(applied_causes)
-                                + len(applied_advice) + int(summary_applied))
-        if not accepted_model_items:
-            model_status, model_error = "fallback", "MODEL_OUTPUT_REJECTED"
-        elif (risk_coverage_complete and summary_applied
-              and not cause_fallback_used and not advice_fallback_used):
-            model_status, model_error = "completed", ""
-        else:
-            model_status, model_error = "partial", "MODEL_OUTPUT_PARTIAL"
-        analysis_mode = {"completed": "model", "partial": "model_partial",
-                         "fallback": "rule_fallback"}[model_status]
+        model_status, model_error, analysis_mode = "completed", "", "model"
 
         findings = [dict(
             id=risk["id"], kind="risk_fact", title=(risk.get("title") or risk.get("name") or "")[:80],
@@ -3380,6 +3361,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
             ) for finding in findings][:4]
 
         result["summary"] = summary
+        result["businessSummary"] = summary
         result["findings"] = findings
         result["causes"] = cause_items
         result["analysisDimensions"] = dimensions
@@ -3392,28 +3374,10 @@ def apply_text_interpretation(evaluated, interpreter=None):
         result["includedRiskCount"] = len(included_risks)
         result["ruleTriggeredRiskCount"] = len(triggered_risks)
         result["missingRiskCodes"] = missing_risk_codes
-        text_fallback_sections = []
-        if summary_fallback_used:
-            text_fallback_sections.append("summary")
-        if any(spec.get("descriptionSource") == "ontology_fallback"
-               for spec in risk_specs.values() if spec.get("include")):
-            text_fallback_sections.append("riskDescriptions")
-        if any(spec.get("evidenceSource") == "ontology_fallback"
-               for spec in risk_specs.values() if spec.get("include")):
-            text_fallback_sections.append("riskEvidence")
-        if any(cause.get("descriptionSource") == "ontology_fallback" for cause in cause_items):
-            text_fallback_sections.append("causeDescriptions")
-        if any(item.get("actionSource") == "ontology_fallback" for item in recommendations):
-            text_fallback_sections.append("adviceActions")
-        result["textFallbackSections"] = text_fallback_sections
         result["modelAssessment"] = dict(
             status=model_status, analysisMode=analysis_mode,
             candidateCount=len(risk_candidates), assessedRiskCount=len(risk_specs),
             missingRiskCodes=missing_risk_codes, coverageComplete=risk_coverage_complete,
-            summaryApplied=summary_applied, summaryFallbackUsed=summary_fallback_used,
-            causeFallbackUsed=cause_fallback_used, adviceFallbackUsed=advice_fallback_used,
-            textFallbackUsed=bool(text_fallback_sections),
-            textFallbackSections=text_fallback_sections,
         )
         result["riskAssessments"] = deepcopy(risk_assessments)
         result["excludedRiskCodes"] = [item["code"] for item in risk_assessments
@@ -3424,8 +3388,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
         evaluated["causes"] = cause_items
         evaluated["recommendations"] = recommendations
         return dict(status=model_status, error=model_error, modelCalls=model_calls,
-                    analysisMode=analysis_mode,
-                    summaryApplied=summary_applied, appliedRisks=applied_risks,
+                    analysisMode=analysis_mode, appliedRisks=applied_risks,
                     appliedCauses=applied_causes, appliedAdvice=applied_advice,
                     excludedRisks=model_excluded_risks,
                     modelExcludedRisks=model_excluded_risks,
@@ -3434,38 +3397,35 @@ def apply_text_interpretation(evaluated, interpreter=None):
                     includedRiskCount=len(included_risks),
                     missingRiskCodes=missing_risk_codes,
                     coverageComplete=risk_coverage_complete,
-                    summaryFallbackUsed=summary_fallback_used,
-                    causeFallbackUsed=cause_fallback_used,
-                    adviceFallbackUsed=advice_fallback_used,
-                    textFallbackUsed=bool(text_fallback_sections),
-                    textFallbackSections=text_fallback_sections,
                     riskAssessments=deepcopy(risk_assessments),
                     rejectedRisks=rejected_risks, rejectedCauses=rejected_causes,
                     rejectedAdvice=rejected_advice,
                     validatedCauses=[], validatedAdvice=[],
                     mismatchedCauses=[], mismatchedAdvice=[])
-    except ModelJSONOutputError as exc:
+    except (ModelJSONOutputError, ModelAnalysisRejected) as exc:
         raw_text = str(getattr(exc, "raw_text", "") or "")
         repair_text = str(getattr(exc, "repair_text", "") or "")
         return dict(
-            status="fallback", error="MODEL_OUTPUT_INVALID",
+            status="rejected",
+            error=("MODEL_OUTPUT_INVALID" if isinstance(exc, ModelJSONOutputError)
+                   else "MODEL_ANALYSIS_REJECTED"),
             modelCalls=int(getattr(exc, "attempts", 1) or 1),
-            textFallbackUsed=True,
-            textFallbackSections=["summary", "riskDescriptions", "causeDescriptions", "adviceActions"],
+            rejectedRisks=list(getattr(exc, "rejected_risks", []) or []),
+            rejectedCauses=list(getattr(exc, "rejected_causes", []) or []),
+            rejectedAdvice=list(getattr(exc, "rejected_advice", []) or []),
+            missingRiskCodes=list(getattr(exc, "missing_risk_codes", []) or []),
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),
             modelRawResponseTail=raw_text[-800:],
             modelStopReason=str(getattr(exc, "stop_reason", "") or ""),
             modelRepairResponseTail=repair_text[-400:],
         )
-    except Exception as exc:  # noqa: BLE001 - model analysis is optional
+    except Exception as exc:  # noqa: BLE001 - reported as a failed model call
         raw_text = str(getattr(exc, "raw_text", "") or "")
         repair_text = str(getattr(exc, "repair_text", "") or "")
         return dict(
             status="failed", error=type(exc).__name__,
             modelCalls=int(getattr(exc, "attempts", 1) or 1),
-            textFallbackUsed=True,
-            textFallbackSections=["summary", "riskDescriptions", "causeDescriptions", "adviceActions"],
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),
             modelRawResponseTail=raw_text[-800:],
@@ -3653,154 +3613,19 @@ def _empty_collected(period, measured, error):
     )
 
 
-def _merge_previous_card(evaluated, previous):
-    """Retain prior risk conclusions that this round did not explicitly clear.
-
-    A partial database/AP round can judge only a subset of risks.  Replacing
-    the whole card would silently erase still-valid prior conclusions, so each
-    unjudged or evidence-insufficient risk keeps its last published time and
-    source.  A model judgment of ``not_applicable`` is treated as an explicit
-    resolution and removes the old item.
-    """
-    if not isinstance(previous, dict) or not isinstance(previous.get("result"), dict):
-        return []
-    previous_result = previous.get("result") or {}
-    previous_risks = [dict(item) for item in previous.get("risks") or []
-                      if isinstance(item, dict)]
-    if not previous_risks:
-        previous_risks = [dict(item, riskCode=item.get("riskCode"))
-                          for item in previous_result.get("findings") or []
-                          if isinstance(item, dict) and item.get("riskCode")]
-    if not previous_risks:
-        return []
-    included = {risk.get("code") for risk in evaluated.get("risks") or []}
-    assessments = {item.get("code"): item for item in evaluated.get("riskAssessments") or []}
-    retained = []
-    for risk in previous_risks:
-        code = _text(risk.get("code") or risk.get("riskCode"))
-        if not code or code in included:
-            continue
-        assessment = assessments.get(code)
-        if assessment is None:
-            reason = "本轮未覆盖该风险"
-        elif assessment.get("assessmentSource") == "rule_fallback":
-            reason = "本轮模型未给出该风险判断"
-        elif assessment.get("classification") == "insufficient":
-            reason = "本轮证据不足以重新判定"
-        elif assessment.get("classification") == "structural":
-            reason = "本轮仅判定为结构表现，未确认解除"
-        elif assessment.get("classification") == "not_applicable":
-            continue
-        else:
-            continue
-        retained.append((code, risk, reason))
-    if not retained:
-        return []
-
-    result = evaluated.get("result") or {}
-    findings = list(result.get("findings") or [])
-    causes = list(result.get("causes") or [])
-    recommendations = list(result.get("recommendations") or [])
-    current_evidence = evaluated.get("evidence") or {}
-    previous_evidence = previous.get("evidence") or {}
-    referenced = set()
-    retention_rows = []
-    retained_codes = []
-    for code, risk, reason in retained:
-        retained_codes.append(code)
-        carried = deepcopy(risk)
-        carried.update(retained=True, retainedFrom=previous.get("updatedAt"),
-                       retentionReason=reason,
-                       retentionSource="previous published analysis")
-        evaluated.setdefault("risks", []).append(carried)
-        referenced.update(_text(value) for value in carried.get("evidenceIds") or [] if value)
-        previous_findings = [dict(item) for item in previous_result.get("findings") or []
-                             if isinstance(item, dict) and item.get("riskCode") == code]
-        for finding in previous_findings:
-            finding.update(retained=True, retainedFrom=previous.get("updatedAt"),
-                           retentionReason=reason)
-            referenced.update(_text(value) for value in finding.get("evidenceIds") or [] if value)
-            if not any(item.get("id") == finding.get("id") for item in findings):
-                findings.append(finding)
-        for cause in previous_result.get("causes") or []:
-            if not isinstance(cause, dict) or code not in (cause.get("riskCodes") or []):
-                continue
-            carried_cause = deepcopy(cause)
-            carried_cause.update(retained=True, retainedFrom=previous.get("updatedAt"),
-                                 retentionReason=reason)
-            referenced.update(_text(value) for value in carried_cause.get("evidenceIds") or [] if value)
-            if not any(item.get("id") == carried_cause.get("id") for item in causes):
-                causes.append(carried_cause)
-        for recommendation in previous_result.get("recommendations") or []:
-            if (not isinstance(recommendation, dict)
-                    or code not in (recommendation.get("riskCodes") or [])):
-                continue
-            carried_advice = deepcopy(recommendation)
-            carried_advice.update(retained=True, retainedFrom=previous.get("updatedAt"),
-                                  retentionReason=reason)
-            referenced.update(_text(value) for value in carried_advice.get("evidenceIds") or [] if value)
-            if not any(item.get("id") == carried_advice.get("id") for item in recommendations):
-                recommendations.append(carried_advice)
-        retention_rows.append(dict(riskCode=code, reason=reason,
-                                   retainedFrom=previous.get("updatedAt"),
-                                   source="previous published analysis"))
-
-    for key in ("facts", "records", "evidence"):
-        existing = {str(item.get("id")) for item in current_evidence.get(key) or []
-                    if isinstance(item, dict) and item.get("id")}
-        for item in previous_evidence.get(key) or []:
-            if not isinstance(item, dict) or not item.get("id"):
-                continue
-            if str(item.get("id")) not in referenced or str(item.get("id")) in existing:
-                continue
-            current_evidence.setdefault(key, []).append(deepcopy(item))
-            existing.add(str(item.get("id")))
-    counts = current_evidence.get("counts") or {}
-    if counts:
-        ids = {str(item.get("id")) for key in ("facts", "records", "evidence")
-               for item in current_evidence.get(key) or []
-               if isinstance(item, dict) and item.get("id")}
-        counts.update(
-            facts=len(current_evidence.get("facts") or []),
-            records=len(current_evidence.get("records") or []),
-            referenced=len(current_evidence.get("evidence") or []),
-            distinct=len(ids),
-        )
-
-    total = len(evaluated.get("risks") or [])
-    for finding in findings:
-        finding["riskTotalCount"] = total
-    result["findings"] = findings
-    result["causes"] = causes[:6]
-    result["recommendations"] = recommendations[:6]
-    result["analysisDimensions"] = (list(result.get("analysisDimensions") or [])
-                                    + [dict(
-                                        id=cause.get("id"), stage=cause.get("stage") or "opportunity",
-                                        title=(cause.get("title") or "")[:32],
-                                        description=(cause.get("description") or "")[:240],
-                                        findingIds=cause.get("findingIds") or [],
-                                        evidenceIds=cause.get("evidenceIds") or [],
-                                        causeCode=cause.get("causeCode"), kind=cause.get("kind"),
-                                        status=cause.get("status"), retained=True,
-                                    ) for cause in causes if cause.get("retained")])[:4]
-    result["riskTotalCount"] = total
-    result["includedRiskCount"] = total
-    result["riskCodes"] = [risk.get("code") for risk in evaluated.get("risks") or []]
-    result["riskLevels"] = {risk.get("code"): risk.get("level") or "中"
-                            for risk in evaluated.get("risks") or []}
-    result["retainedRiskCodes"] = retained_codes
-    result["retention"] = retention_rows
-    result["excludedRiskCodes"] = [code for code in result.get("excludedRiskCodes") or []
-                                   if code not in retained_codes]
-    result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
-        f"本轮保留上一版风险：{'、'.join(retained_codes)}；保留项沿用上次发布时间和来源。"
-    ]))[:12]
-    return retention_rows
-
-
 def build_card(period, database=None, measurement_date=None, config=None, text_interpreter=None,
-               supplement=None, progress=None, previous=None, diagnostic_reporter=None):
-    """Build one complete ``opportunity-risk`` publication payload."""
+               supplement=None, progress=None, diagnostic_reporter=None):
+    """Build one complete ``opportunity-risk`` publication payload.
+
+    The model is mandatory: without it, or when its analysis is rejected, the
+    card is not built.  No previous card and no ontology template stands in.
+    """
+    if text_interpreter is None:
+        disabled = OpportunityV2ModelUnavailable(
+            "未启用模型分析，商机卡片不能只按本体模板生成", status="failed",
+            error="MODEL_DISABLED")
+        disabled.public_message = "未启用模型分析（COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED），商机卡片必须由模型生成"
+        raise disabled
     _report_progress(progress, "ontology", message="读取本体与规则配置")
     config = config or load_config()
     started = time.monotonic()
@@ -3851,10 +3676,9 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     evaluated = evaluate(data, config, measured)
     _report_progress(progress, "analysing", message="模型分析风险、原因与建议")
     model_status = apply_text_interpretation(evaluated, text_interpreter)
-    if (text_interpreter is not None
-            and _should_abort_for_model(model_status.get("status"), previous)):
+    if model_status.get("status") != "completed":
         failure = OpportunityV2ModelUnavailable(
-            "模型分析未通过校验，保留上一版业务分析",
+            "模型分析未完成，本轮不发布商机卡片",
             status=model_status.get("status"),
             error=model_status.get("error") or "",
             missing=model_status.get("missingRiskCodes") or [],
@@ -3887,44 +3711,16 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
             except Exception:  # noqa: BLE001 - diagnostics cannot fail the card
                 pass
         raise failure
-    retention = _merge_previous_card(evaluated, previous)
     fetched_at = time.time()
     result = evaluated["result"]
     result["cardContract"] = "cockpit-cards-v1"
     result["engine"] = "opportunity-v3-rules"
     result["analysisAssembly"] = dict(
-        cardWriter="program",
-        modelContract="minimal-decision-v1",
+        cardWriter="model",
+        modelContract="ontology-context-v1",
         modelStatus=model_status.get("status"),
-        modelAnalysisUsed=model_status.get("status") in {"completed", "partial"},
-        textFallbackSections=list(model_status.get("textFallbackSections") or []),
-        ruleFallbackSections=[name for name, used in (
-            ("summary", model_status.get("summaryFallbackUsed")),
-            ("causes", model_status.get("causeFallbackUsed")),
-            ("advice", model_status.get("adviceFallbackUsed")),
-        ) if used],
+        modelAnalysisUsed=True,
     )
-    if model_status.get("status") == "partial":
-        result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
-            f"模型分析部分采用：已逐项判断 {model_status.get('analysedRiskCount', 0)}/"
-            f"{model_status.get('riskCandidateCount', 0)} 个本体候选风险，"
-            "未覆盖或未通过校验的摘要、原因和建议由规则模板补充。"
-        ]))[:12]
-    if model_status.get("status") == "fallback":
-        result["modelAssessment"] = dict(
-            status="fallback", analysisMode="rule_fallback",
-            candidateCount=model_status.get("riskCandidateCount"),
-            assessedRiskCount=model_status.get("analysedRiskCount", 0),
-            missingRiskCodes=model_status.get("missingRiskCodes") or [],
-            coverageComplete=False,
-            summaryApplied=False, summaryFallbackUsed=True,
-            causeFallbackUsed=True, adviceFallbackUsed=True,
-            textFallbackUsed=True,
-            textFallbackSections=["summary", "riskDescriptions", "causeDescriptions", "adviceActions"],
-        )
-        result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
-            "模型输出未通过结构化校验，本轮由程序按本体规则组装卡片；模型分析未采用。"
-        ]))[:12]
     if collected_error is not None:
         result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
             "数据库核心取数未完成，卡片仅保留 AP 可补充的聚合指标；项目、客户和投标明细未参与判定。"
@@ -3940,8 +3736,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     _report_progress(progress, "publishing", message="校验并发布卡片")
     item = dict(
         id=uuid.uuid4().hex,
-        status="limited" if (data.get("errors") or missing or retention
-                              or model_status.get("status") in {"partial", "fallback"}) else "completed",
+        status="limited" if (data.get("errors") or missing) else "completed",
         context=dict(
             stage="opportunity", slotId=SLOT_ID, period=str(period), id=1,
             dataFingerprint=hashlib.sha256(json.dumps(dict(
@@ -3965,8 +3760,6 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
             fetchBudgetSeconds=data.get("fetchBudgetSeconds"),
             queryDiagnostics=data.get("queryDiagnostics") or [],
             evidenceCounts=evaluated["evidence"].get("counts") or {},
-            retainedRiskCodes=result.get("retainedRiskCodes") or [],
-            retention=retention,
             modelStatus=dict(
                 status=model_status.get("status"), analysisMode=model_status.get("analysisMode"),
                 error=model_status.get("error"),
