@@ -358,7 +358,7 @@ def build_customer_tier_rules(workbook):
     return {
         **tiers,
         "generalCatchAll": catch_all,
-        "status": "pending" if pending or not available else "confirmed",
+        "status": "pending" if pending else "confirmed",
         "statusReason": ("；".join(pending) if pending else "本体客户等级映射已确认") +
                         ("" if available else "；本体未提供战略客户名单工作表"),
         "tierMeta": tier_meta,

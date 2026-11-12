@@ -4744,7 +4744,7 @@
         "3"
       ],
       "generalCatchAll": true,
-      "status": "pending",
+      "status": "confirmed",
       "statusReason": "本体客户等级映射已确认；本体未提供战略客户名单工作表",
       "tierMeta": {
         "strategic": {
