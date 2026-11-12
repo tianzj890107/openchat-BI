@@ -100,6 +100,8 @@ def main():
     seed = Path(__file__).parents[1]/'cockpit/frozen-annual.json'
     frozen = FrozenAnnualStore(cwd/'dataset/cockpit/frozen-annual.sqlite3', seed)
     service = FrozenAnnualService(frozen, recompute_from_router(app, cwd))
+    from ..cockpit.router import set_external_analysis_lookup
+    set_external_analysis_lookup(service.published_analysis)
     prefix = os.environ.get('APP_ROOT_PATH','')
     from starlette.middleware.gzip import GZipMiddleware
     surface=GZipMiddleware(FrozenCockpitSurface(CustomerSurface(app,prefix),service,prefix),minimum_size=1000,compresslevel=5)

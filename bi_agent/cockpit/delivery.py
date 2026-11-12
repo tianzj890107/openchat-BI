@@ -65,10 +65,10 @@ SLOT_SPECS = {
         actions=True, max_causes=5,
         note='跨环节结论必须同口径；口径冲突未对账前只交付各自观察，不汇总缺口。'),
     'opportunity-risk': dict(
-        question='商机风险集中在哪些团队、客户等级和项目',
+        question='哪些商机风险已由本体规则触发，原因与行动是否有证据',
         kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'), actions=True,
         max_causes=5,
-        note='本卡交付商机缺口的结构定位；缺口分布不等于业务原因。'),
+        note='程序按 V2 规则取证并计算数值；模型逐项判断风险证据、原因和建议，程序复核数字与关联。'),
     'opportunity-coverage-note': dict(
         question='商机覆盖缺口在哪里，目标与实际的差异如何理解',
         kinds=('fact', 'structure', 'data_gap'), actions=True, max_causes=4,
@@ -733,6 +733,14 @@ def sanitize_summary(text, evidence):
 
 def evidence_count(evidence):
     """Count distinct evidence ids; the same record is not a second fact."""
+    counts = (evidence or {}).get("counts") or {}
+    if isinstance(counts, dict):
+        try:
+            distinct = int(counts.get("distinct"))
+            if distinct >= 0:
+                return distinct
+        except (TypeError, ValueError):
+            pass
     ids, extra = set(), 0
     for key in ('facts', 'records', 'evidence'):
         for item in (evidence or {}).get(key) or []:

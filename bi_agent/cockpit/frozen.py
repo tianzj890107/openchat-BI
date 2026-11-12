@@ -22,7 +22,7 @@ from urllib.parse import parse_qs
 from fastapi import HTTPException
 from starlette.responses import HTMLResponse, JSONResponse, Response
 
-from .diagnostics import diagnostic_scope, record_failure
+from .diagnostics import diagnostic_scope, record_failure, record_query_failure
 from .cards import CONTRACT, card_delivery_state, valid_card
 from .delivery import project_card, publication_payload
 from .page_cache import compact_analysis
@@ -30,6 +30,24 @@ from .risk import summarize_risk_counts
 from .targets import REGISTRY_VERSION, slot_registry
 
 STAGES = ('opportunity', 'order', 'shipment', 'quotation', 'bid', 'combined')
+INDEPENDENT_ITEMS = ('opportunity-risk',)
+PUBLICATION_KEYS = STAGES + INDEPENDENT_ITEMS
+
+
+def _item_key(spec, items=None):
+    """Return the independently published item for a slot when one exists."""
+    if spec.get('slotId') in INDEPENDENT_ITEMS and (items is None or spec['slotId'] in items):
+        return spec['slotId']
+    return spec['stage']
+
+
+def _release_item(release, spec):
+    items = release.get('items') or {}
+    key = _item_key(spec, items)
+    item = items.get(key)
+    if not item and key != spec['stage']:
+        item = items.get(spec['stage'])
+    return item, (key if items.get(key) else spec['stage'])
 
 
 def validate_release(body):
@@ -42,9 +60,20 @@ def validate_release(body):
         if (not valid_card(item) or item.get('status') not in {'completed', 'limited'}
                 or context.get('stage') != stage or context.get('period') != body['period']):
             raise ValueError('年度发布版缺少可交付的同年度环节：' + stage)
-    if any(not card_delivery_state(publication_payload(project_card(items[s['stage']], s['slotId'])),
-                                    s['slotId'])['renderable'] for s in slot_registry()):
-        raise ValueError('年度发布版未覆盖全部AI插槽')
+    for key in INDEPENDENT_ITEMS:
+        item = items.get(key)
+        if item is None:
+            continue
+        context = (item or {}).get('context') or {}
+        spec = next((slot for slot in slot_registry() if slot['slotId'] == key), None)
+        if (not spec or not valid_card(item) or item.get('status') not in {'completed', 'limited'}
+                or context.get('stage') != spec['stage'] or context.get('slotId') != key
+                or context.get('period') != body['period']):
+            raise ValueError('独立卡片发布内容不合法：' + key)
+    for spec in slot_registry():
+        item, _ = _release_item(body, spec)
+        if not card_delivery_state(publication_payload(project_card(item, spec['slotId'])), spec['slotId'])['renderable']:
+            raise ValueError('年度发布版未覆盖全部AI插槽')
     return body
 
 
@@ -118,7 +147,7 @@ class FrozenAnnualStore:
 
     def publish_stage(self, stage, item):
         # Keep every other stage at its last successful generation.
-        if stage not in STAGES:
+        if stage not in PUBLICATION_KEYS:
             raise ValueError('Unknown analysis stage')
         with self.lock:
             release = self.read()
@@ -165,9 +194,18 @@ class FrozenAnnualService:
             visible_slots = []
         if not isinstance(visible_slots, list) or len(visible_slots)>15 or any(not isinstance(v, str) or v not in registry for v in visible_slots):
             raise HTTPException(422, 'Invalid visible slots')
-        candidates = ([registry[slot_id]['stage']] if slot_id else [])
-        candidates += [registry[v]['stage'] for v in visible_slots]
-        candidates += [s['stage'] for s in registry.values() if s['page']==page]
+        if slot_id:
+            target = _item_key(registry[slot_id])
+            if target in INDEPENDENT_ITEMS:
+                # A dedicated card retry owns the round. Appending the rest of
+                # the page here previously let a shared opportunity task finish
+                # later and compete with the independently published card.
+                return [target]
+        candidates = ([_item_key(registry[slot_id])] if slot_id else [])
+        candidates += [_item_key(registry[v]) for v in visible_slots]
+        # A page-wide refresh keeps the shared stage targets.  Independent
+        # cards join only when the user targets them or they are visible.
+        candidates += [_item_key(s) for s in registry.values() if s['page']==page]
         return list(dict.fromkeys(candidates + list(STAGES)))
 
     def _progress(self):
@@ -177,7 +215,11 @@ class FrozenAnnualService:
 
     def report_progress(self, phase, **detail):
         with self.queue_lock:
-            self.phase, self.detail = phase, {**detail, 'lastProgressAt':time.time()}
+            now = time.time()
+            previous = self.stage_progress.get(self.active, {}) if self.active else {}
+            self.phase, self.detail = phase, {**detail, 'lastProgressAt': now}
+            if previous.get('phase') != phase:
+                self.detail['stepStartedAt'] = now
             if self.active:
                 self.stage_progress[self.active] = {**self.stage_progress.get(self.active, {}), **self.detail, 'phase':phase, 'status':'running'}
             self._progress()
@@ -229,7 +271,7 @@ class FrozenAnnualService:
                         self._progress()
             threading.Thread(target=heartbeat,name='cockpit-round-heartbeat',daemon=True).start()
             try:
-                if hasattr(self.recompute, 'run_stage'):
+                if hasattr(self.recompute, 'run_stage') or hasattr(self.recompute, 'run_slot'):
                     if hasattr(self.recompute, 'begin_round'):
                         self.recompute.begin_round(self.store.read()['period'])
                     if hasattr(self.recompute,'set_progress'):self.recompute.set_progress(self.report_progress)
@@ -242,14 +284,21 @@ class FrozenAnnualService:
                                 return
                             stage = self.pending.pop(0)
                             self.active = stage
-                            self.phase, self.detail = 'fetching', {'startedAt':time.time()}
+                            started_at = time.time()
+                            self.phase, self.detail = 'fetching', {'startedAt':started_at, 'stepStartedAt':started_at}
                             self.stage_progress[stage] = {**self.stage_progress.get(stage, {}), **self.detail, 'phase':'fetching', 'status':'running'}
                             self._progress()
                         started=time.monotonic()
                         phase='stage_execution'
                         try:
                             with diagnostic_scope(runId=self.round_id,stage=stage):
-                                item = self.recompute.run_stage(self.store.read()['period'], stage)
+                                if hasattr(self.recompute, 'previous_items'):
+                                    self.recompute.previous_items[stage] = (
+                                        self.store.read().get('items') or {}).get(stage)
+                                if hasattr(self.recompute, 'run_slot'):
+                                    item = self.recompute.run_slot(self.store.read()['period'], stage)
+                                else:
+                                    item = self.recompute.run_stage(self.store.read()['period'], stage)
                             if (item.get('execution') or {}).get('stopReason')=='stage_no_evidence':
                                 raise RuntimeError('No matching evidence; retain previous published card')
                             phase='publication'
@@ -262,9 +311,12 @@ class FrozenAnnualService:
                             from .store import Store
                             diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
                                 phase=phase,stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
+                            had_previous = bool((self.store.read().get('items') or {}).get(stage))
                             with self.queue_lock:
                                 self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId']))
-                                self.stage_progress[stage].update(status='failed', phase='failed', finishedAt=time.time(), diagnosticId=diagnostic['diagnosticId'])
+                                self.stage_progress[stage].update(
+                                    status='failed', phase='failed', finishedAt=time.time(),
+                                    diagnosticId=diagnostic['diagnosticId'], hadPrevious=had_previous)
                         with self.queue_lock:
                             self.active = ''
                             self._progress()
@@ -297,7 +349,7 @@ class FrozenAnnualService:
                 envelope=self.envelope(identity)
                 grouped={}
                 for sid,slot in envelope['slots'].items():
-                    stage=slot['stage']
+                    stage=slot.get('publicationKey') or slot['stage']
                     bundle=grouped.setdefault(stage,{'slots':{},'evidence':None})
                     payload=slot['payload']
                     if bundle['evidence'] is None:
@@ -321,27 +373,47 @@ class FrozenAnnualService:
 
     def items(self, identity, page=None, release=None):
         release = release or self.store.read()
-        stages = {s['stage'] for s in slot_registry() if page is None or s['page'] == page}
+        keys = {_item_key(s, release.get('items') or {}) for s in slot_registry()
+                if page is None or s['page'] == page}
         items = {}
-        for stage, raw in release['items'].items():
-            if stage not in stages:
+        for key, raw in release['items'].items():
+            if key not in keys:
                 continue
             item = compact_analysis(raw)
             item['context']['id'] = identity
             item['context']['publicationBasis'] = release.get('basis', '')
-            items[stage] = item
+            items[key] = item
         return items
+
+    def published_analysis(self, aid):
+        """Look up an analysis by id across the current frozen release.
+
+        Frozen cards live in the annual release rather than the ordinary
+        append-only analysis table.  Task drafts and task dispatch still need
+        the exact published item, including its evidence and recommendations.
+        """
+        if not isinstance(aid, str) or not aid:
+            return None
+        release = self.store.read()
+        for item in (release.get('items') or {}).values():
+            if isinstance(item, dict) and item.get('id') == aid:
+                return deepcopy(item)
+        return None
 
     def envelope(self, identity, ui_scope='default'):
         release = self.store.read()
         items = self.items(identity, release=release)
         slots = {}
         for spec in slot_registry():
-            item = items[spec['stage']]
+            item, publication_key = _release_item(release, spec)
+            item = compact_analysis(item)
+            item['context']['id'] = identity
+            item['context']['publicationBasis'] = release.get('basis', '')
             payload = publication_payload(project_card(item, spec['slotId']))
             delivery = card_delivery_state(payload, spec['slotId'])
             stamp = float(item.get('updatedAt') or release['createdAt'])
-            slots[spec['slotId']] = dict(**spec, status='ready', contentStatus=delivery['status'],
+            slots[spec['slotId']] = dict(**spec, publicationKey=publication_key,
+                status='ready', contentStatus=delivery['status'],
                 contentComplete=delivery['complete'], contentGaps=delivery['gaps'],
                 evidenceCount=delivery['evidenceCount'], riskFindingCount=delivery['riskFindingCount'],
                 generatedAt=stamp, dataAsOf=stamp, lastSuccessfulPublication=payload,
@@ -379,7 +451,7 @@ def browser_evidence(evidence):
     return value
 
 
-STAGE_LABELS = {'opportunity': '商机获取', 'quotation': '报价', 'bid': '投标',
+STAGE_LABELS = {'opportunity': '商机获取', 'opportunity-risk': '商机获取', 'quotation': '报价', 'bid': '投标',
                 'order': '订单接收', 'shipment': '发货',
                 'combined': '销售额与出货量跨环节共同问题分析'}
 _RECORD_LABELS = {'id': 'ID', 'customer': '客户', 'department': '产品部/部门',
@@ -438,6 +510,17 @@ def _evidence_html(stage, item, release):
     evidence = item.get('evidence') or {}
     facts = [value for value in evidence.get('facts') or [] if isinstance(value, dict)]
     records = [value for value in evidence.get('records') or [] if isinstance(value, dict)]
+    counts = evidence.get('counts') or {}
+    try:
+        fact_count = int(counts.get('facts', len(facts)))
+        record_count = int(counts.get('records', len(records)))
+        distinct_count = int(counts.get('distinct', 0)) or len({
+            str(entry.get('id')) for key in ('facts', 'records', 'evidence')
+            for entry in evidence.get(key) or [] if isinstance(entry, dict) and entry.get('id')})
+        referenced_count = int(counts.get('referenced', len(evidence.get('evidence') or [])))
+    except (TypeError, ValueError):
+        fact_count, record_count = len(facts), len(records)
+        distinct_count = referenced_count = 0
     result = item.get('result') or {}
     stamp = float(item.get('updatedAt') or release.get('createdAt') or 0)
     when = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stamp)) if stamp else ''
@@ -449,7 +532,8 @@ def _evidence_html(stage, item, release):
     lines = [f"- 环节：{STAGE_LABELS.get(stage, stage)}",
              f"- 期间：{release.get('period', '')}",
              f"- 分析时间：{when or '未知'}" + (f"（耗时 {duration}）" if duration else ''),
-             f"- 证据规模：{len(records)} 条记录 · {len(facts)} 项事实",
+             f"- 证据规模：{fact_count} 项数值事实 · {record_count} 条明细记录 · "
+             f"{referenced_count} 条引用证据 · 去重 {distinct_count} 条",
              f"- 分析 ID：{item.get('id', '')}"]
     summary = str(result.get('summary') or '').strip()
     if summary:
@@ -498,7 +582,7 @@ def _evidence_html(stage, item, release):
                                    '完整原始数据可用 `?format=json` 查看。'})
     params = {
         'title': f"完整证据 · {STAGE_LABELS.get(stage, stage)}",
-        'subtitle': f"{release.get('period', '')} 年度分析 · {len(records)} 条记录",
+        'subtitle': f"{release.get('period', '')} 年度分析 · {record_count} 条明细记录 · 去重 {distinct_count} 条证据",
         'source_note': f"分析 {item.get('id', '')} · 期间 {release.get('period', '')}",
         'blocks': blocks,
     }
@@ -552,10 +636,14 @@ class FrozenCockpitSurface:
             if path.startswith('/api/cockpit/ai-publications/stages/') and scope['method']=='GET':
                 parts=path[len('/api/cockpit/ai-publications/stages/'):].split('/')
                 stage=parts[0]
-                if stage not in STAGES or len(parts)>2 or (len(parts)==2 and parts[1]!='evidence'):raise HTTPException(422,'无效分析环节')
+                if stage not in PUBLICATION_KEYS or len(parts)>2 or (len(parts)==2 and parts[1]!='evidence'):raise HTTPException(422,'无效分析环节')
                 if len(parts)==2:
                     release=await asyncio.to_thread(self.service.store.read)
-                    item=release['items'][stage]
+                    item=release['items'].get(stage)
+                    if not item:
+                        item=release['items'].get('opportunity')
+                    if not item:
+                        raise HTTPException(404,'该环节尚未发布完整证据')
                     expected=query.get('analysisId',[''])[0]
                     if expected and expected!=item['id']:raise HTTPException(409,'该环节分析已更新，请重新打开证据')
                     if query.get('format',['json'])[0]=='html':
@@ -673,11 +761,35 @@ def recompute_from_router(app, cwd):
     manager = RefreshManager(store, get_gateway().config, query, start, timeout=timeout)
     manager.implemented_only = True
     class Runner:
+        def __init__(self):
+            self._progress_callback = None
+            self.previous_items = {}
+
         def begin_round(self, period):
             manager.round_queries={}
 
         def set_progress(self, callback):
+            self._progress_callback = callback
             manager.progress_callback=callback
+
+        def run_slot(self, period, stage):
+            if stage == 'opportunity-risk':
+                from .opportunity_v2 import build_card, default_ap_supplement, default_text_interpreter
+                from .store import Store
+                enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+                supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+                previous = self.previous_items.get('opportunity-risk')
+                diagnostic_store = Store(store.path.parent / 'history.sqlite3')
+
+                def report_diagnostic(entry):
+                    return record_query_failure(
+                        diagnostic_store, identity=1, stage='opportunity-risk', **entry)
+
+                return build_card(period, text_interpreter=default_text_interpreter if enabled else None,
+                                  supplement=default_ap_supplement if supplement_enabled else None,
+                                  progress=self._progress_callback, previous=previous,
+                                  diagnostic_reporter=report_diagnostic)
+            return self.run_stage(period, stage)
 
         def run_stage(self, period, stage):
             page = target_page(stage) or 'analysis'

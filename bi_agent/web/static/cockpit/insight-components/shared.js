@@ -1,7 +1,17 @@
 import {createTaskOrderController, ensureTaskOrderStyle} from './task-order/controller.js'
 import {TaskOrderDialog} from './task-order/dialog.js'
+import {highlightNumbers} from './number-highlight.js'
+
+export {highlightNumbers}
 
 const { computed, ref } = window.Vue
+
+const NumberText = Vue.defineComponent({
+  name: 'StageNumberText',
+  props: {text: {type: String, default: ''}},
+  computed: {parts() { return highlightNumbers(this.text) }},
+  template: `<template v-for="(part, index) in parts" :key="index"><span v-if="part.num" class="stage-risk-analysis__num">{{ part.text }}</span><template v-else>{{ part.text }}</template></template>`,
+})
 
 export function cockpitApiBase() {
   const configured = document.querySelector('meta[name="cockpit-api-base"]')?.content || ''
@@ -66,16 +76,32 @@ export function useInsight(props, emit) {
   const facts = computed(() => bundle.value.facts || [])
   const records = computed(() => bundle.value.records || [])
   const evidence = computed(() => bundle.value.evidence || [])
+  const evidenceCounts = computed(() => {
+    const counts = bundle.value.counts
+    if (counts && Number.isFinite(Number(counts.distinct))) {
+      return {
+        facts: Number(counts.facts || 0),
+        records: Number(counts.records || 0),
+        referenced: Number(counts.referenced || 0),
+        distinct: Number(counts.distinct || 0),
+      }
+    }
+    const ids = new Set()
+    for (const item of evidence.value) if (item && item.id) ids.add(String(item.id))
+    return {facts: facts.value.length, records: records.value.length,
+      referenced: evidence.value.length, distinct: ids.size || evidence.value.length}
+  })
   const evidenceLink = computed(() => {
     const slot=props.slotProps||{};
     if(!slot.frozenControls || !props.analysis?.id)return '';
-    return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(slot.stage)}/evidence?id=${slot.identityId}&format=html&analysisId=${encodeURIComponent(props.analysis.id)}`;
+    const publicationKey=slot.publicationKey||slot.stage;
+    return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(publicationKey)}/evidence?id=${slot.identityId}&format=html&analysisId=${encodeURIComponent(props.analysis.id)}`;
   })
   const findings = computed(() => (result.value?.findings || []).slice(0,4))
   const causes = computed(() => (result.value?.causes || []).map(cause=>({...cause,title:String(cause.title||'').replace(/^\[(待验证假设|结构定位|异常表现|数据缺口|记录支持)\]\s*/, '')})))
   const analysisDimensions = computed(() => riskDimensionLinks(result.value?.analysisDimensions || [],findings.value))
   const recommendations = computed(() => result.value?.recommendations || [])
-  const limitations = computed(() => result.value?.limitations || bundle.value.limitations || [])
+  const limitations = computed(() => result.value?.caliberNotes || result.value?.limitations || bundle.value.limitations || [])
   const summary = computed(() => result.value?.businessSummary ?? result.value?.summary ?? '')
   const hasResult = computed(() => Boolean(result.value))
   const stageName = computed(() => props.context?.stageName || props.analysis?.context?.stageName || '')
@@ -84,11 +110,7 @@ export function useInsight(props, emit) {
   const contextLine = computed(() => [stageName.value, period.value, department.value].filter(Boolean).join(' · '))
   // Evidence bundles repeat the same record under facts/records/evidence.
   // Count distinct ids so one record is never presented as two findings.
-  const evidenceCount = computed(() => {
-    const ids = new Set()
-    for (const item of evidence.value) if (item && item.id) ids.add(String(item.id))
-    return ids.size || evidence.value.length
-  })
+  const evidenceCount = computed(() => evidenceCounts.value.distinct)
   const updatedAt = computed(() => {
     const timestamp = Number(props.analysis?.updatedAt)
     if (!Number.isFinite(timestamp)) return ''
@@ -162,9 +184,21 @@ export function useInsight(props, emit) {
   }
 
   function deadlineText(item) {
+    const text = String(item?.deadline || '').trim()
+    if (text && text !== '待确认') return text
     const days = Number(item?.deadlineDays)
     if (Number.isFinite(days) && days > 0) return `${days} 个工作日`
-    return item?.deadline || '期限未提供'
+    return '期限未提供'
+  }
+
+  function displayOwnerRole(value) {
+    // The draft editor still lets users change the role, so the display does
+    // not need the "to be confirmed" annotation.  Strip only explicit
+    // suffixes; keep the role itself.
+    return String(value || '')
+      .replace(/[（(](?:建议角色[，,]\s*)?待确认[）)]\s*$/u, '')
+      .replace(/[（(](?:牵头|协同|配合|支持|执行|负责)[）)]\s*$/u, '')
+      .trim()
   }
 
   function recommendationDetail(item) {
@@ -203,6 +237,7 @@ export function useInsight(props, emit) {
     department,
     contextLine,
     evidenceCount,
+    evidenceCounts,
     updatedAt,
     stateText,
     fact,
@@ -218,6 +253,7 @@ export function useInsight(props, emit) {
     retry,
     dismissRecommendation,
     deadlineText,
+    displayOwnerRole,
     recommendationDetail,
     hasRecommendationDetail,
     toggleRecommendationDetail,
@@ -229,7 +265,7 @@ export function createStageRiskComponent(options = {}) {
   return Vue.defineComponent({
     name: options.name || 'StageRiskAnalysis',
     props: insightProps,
-    components: {InsightLoading, TaskOrderDialog},
+    components: {InsightLoading, TaskOrderDialog, NumberText},
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
@@ -262,10 +298,10 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【风险】</span>
               {{ displayStage }}当前风险判断
             </div>
-            <div class="stage-risk-analysis__summary" :title="summary">{{ summary }}</div>
+            <div class="stage-risk-analysis__summary" :title="summary"><number-text :text="summary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
-              <span class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——{{ finding.description }}</template></span>
+              <span class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——<number-text :text="finding.description" /></template></span>
             </div>
           </article>
 
@@ -276,7 +312,7 @@ export function createStageRiskComponent(options = {}) {
             </div>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
-              <span class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——{{ dimension.description }}
+              <span class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——<number-text :text="dimension.description" />
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }} · {{ evidenceFor(dimension).length }} 条证据</small>
               </span>
             </div>
@@ -308,8 +344,8 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__action-type" :class="'stage-risk-analysis__action-type--' + (item.actionType || 'pending')">
                 {{ actionTypeLabel(item.actionType) }}
               </span>
-              <span class="stage-risk-analysis__action-text">{{ item.action }}</span>
-              <span class="stage-risk-analysis__owner">{{ item.ownerRole || '未提供' }}</span>
+              <span class="stage-risk-analysis__action-text"><number-text :text="item.action" /></span>
+              <span v-if="displayOwnerRole(item.ownerRole)" class="stage-risk-analysis__owner">{{ displayOwnerRole(item.ownerRole) }}</span>
               <span class="stage-risk-analysis__time">{{ deadlineText(item) }}</span>
               <button type="button" class="stage-risk-analysis__close" aria-label="关闭这条建议" @click="dismissRecommendation(item.id)">×</button>
             </div>
@@ -318,10 +354,10 @@ export function createStageRiskComponent(options = {}) {
             <details class="stage-risk-analysis__foot">
               <summary>数据范围、验收与 {{ limitations.length }} 项限制</summary>
             <div v-for="(item, index) in openRecommendations" :key="'accept-' + item.id" class="stage-risk-analysis__acceptance">
-                建议 {{ index + 1 }} 验收：{{ item.acceptance }}<template v-if="hasRecommendationDetail(item)">；补充：{{ recommendationDetail(item) }}</template>
+                建议 {{ index + 1 }} 验收：<number-text :text="item.acceptance" /><template v-if="hasRecommendationDetail(item)">；补充：<number-text :text="recommendationDetail(item)" /></template>
               </div>
               <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
-              <div class="stage-risk-analysis__evidence">证据范围：{{ contextLine }}；{{ records.length }} 条记录、{{ evidenceCount }} 条证据。</div>
+              <div class="stage-risk-analysis__evidence">证据范围：{{ contextLine }}；{{ evidenceCounts.facts }} 项数值事实、{{ evidenceCounts.records }} 条明细记录、{{ evidenceCounts.referenced }} 条引用证据，去重 {{ evidenceCounts.distinct }} 条。</div>
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>
           <task-order-dialog v-if="dialogOpen" :task="task" :busy="busy" :error="taskError"

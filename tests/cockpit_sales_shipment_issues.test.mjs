@@ -24,9 +24,7 @@ test('sales and shipment card renders only the prototype summary and numbered bu
 });
 
 test('combined analysis highlights every number with the prototype blue token', () => {
-  assert.match(source, /const NUMBER_TOKEN = \/\\d\[\\d,\]\*\(\?:\\\.\\d\+\)\?\(\?:\\\/\\d\+\)\?/);
-  assert.match(source, /亿元\|个百分点\|GWh\|个\|%\|天/);
-  assert.match(source, /function highlightNumbers/);
+  assert.match(source, /highlightNumbers \} = window\.InsightRuntime/);
   assert.match(source, /<number-text v-if="dimension\.title !== dimension\.stageLabel" :text="dimension\.title" \/>/);
   assert.match(source, /<number-text :text="dimension\.description" \/>/);
   assert.match(source, /<span class="sales-shipment-issues__num">\{\{ index\+1 \}\}<\/span>）/);

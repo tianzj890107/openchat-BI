@@ -617,12 +617,14 @@ def _action_text(cause_ids: set[str], recommendations: list[dict]) -> str:
             continue
         action = _text(item.get("action"))
         owner = _text(item.get("ownerRole"))
+        deadline = _text(item.get("deadline"))
         days = item.get("deadlineDays")
         acceptance = _text(item.get("acceptance"))
         detail = "；".join(part for part in (
             f"建议措施：{action}" if action else "",
             f"建议责任角色：{owner}（待确认）" if owner else "",
-            f"建议期限：{days} 个工作日（待确认）" if isinstance(days, int) and days > 0 else "",
+            (f"建议期限：{deadline}（待确认）" if deadline and deadline != "待确认" else
+             f"建议期限：{days} 个工作日（待确认）" if isinstance(days, int) and days > 0 else ""),
             f"验收：{ensure_checkable(acceptance)}" if acceptance else "",
         ) if part)
         if detail:

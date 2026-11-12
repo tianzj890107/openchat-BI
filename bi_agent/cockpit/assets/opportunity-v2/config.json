@@ -1,0 +1,2485 @@
+{
+  "version": "opportunity-v2-rules-1",
+  "ontology": "商机获取节点 V2",
+  "source": {
+    "path": "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V2.xlsx",
+    "sha256": "131b31868f86ae50add74f35438ef03e6be159a71b78e81a3498cd1d7be232be"
+  },
+  "dictionary": {
+    "path": "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx",
+    "sha256": "d948b6bf9d06874945466ee09dcdef7fc84576f247d5d3c9ed448e896f6c9f55"
+  },
+  "logicalEntities": {
+    "LE01": {
+      "code": "LE01",
+      "name": "商机管理",
+      "english": "opportunity",
+      "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+      "crm": "opportunity",
+      "status": "已存在"
+    },
+    "LE02": {
+      "code": "LE02",
+      "name": "项目月度销售预测",
+      "english": "oppMonth",
+      "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+      "crm": "new_oppmonth",
+      "status": "已存在"
+    },
+    "LE03": {
+      "code": "LE03",
+      "name": "项目年度销售预测",
+      "english": "oppYear",
+      "table": "ded_public.p_fm_edw_v_ods_crm_new_oppyear_esb",
+      "crm": "new_oppyear",
+      "status": "已存在"
+    },
+    "LE04": {
+      "code": "LE04",
+      "name": "项目进展",
+      "english": "projectProcess",
+      "table": "ded_public.p_fm_edw_v_ods_crm_new_projectprocess_esb",
+      "crm": "new_projectprocess",
+      "status": "已存在"
+    },
+    "LE05": {
+      "code": "LE05",
+      "name": "客户",
+      "english": "account",
+      "table": "ded_public.p_fm_edw_v_ods_crm_account_esb",
+      "crm": "account",
+      "status": "已存在"
+    },
+    "LE06": {
+      "code": "LE06",
+      "name": "销售目标管理",
+      "english": "salesTarget",
+      "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+      "crm": "new_target",
+      "status": "已存在"
+    },
+    "LE07": {
+      "code": "LE07",
+      "name": "订单",
+      "english": "salesOrder",
+      "table": "ded_public.p_fm_edw_v_ods_crm_salesorder_esb",
+      "crm": "salesorder",
+      "status": "已存在"
+    },
+    "LE08": {
+      "code": "LE08",
+      "name": "订单产品",
+      "english": "salesOrderDetail",
+      "table": "ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb",
+      "crm": "salesorderdetail",
+      "status": "已存在"
+    },
+    "LE09": {
+      "code": "LE09",
+      "name": "投标信息",
+      "english": "bidProject",
+      "table": "ded_public.p_fm_bid_project_info",
+      "crm": "",
+      "status": "已存在"
+    },
+    "LE10": {
+      "code": "LE10",
+      "name": "团队",
+      "english": "team",
+      "table": "ded_public.p_fm_edw_v_ods_crm_team_esb",
+      "crm": "Team",
+      "status": "已存在"
+    },
+    "LE11": {
+      "code": "LE11",
+      "name": "团队人员关系",
+      "english": "teamMembership",
+      "table": "ded_public.p_fm_edw_v_ods_crm_teammembership_esb",
+      "crm": "TeamMembership",
+      "status": "已存在"
+    },
+    "LE12": {
+      "code": "LE12",
+      "name": "产品类型",
+      "english": "productType",
+      "table": "ded_public.p_fm_edw_v_ods_crm_new_product_type_esb",
+      "crm": "new_product_type",
+      "status": "已存在"
+    },
+    "LE13": {
+      "code": "LE13",
+      "name": "任务令",
+      "english": "taskOrder",
+      "table": "ywln_ai.task_order（待建，或对接 OA）",
+      "crm": "",
+      "status": "待建（建议表名）"
+    }
+  },
+  "fields": {
+    "LE01": {
+      "opportunityid": {
+        "entity": "LE01",
+        "attribute": "LE01-A0001",
+        "name": "主键",
+        "english": "opportunityid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "opportunityid",
+        "mapping": "直接映射"
+      },
+      "name": {
+        "entity": "LE01",
+        "attribute": "LE01-A0477",
+        "name": "项目名称",
+        "english": "name",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "name",
+        "mapping": "直接映射"
+      },
+      "parentaccountid": {
+        "entity": "LE01",
+        "attribute": "LE01-A0476",
+        "name": "客户",
+        "english": "parentaccountid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "parentaccountid",
+        "mapping": "直接映射"
+      },
+      "new_accountlevel": {
+        "entity": "LE01",
+        "attribute": "LE01-A0090",
+        "name": "客户等级",
+        "english": "new_accountlevel",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_accountlevel",
+        "mapping": "直接映射"
+      },
+      "new_accproducttype": {
+        "entity": "LE01",
+        "attribute": "LE01-A0044",
+        "name": "客户需求产品类型",
+        "english": "new_accproducttype",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_accproducttype",
+        "mapping": "直接映射"
+      },
+      "new_processstage": {
+        "entity": "LE01",
+        "attribute": "LE01-A0451",
+        "name": "项目阶段",
+        "english": "new_processstage",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_processstage",
+        "mapping": "直接映射"
+      },
+      "new_approvalstatus_acneed": {
+        "entity": "LE01",
+        "attribute": "LE01-A0430",
+        "name": "客户需求审核状态",
+        "english": "new_approvalstatus_acneed",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_approvalstatus_acneed",
+        "mapping": "直接映射"
+      },
+      "new_approvalstatus": {
+        "entity": "LE01",
+        "attribute": "LE01-A0177",
+        "name": "审核状态",
+        "english": "new_approvalstatus",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_approvalstatus",
+        "mapping": "直接映射"
+      },
+      "new_opportunitystatus": {
+        "entity": "LE01",
+        "attribute": "LE01-A0053",
+        "name": "商机状态",
+        "english": "new_opportunitystatus",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_opportunitystatus",
+        "mapping": "直接映射"
+      },
+      "new_contractconfirmation": {
+        "entity": "LE01",
+        "attribute": "LE01-A0450",
+        "name": "批量合同确认",
+        "english": "new_contractconfirmation",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_contractconfirmation",
+        "mapping": "直接映射"
+      },
+      "new_contractconfirmation_date": {
+        "entity": "LE01",
+        "attribute": "LE01-A0119",
+        "name": "批量合同确认完成时间",
+        "english": "new_contractconfirmation_date",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_contractconfirmation_date",
+        "mapping": "直接映射"
+      },
+      "createdon": {
+        "entity": "LE01",
+        "attribute": "LE01-A0490",
+        "name": "创建时间",
+        "english": "createdon",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "createdon",
+        "mapping": "直接映射"
+      },
+      "new_stage1enddate": {
+        "entity": "LE01",
+        "attribute": "LE01-A0101",
+        "name": "阶段一结束日期",
+        "english": "new_stage1enddate",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_stage1enddate",
+        "mapping": "直接映射"
+      },
+      "new_stage2enddate": {
+        "entity": "LE01",
+        "attribute": "LE01-A0243",
+        "name": "阶段二结束日期",
+        "english": "new_stage2enddate",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_stage2enddate",
+        "mapping": "直接映射"
+      },
+      "new_stage3enddate": {
+        "entity": "LE01",
+        "attribute": "LE01-A0100",
+        "name": "阶段三结束日期",
+        "english": "new_stage3enddate",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_stage3enddate",
+        "mapping": "直接映射"
+      },
+      "new_stage4enddate": {
+        "entity": "LE01",
+        "attribute": "LE01-A0007",
+        "name": "阶段四结束日期",
+        "english": "new_stage4enddate",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_stage4enddate",
+        "mapping": "直接映射"
+      },
+      "new_stage5enddate": {
+        "entity": "LE01",
+        "attribute": "LE01-A0151",
+        "name": "阶段五结束日期",
+        "english": "new_stage5enddate",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_stage5enddate",
+        "mapping": "直接映射"
+      },
+      "ownerid": {
+        "entity": "LE01",
+        "attribute": "LE01-A0486",
+        "name": "负责人",
+        "english": "ownerid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "ownerid",
+        "mapping": "直接映射"
+      },
+      "statecode": {
+        "entity": "LE01",
+        "attribute": "LE01-A0488",
+        "name": "状态",
+        "english": "statecode",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "statecode",
+        "mapping": "直接映射"
+      },
+      "estimatedvalue": {
+        "entity": "LE01",
+        "attribute": "LE01-A0478",
+        "name": "预计收入(元)",
+        "english": "estimatedvalue",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "estimatedvalue",
+        "mapping": "直接映射"
+      },
+      "new_projectpower": {
+        "entity": "LE01",
+        "attribute": "LE01-A0468",
+        "name": "项目电量(kWh)",
+        "english": "new_projectpower",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_projectpower",
+        "mapping": "直接映射"
+      },
+      "new_forecasttime": {
+        "entity": "LE01",
+        "attribute": "LE01-A0050",
+        "name": "预计转化时间",
+        "english": "new_forecasttime",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_forecasttime",
+        "mapping": "直接映射"
+      }
+    },
+    "LE02": {
+      "new_oppmonthid": {
+        "entity": "LE02",
+        "attribute": "LE02-A0001",
+        "name": "主键",
+        "english": "new_oppmonthid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "new_oppmonthid",
+        "mapping": "直接映射"
+      },
+      "new_opportunity_id": {
+        "entity": "LE02",
+        "attribute": "LE02-A0043",
+        "name": "项目",
+        "english": "new_opportunity_id",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "new_opportunity_id",
+        "mapping": "直接映射"
+      },
+      "new_accountdate": {
+        "entity": "LE02",
+        "attribute": "LE02-A0057",
+        "name": "预测年月(用于排序与过滤)",
+        "english": "new_accountdate",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "new_accountdate",
+        "mapping": "直接映射"
+      },
+      "new_forecast_amt_rmb": {
+        "entity": "LE02",
+        "attribute": "LE02-A0039",
+        "name": "预测订单金额(未税/人民币)",
+        "english": "new_forecast_amt_rmb",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "new_forecast_amt_rmb",
+        "mapping": "直接映射"
+      },
+      "new_amt_rmb": {
+        "entity": "LE02",
+        "attribute": "LE02-A0059",
+        "name": "正式订单金额(未税/人民币)",
+        "english": "new_amt_rmb",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "new_amt_rmb",
+        "mapping": "直接映射"
+      },
+      "new_forcastpower": {
+        "entity": "LE02",
+        "attribute": "LE02-A0072",
+        "name": "预测总电量(MWh)",
+        "english": "new_forcastpower",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "new_forcastpower",
+        "mapping": "直接映射"
+      },
+      "new_orderforecast_qty": {
+        "entity": "LE02",
+        "attribute": "LE02-A0046",
+        "name": "预测订单出货数",
+        "english": "new_orderforecast_qty",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "new_orderforecast_qty",
+        "mapping": "直接映射"
+      },
+      "statecode": {
+        "entity": "LE02",
+        "attribute": "LE02-A0027",
+        "name": "状态",
+        "english": "statecode",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "statecode",
+        "mapping": "直接映射"
+      },
+      "new_approvalstatus": {
+        "entity": "LE02",
+        "attribute": "LE02-A0066",
+        "name": "审核状态",
+        "english": "new_approvalstatus",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "new_approvalstatus",
+        "mapping": "直接映射"
+      }
+    },
+    "LE04": {
+      "new_projectprocessid": {
+        "entity": "LE04",
+        "attribute": "LE04-A0001",
+        "name": "主键",
+        "english": "new_projectprocessid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_projectprocess_esb",
+        "column": "new_projectprocessid",
+        "mapping": "直接映射"
+      },
+      "new_opportunity_id": {
+        "entity": "LE04",
+        "attribute": "LE04-A0021",
+        "name": "商机项目号",
+        "english": "new_opportunity_id",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_projectprocess_esb",
+        "column": "new_opportunity_id",
+        "mapping": "直接映射"
+      },
+      "new_desc": {
+        "entity": "LE04",
+        "attribute": "LE04-A0019",
+        "name": "项目进展",
+        "english": "new_desc",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_projectprocess_esb",
+        "column": "new_desc",
+        "mapping": "直接映射"
+      },
+      "new_sdate": {
+        "entity": "LE04",
+        "attribute": "LE04-A0023",
+        "name": "开始时间",
+        "english": "new_sdate",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_projectprocess_esb",
+        "column": "new_sdate",
+        "mapping": "直接映射"
+      },
+      "new_edate": {
+        "entity": "LE04",
+        "attribute": "LE04-A0020",
+        "name": "结束时间",
+        "english": "new_edate",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_projectprocess_esb",
+        "column": "new_edate",
+        "mapping": "直接映射"
+      },
+      "new_question_resource": {
+        "entity": "LE04",
+        "attribute": "LE04-A0024",
+        "name": "问题与所需资源",
+        "english": "new_question_resource",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_projectprocess_esb",
+        "column": "new_question_resource",
+        "mapping": "直接映射"
+      },
+      "new_projectstage": {
+        "entity": "LE04",
+        "attribute": "LE04-A0022",
+        "name": "项目阶段",
+        "english": "new_projectstage",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_projectprocess_esb",
+        "column": "new_projectstage",
+        "mapping": "直接映射"
+      }
+    },
+    "LE05": {
+      "accountid": {
+        "entity": "LE05",
+        "attribute": "LE05-A0001",
+        "name": "主键",
+        "english": "accountid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_account_esb",
+        "column": "accountid",
+        "mapping": "直接映射"
+      },
+      "name": {
+        "entity": "LE05",
+        "attribute": "LE05-A0277",
+        "name": "客户名称",
+        "english": "name",
+        "table": "ded_public.p_fm_edw_v_ods_crm_account_esb",
+        "column": "name",
+        "mapping": "直接映射"
+      },
+      "new_accountlevel": {
+        "entity": "LE05",
+        "attribute": "LE05-A0244",
+        "name": "客户等级",
+        "english": "new_accountlevel",
+        "table": "ded_public.p_fm_edw_v_ods_crm_account_esb",
+        "column": "new_accountlevel",
+        "mapping": "直接映射"
+      },
+      "createdon": {
+        "entity": "LE05",
+        "attribute": "LE05-A0295",
+        "name": "创建时间",
+        "english": "createdon",
+        "table": "ded_public.p_fm_edw_v_ods_crm_account_esb",
+        "column": "createdon",
+        "mapping": "直接映射"
+      },
+      "statecode": {
+        "entity": "LE05",
+        "attribute": "LE05-A0293",
+        "name": "状态",
+        "english": "statecode",
+        "table": "ded_public.p_fm_edw_v_ods_crm_account_esb",
+        "column": "statecode",
+        "mapping": "直接映射"
+      }
+    },
+    "LE06": {
+      "new_targetid": {
+        "entity": "LE06",
+        "attribute": "LE06-A0001",
+        "name": "主键",
+        "english": "new_targetid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_targetid",
+        "mapping": "直接映射"
+      },
+      "new_year": {
+        "entity": "LE06",
+        "attribute": "LE06-A0056",
+        "name": "年度",
+        "english": "new_year",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_year",
+        "mapping": "直接映射"
+      },
+      "new_account_id": {
+        "entity": "LE06",
+        "attribute": "LE06-A0038",
+        "name": "客户",
+        "english": "new_account_id",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_account_id",
+        "mapping": "直接映射"
+      },
+      "new_producttype_id": {
+        "entity": "LE06",
+        "attribute": "LE06-A0054",
+        "name": "产品类型",
+        "english": "new_producttype_id",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_producttype_id",
+        "mapping": "直接映射"
+      },
+      "new_dept_id": {
+        "entity": "LE06",
+        "attribute": "LE06-A0039",
+        "name": "部门",
+        "english": "new_dept_id",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_dept_id",
+        "mapping": "直接映射"
+      },
+      "new_opportunity_id": {
+        "entity": "LE06",
+        "attribute": "LE06-A0053",
+        "name": "项目号",
+        "english": "new_opportunity_id",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_opportunity_id",
+        "mapping": "直接映射"
+      },
+      "new_project_name": {
+        "entity": "LE06",
+        "attribute": "LE06-A0055",
+        "name": "项目管理名称",
+        "english": "new_project_name",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_project_name",
+        "mapping": "直接映射"
+      },
+      "statecode": {
+        "entity": "LE06",
+        "attribute": "LE06-A0030",
+        "name": "状态",
+        "english": "statecode",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "statecode",
+        "mapping": "直接映射"
+      },
+      "new_month1": {
+        "entity": "LE06",
+        "attribute": "LE06-A0041",
+        "name": "1月金额",
+        "english": "new_month1",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month1",
+        "mapping": "直接映射"
+      },
+      "new_month2": {
+        "entity": "LE06",
+        "attribute": "LE06-A0045",
+        "name": "2月金额",
+        "english": "new_month2",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month2",
+        "mapping": "直接映射"
+      },
+      "new_month3": {
+        "entity": "LE06",
+        "attribute": "LE06-A0046",
+        "name": "3月金额",
+        "english": "new_month3",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month3",
+        "mapping": "直接映射"
+      },
+      "new_month4": {
+        "entity": "LE06",
+        "attribute": "LE06-A0047",
+        "name": "4月金额",
+        "english": "new_month4",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month4",
+        "mapping": "直接映射"
+      },
+      "new_month5": {
+        "entity": "LE06",
+        "attribute": "LE06-A0048",
+        "name": "5月金额",
+        "english": "new_month5",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month5",
+        "mapping": "直接映射"
+      },
+      "new_month6": {
+        "entity": "LE06",
+        "attribute": "LE06-A0049",
+        "name": "6月金额",
+        "english": "new_month6",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month6",
+        "mapping": "直接映射"
+      },
+      "new_month7": {
+        "entity": "LE06",
+        "attribute": "LE06-A0050",
+        "name": "7月金额",
+        "english": "new_month7",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month7",
+        "mapping": "直接映射"
+      },
+      "new_month8": {
+        "entity": "LE06",
+        "attribute": "LE06-A0051",
+        "name": "8月金额",
+        "english": "new_month8",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month8",
+        "mapping": "直接映射"
+      },
+      "new_month9": {
+        "entity": "LE06",
+        "attribute": "LE06-A0052",
+        "name": "9月金额",
+        "english": "new_month9",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month9",
+        "mapping": "直接映射"
+      },
+      "new_month10": {
+        "entity": "LE06",
+        "attribute": "LE06-A0042",
+        "name": "10月金额",
+        "english": "new_month10",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month10",
+        "mapping": "直接映射"
+      },
+      "new_month11": {
+        "entity": "LE06",
+        "attribute": "LE06-A0043",
+        "name": "11月金额",
+        "english": "new_month11",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month11",
+        "mapping": "直接映射"
+      },
+      "new_month12": {
+        "entity": "LE06",
+        "attribute": "LE06-A0044",
+        "name": "12月金额",
+        "english": "new_month12",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month12",
+        "mapping": "直接映射"
+      },
+      "new_month1_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0058",
+        "name": "1月数量",
+        "english": "new_month1_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month1_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month2_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0062",
+        "name": "2月数量",
+        "english": "new_month2_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month2_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month3_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0063",
+        "name": "3月数量",
+        "english": "new_month3_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month3_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month4_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0064",
+        "name": "4月数量",
+        "english": "new_month4_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month4_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month5_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0065",
+        "name": "5月数量",
+        "english": "new_month5_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month5_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month6_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0066",
+        "name": "6月数量",
+        "english": "new_month6_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month6_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month7_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0067",
+        "name": "7月数量",
+        "english": "new_month7_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month7_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month8_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0068",
+        "name": "8月数量",
+        "english": "new_month8_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month8_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month9_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0069",
+        "name": "9月数量",
+        "english": "new_month9_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month9_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month10_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0059",
+        "name": "10月数量",
+        "english": "new_month10_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month10_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month11_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0060",
+        "name": "11月数量",
+        "english": "new_month11_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month11_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month12_quantity": {
+        "entity": "LE06",
+        "attribute": "LE06-A0061",
+        "name": "12月数量",
+        "english": "new_month12_quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month12_quantity",
+        "mapping": "直接映射"
+      },
+      "new_month1_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0072",
+        "name": "1月电量",
+        "english": "new_month1_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month1_power",
+        "mapping": "直接映射"
+      },
+      "new_month2_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0076",
+        "name": "2月电量",
+        "english": "new_month2_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month2_power",
+        "mapping": "直接映射"
+      },
+      "new_month3_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0077",
+        "name": "3月电量",
+        "english": "new_month3_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month3_power",
+        "mapping": "直接映射"
+      },
+      "new_month4_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0078",
+        "name": "4月电量",
+        "english": "new_month4_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month4_power",
+        "mapping": "直接映射"
+      },
+      "new_month5_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0079",
+        "name": "5月电量",
+        "english": "new_month5_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month5_power",
+        "mapping": "直接映射"
+      },
+      "new_month6_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0080",
+        "name": "6月电量",
+        "english": "new_month6_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month6_power",
+        "mapping": "直接映射"
+      },
+      "new_month7_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0081",
+        "name": "7月电量",
+        "english": "new_month7_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month7_power",
+        "mapping": "直接映射"
+      },
+      "new_month8_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0082",
+        "name": "8月电量",
+        "english": "new_month8_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month8_power",
+        "mapping": "直接映射"
+      },
+      "new_month9_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0083",
+        "name": "9月电量",
+        "english": "new_month9_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month9_power",
+        "mapping": "直接映射"
+      },
+      "new_month10_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0073",
+        "name": "10月电量",
+        "english": "new_month10_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month10_power",
+        "mapping": "直接映射"
+      },
+      "new_month11_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0074",
+        "name": "11月电量",
+        "english": "new_month11_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month11_power",
+        "mapping": "直接映射"
+      },
+      "new_month12_power": {
+        "entity": "LE06",
+        "attribute": "LE06-A0075",
+        "name": "12月电量",
+        "english": "new_month12_power",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "new_month12_power",
+        "mapping": "直接映射"
+      }
+    },
+    "LE07": {
+      "salesorderid": {
+        "entity": "LE07",
+        "attribute": "LE07-A0001",
+        "name": "主键",
+        "english": "salesorderid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorder_esb",
+        "column": "salesorderid",
+        "mapping": "直接映射"
+      },
+      "new_contract_num": {
+        "entity": "LE07",
+        "attribute": "LE07-A0130",
+        "name": "合同编号",
+        "english": "new_contract_num",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorder_esb",
+        "column": "new_contract_num",
+        "mapping": "直接映射"
+      },
+      "new_contract_amt": {
+        "entity": "LE07",
+        "attribute": "LE07-A0059",
+        "name": "合同金额(原币/含税)",
+        "english": "new_contract_amt",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorder_esb",
+        "column": "new_contract_amt",
+        "mapping": "直接映射"
+      },
+      "statecode": {
+        "entity": "LE07",
+        "attribute": "LE07-A0164",
+        "name": "状态",
+        "english": "statecode",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorder_esb",
+        "column": "statecode",
+        "mapping": "直接映射"
+      },
+      "statuscode": {
+        "entity": "LE07",
+        "attribute": "LE07-A0165",
+        "name": "状态描述",
+        "english": "statuscode",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorder_esb",
+        "column": "statuscode",
+        "mapping": "直接映射"
+      }
+    },
+    "LE08": {
+      "salesorderdetailid": {
+        "entity": "LE08",
+        "attribute": "LE08-A0001",
+        "name": "主键",
+        "english": "salesorderdetailid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb",
+        "column": "salesorderdetailid",
+        "mapping": "直接映射"
+      },
+      "salesorderid": {
+        "entity": "LE08",
+        "attribute": "LE08-A0109",
+        "name": "订单",
+        "english": "salesorderid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb",
+        "column": "salesorderid",
+        "mapping": "直接映射"
+      },
+      "new_opportunity_id": {
+        "entity": "LE08",
+        "attribute": "LE08-A0025",
+        "name": "项目",
+        "english": "new_opportunity_id",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb",
+        "column": "new_opportunity_id",
+        "mapping": "直接映射"
+      },
+      "new_product_type": {
+        "entity": "LE08",
+        "attribute": "LE08-A0034",
+        "name": "未税单价（人民币）",
+        "english": "new_product_type",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb",
+        "column": "new_product_type",
+        "mapping": "直接映射"
+      },
+      "quantity": {
+        "entity": "LE08",
+        "attribute": "LE08-A0113",
+        "name": "订单数量",
+        "english": "quantity",
+        "table": "ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb",
+        "column": "quantity",
+        "mapping": "直接映射"
+      }
+    },
+    "LE09": {
+      "seq_no": {
+        "entity": "LE09",
+        "attribute": "LE09-A0001",
+        "name": "序号",
+        "english": "seq_no",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "seq_no",
+        "mapping": "直接映射"
+      },
+      "project_name": {
+        "entity": "LE09",
+        "attribute": "LE09-A0002",
+        "name": "项目名称",
+        "english": "project_name",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "project_name",
+        "mapping": "直接映射"
+      },
+      "input_time": {
+        "entity": "LE09",
+        "attribute": "LE09-A0003",
+        "name": "输入时间",
+        "english": "input_time",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "input_time",
+        "mapping": "直接映射"
+      },
+      "bid_open_time": {
+        "entity": "LE09",
+        "attribute": "LE09-A0004",
+        "name": "开标时间",
+        "english": "bid_open_time",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "bid_open_time",
+        "mapping": "直接映射"
+      },
+      "winner_announce_time": {
+        "entity": "LE09",
+        "attribute": "LE09-A0039",
+        "name": "中标人公布时间",
+        "english": "winner_announce_time",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "winner_announce_time",
+        "mapping": "直接映射"
+      },
+      "is_awarded": {
+        "entity": "LE09",
+        "attribute": "LE09-A0036",
+        "name": "是否中标",
+        "english": "is_awarded",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "is_awarded",
+        "mapping": "直接映射"
+      },
+      "bid_open_result": {
+        "entity": "LE09",
+        "attribute": "LE09-A0037",
+        "name": "开标结果",
+        "english": "bid_open_result",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "bid_open_result",
+        "mapping": "直接映射"
+      },
+      "bid_amount": {
+        "entity": "LE09",
+        "attribute": "LE09-A0041",
+        "name": "投标金额",
+        "english": "bid_amount",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "bid_amount",
+        "mapping": "直接映射"
+      },
+      "energy_mwh": {
+        "entity": "LE09",
+        "attribute": "LE09-A0013",
+        "name": "电量/MWh",
+        "english": "energy_mwh",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "energy_mwh",
+        "mapping": "直接映射"
+      },
+      "power_mw": {
+        "entity": "LE09",
+        "attribute": "LE09-A0012",
+        "name": "功率/MW",
+        "english": "power_mw",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "power_mw",
+        "mapping": "直接映射"
+      },
+      "tenderee_full_name": {
+        "entity": "LE09",
+        "attribute": "LE09-A0005",
+        "name": "招标方全称",
+        "english": "tenderee_full_name",
+        "table": "ded_public.p_fm_bid_project_info",
+        "column": "tenderee_full_name",
+        "mapping": "直接映射"
+      }
+    },
+    "LE10": {
+      "teamid": {
+        "entity": "LE10",
+        "attribute": "LE10-A0001",
+        "name": "主键",
+        "english": "teamid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_team_esb",
+        "column": "teamid",
+        "mapping": "直接映射"
+      },
+      "name": {
+        "entity": "LE10",
+        "attribute": "LE10-A0002",
+        "name": "团队名",
+        "english": "name",
+        "table": "ded_public.p_fm_edw_v_ods_crm_team_esb",
+        "column": "name",
+        "mapping": "直接映射"
+      }
+    },
+    "LE11": {
+      "teamid": {
+        "entity": "LE11",
+        "attribute": "LE11-A0002",
+        "name": "团队ID",
+        "english": "teamid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_teammembership_esb",
+        "column": "teamid",
+        "mapping": "直接映射"
+      },
+      "systemuserid": {
+        "entity": "LE11",
+        "attribute": "LE11-A0003",
+        "name": "用户ID",
+        "english": "systemuserid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_teammembership_esb",
+        "column": "systemuserid",
+        "mapping": "直接映射"
+      }
+    },
+    "LE12": {
+      "new_product_typeid": {
+        "entity": "LE12",
+        "attribute": "LE12-A0001",
+        "name": "主键",
+        "english": "new_product_typeid",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_product_type_esb",
+        "column": "new_product_typeid",
+        "mapping": "直接映射"
+      },
+      "new_accproducttype": {
+        "entity": "LE12",
+        "attribute": "LE12-A0005",
+        "name": "客户需求产品类型",
+        "english": "new_accproducttype",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_product_type_esb",
+        "column": "new_accproducttype",
+        "mapping": "直接映射"
+      },
+      "new_name": {
+        "entity": "LE12",
+        "attribute": "LE12-A0003",
+        "name": "产品类型名称",
+        "english": "new_name",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_product_type_esb",
+        "column": "new_name",
+        "mapping": "直接映射"
+      },
+      "new_product_type_code": {
+        "entity": "LE12",
+        "attribute": "LE12-A0008",
+        "name": "产品类型编码",
+        "english": "new_product_type_code",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_product_type_esb",
+        "column": "new_product_type_code",
+        "mapping": "直接映射"
+      }
+    }
+  },
+  "metrics": {
+    "B01": {
+      "code": "B01",
+      "name": "年度销售目标",
+      "definition": "同一年度、组织和产品范围的销售额目标与电量目标",
+      "formula": "销售额目标；电量目标",
+      "caliber": "与商机预测同年度、同组织、同产品范围",
+      "type": "原子指标",
+      "entities": [
+        "LE06"
+      ],
+      "attributes": "LE06-A0056 销售目标管理.年度（new_year，空 0%）\nLE06-A0057 销售目标管理.合计金额（new_total_amount，空 100%）\nLE06-A0123 销售目标管理.new_basictarget_month1（new_basictarget_month1，空 100%）\nLE06-A0038 销售目标管理.客户（new_account_id，空 0%）\nLE06-A0054 销售目标管理.产品类型（new_producttype_id，空 0%）",
+      "unit": "亿元／GWh",
+      "dimension": "D029",
+      "sqlCodes": "M0002、M0007"
+    },
+    "B02": {
+      "code": "B02",
+      "name": "商机总预测金额／电量",
+      "definition": "CRM 商机预测汇总，按商机及月度预测明细去重",
+      "formula": "已历月份取正式订单金额，当月及以后取预测金额",
+      "caliber": "月度预测有效、审核通过；商机审核通过",
+      "type": "原子指标",
+      "entities": [
+        "LE02",
+        "LE01"
+      ],
+      "attributes": "LE02-A0057 项目月度销售预测.预测年月(用于排序与过滤)（new_accountdate，空 0%）\nLE02-A0059 项目月度销售预测.正式订单金额(未税/人民币)（new_amt_rmb，空 74.32%）\nLE02-A0039 项目月度销售预测.预测订单金额(未税/人民币)（new_forecast_amt_rmb，空 0%）\nLE02-A0072 项目月度销售预测.预测总电量(MWh)（new_forcastpower，空 100%）\nLE02-A0027 项目月度销售预测.状态（statecode，空 0%）\nLE02-A0066 项目月度销售预测.审核状态（new_approvalstatus，空 0%）\nLE02-A0043 项目月度销售预测.项目（new_opportunity_id，空 0%）\nLE01-A0177 商机管理.审核状态（new_approvalstatus，空 0%）\nLE01-A0053 商机管理.商机状态（new_opportunitystatus，空 0%）",
+      "unit": "亿元／GWh",
+      "dimension": "D001",
+      "sqlCodes": "M0023、M0022"
+    },
+    "R01": {
+      "code": "R01",
+      "name": "商机预测缺口",
+      "definition": "年度目标与同口径商机总预测之差",
+      "formula": "B01 − B02（金额、电量分别计算）",
+      "caliber": "同年度、组织、产品范围",
+      "type": "复合指标",
+      "entities": [],
+      "attributes": "（由其他指标计算）",
+      "unit": "亿元／GWh",
+      "dimension": "D001",
+      "sqlCodes": "M0140"
+    },
+    "R02": {
+      "code": "R02",
+      "name": "未签单商机预测金额／电量",
+      "definition": "关联有效订单数为 0 的商机预测",
+      "formula": "B02 where D015 = 未签单",
+      "caliber": "订单按订单 ID 去重；拆总体、电芯、PACK",
+      "type": "派生指标",
+      "entities": [
+        "LE02",
+        "LE01",
+        "LE08",
+        "LE07"
+      ],
+      "attributes": "LE08-A0025 订单产品.项目（new_opportunity_id，空 53.23%）\nLE07-A0164 订单.状态（statecode，空 0%）\nLE07-A0001 订单.主键（salesorderid，空 0%）",
+      "unit": "亿元／GWh",
+      "dimension": "D001",
+      "sqlCodes": "M0023 − M0198；M0195"
+    },
+    "R03": {
+      "code": "R03",
+      "name": "签单进度与时间进度差",
+      "definition": "按目标测算的签单进度与时间进度比较",
+      "formula": "待签及缺口占比 =（R02 + R01）÷ B01；签单进度 = 1 − 待签及缺口占比；时间进度 = 已过天数 ÷ 全年天数",
+      "caliber": "金额、电量各自口径",
+      "type": "复合指标",
+      "entities": [],
+      "attributes": "（由其他指标计算）",
+      "unit": "%",
+      "dimension": "D001",
+      "sqlCodes": "需新增（分项 M0023、M0198、M0140、M0009 已有）"
+    },
+    "R04": {
+      "code": "R04",
+      "name": "重点跟踪未签单商机数与预测金额／电量",
+      "definition": "战略、重点客户的未签单商机",
+      "formula": "count(distinct 商机) 与 R02 where D005 ∈ 战略、重点",
+      "caliber": "分别统计战略、重点及合计，按电芯 / PACK 拆分",
+      "type": "派生指标",
+      "entities": [
+        "LE01",
+        "LE05"
+      ],
+      "attributes": "LE01-A0090 商机管理.客户等级（new_accountlevel，空 0.45%）\nLE05-A0244 客户.客户等级（new_accountlevel，空 0%）",
+      "unit": "条、亿元／GWh",
+      "dimension": "D001",
+      "sqlCodes": "M0024、M0023（组合）"
+    },
+    "R05": {
+      "code": "R05",
+      "name": "电芯类待签商机预测金额／电量",
+      "definition": "电芯类的目标、总预测与待签预测",
+      "formula": "R02 where D003 = 电芯",
+      "caliber": "金额与电量分别计算",
+      "type": "派生指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0044 商机管理.客户需求产品类型（new_accproducttype，空 0.07%）",
+      "unit": "亿元／GWh",
+      "dimension": "D001",
+      "sqlCodes": "M0198、M0023（按 D003）"
+    },
+    "R06": {
+      "code": "R06",
+      "name": "PACK 类待签商机预测金额／电量",
+      "definition": "PACK 类的目标、总预测与待签预测",
+      "formula": "R02 where D003 = PACK",
+      "caliber": "金额与电量分别计算",
+      "type": "派生指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0044 商机管理.客户需求产品类型（new_accproducttype，空 0.07%）",
+      "unit": "亿元／GWh",
+      "dimension": "D001",
+      "sqlCodes": "M0198、M0023（按 D003）"
+    },
+    "R08": {
+      "code": "R08",
+      "name": "客户目标、商机预测及缺口",
+      "definition": "按客户比较目标与商机预测",
+      "formula": "缺口 = 客户目标 − 客户商机预测（电芯 / PACK 拆分）",
+      "caliber": "按客户 ID 去重",
+      "type": "派生指标",
+      "entities": [
+        "LE06",
+        "LE02",
+        "LE05"
+      ],
+      "attributes": "LE06-A0038 销售目标管理.客户（new_account_id，空 0%）\nLE01-A0476 商机管理.客户（parentaccountid，空 0%）",
+      "unit": "亿元／GWh",
+      "dimension": "D001",
+      "sqlCodes": "M_CUSTOMER_TARGET_ENERGY、M_CUSTOMER_OPPORTUNITY_GAP"
+    },
+    "R09": {
+      "code": "R09",
+      "name": "待突破的战略客户数",
+      "definition": "战略客户名单中商机数为 0 的客户",
+      "formula": "count(distinct 客户) where D005 = 战略 且 商机数 = 0",
+      "caliber": "按客户 ID 去重",
+      "type": "派生指标",
+      "entities": [
+        "LE05",
+        "LE01"
+      ],
+      "attributes": "LE05-A0001 客户.主键（accountid，空 0%）\nLE05-A0244 客户.客户等级（new_accountlevel，空 0%）\nLE01-A0476 商机管理.客户（parentaccountid，空 0%）\nLE01-A0053 商机管理.商机状态（new_opportunitystatus，空 0%）",
+      "unit": "家",
+      "dimension": "—",
+      "sqlCodes": "M0257（口径：仅计进行中商机，需与专家口径统一）"
+    },
+    "R10": {
+      "code": "R10",
+      "name": "有商机但未进入投标的战略客户数",
+      "definition": "有商机且全部商机均未进入投标的战略客户",
+      "formula": "count(distinct 客户) where D005 = 战略 且 商机数 > 0 且 全部商机 D_IS_BIDDING = 否",
+      "caliber": "按电芯 / PACK 分组",
+      "type": "派生指标",
+      "entities": [
+        "LE05",
+        "LE01",
+        "LE09"
+      ],
+      "attributes": "LE01-A0477 商机管理.项目名称（name，空 0%）\nLE09-A0002 投标信息.项目名称（project_name，空 0%）\nLE01-A0451 商机管理.项目阶段（new_processstage，空 0%）",
+      "unit": "家",
+      "dimension": "—",
+      "sqlCodes": "M_NON_BIDDING_OPPORTUNITY_COUNT（按客户再聚合）"
+    },
+    "R11": {
+      "code": "R11",
+      "name": "投标中商机数",
+      "definition": "当前处于投标中的商机",
+      "formula": "count(distinct 商机) where D_IS_BIDDING = 是 且 未出结果",
+      "caliber": "按电芯 / PACK 拆分，可按客户下钻",
+      "type": "派生指标",
+      "entities": [
+        "LE09",
+        "LE01"
+      ],
+      "attributes": "LE09-A0003 投标信息.输入时间（input_time，空 1.63%）\nLE09-A0004 投标信息.开标时间（bid_open_time，空 3.26%）\nLE09-A0039 投标信息.中标人公布时间（winner_announce_time，空 55.98%）\nLE09-A0036 投标信息.是否中标（is_awarded，空 0%）",
+      "unit": "条",
+      "dimension": "—",
+      "sqlCodes": "M_BIDDING_OPPORTUNITY_COUNT"
+    },
+    "C01": {
+      "code": "C01",
+      "name": "P0 阶段战略客户未签单商机数及预测量",
+      "definition": "战略客户、未签单、处于 P0 的商机，单列需求确认未完成部分",
+      "formula": "R04 where D005 = 战略 且 D_STAGE = P0；需求未确认：客户需求审核状态未通过",
+      "caliber": "按商机 ID 去重",
+      "type": "派生指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0451 商机管理.项目阶段（new_processstage，空 0%）\nLE01-A0430 商机管理.客户需求审核状态（new_approvalstatus_acneed，空 0%）\nLE01-A0386 商机管理.客户需求审批通过时间（new_approved_time_acneed，空 73.17%）",
+      "unit": "条、亿元／GWh",
+      "dimension": "—",
+      "sqlCodes": "需新增"
+    },
+    "C02": {
+      "code": "C02",
+      "name": "战略客户待投标商机的商务与技术不满足项",
+      "definition": "待投标商机适用的商务 / 技术投标前置条件检查结果",
+      "formula": "按商机列出不满足项",
+      "caliber": "源表无前置条件字段，需业务补录",
+      "type": "派生指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0001 商机管理.主键（opportunityid，空 0%）",
+      "unit": "条、亿元／GWh",
+      "dimension": "—",
+      "sqlCodes": "需新增（缺数据）"
+    },
+    "C03": {
+      "code": "C03",
+      "name": "产品部年度销售目标",
+      "definition": "各产品部年度销售额 / 电量目标",
+      "formula": "按产品团队汇总目标",
+      "caliber": "与 C04 同年度、同产品部",
+      "type": "原子指标",
+      "entities": [
+        "LE06",
+        "LE10"
+      ],
+      "attributes": "LE06-A0056 销售目标管理.年度（new_year，空 0%）\nLE10-A0002 团队.团队名（name，空 0%）",
+      "unit": "亿元／GWh",
+      "dimension": "D029",
+      "sqlCodes": "M0002（按 D004）"
+    },
+    "C04": {
+      "code": "C04",
+      "name": "产品部累计实际销售额／电量",
+      "definition": "截至测量日各产品部实际销售",
+      "formula": "引用发货节点 M0001 / M0006，按负责人所属团队",
+      "caliber": "跨节点引用（发货口径）",
+      "type": "原子指标",
+      "entities": [
+        "LE11",
+        "LE10"
+      ],
+      "attributes": "LE11-A0003 团队人员关系.用户ID（systemuserid，空 0%）\nLE11-A0002 团队人员关系.团队ID（teamid，空 0%）",
+      "unit": "亿元／GWh",
+      "dimension": "—",
+      "sqlCodes": "M0001、M0006（按 D004）"
+    },
+    "C05": {
+      "code": "C05",
+      "name": "产品部实际销售与目标差距",
+      "definition": "产品部实际销售减年度目标",
+      "formula": "C04 − C03",
+      "caliber": "金额、电量分别判断",
+      "type": "复合指标",
+      "entities": [],
+      "attributes": "（由其他指标计算）",
+      "unit": "亿元／GWh",
+      "dimension": "—",
+      "sqlCodes": "需新增（差值）"
+    },
+    "C06": {
+      "code": "C06",
+      "name": "其余未签单商机中 P0 需求未确认的商机数及预测量",
+      "definition": "重点跟踪以外未签单商机中处于 P0、需求确认未完成的记录",
+      "formula": "C09 范围 where D_STAGE = P0 且 需求未确认",
+      "caliber": "按商机 ID 去重",
+      "type": "派生指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0451 商机管理.项目阶段（new_processstage，空 0%）\nLE01-A0430 商机管理.客户需求审核状态（new_approvalstatus_acneed，空 0%）",
+      "unit": "条、亿元／GWh",
+      "dimension": "—",
+      "sqlCodes": "需新增"
+    },
+    "C07": {
+      "code": "C07",
+      "name": "方案推动超平均周期 50% 的未签单商机",
+      "definition": "处于 P2 且在途用时超过 P2 动态平均周期 1.5 倍的未签单商机",
+      "formula": "在途用时 = 测量日 − P2 进入日（阶段二结束日期）",
+      "caliber": "按电芯 / PACK",
+      "type": "派生指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0451 商机管理.项目阶段（new_processstage，空 0%）\nLE01-A0243 商机管理.阶段二结束日期（new_stage2enddate，空 66.19%）\nLE01-A0100 商机管理.阶段三结束日期（new_stage3enddate，空 74.35%）",
+      "unit": "条、亿元／GWh、天",
+      "dimension": "—",
+      "sqlCodes": "需新增"
+    },
+    "C08": {
+      "code": "C08",
+      "name": "重点跟踪商机占未签单预测的比例",
+      "definition": "R04 预测 ÷ R02 预测",
+      "formula": "R04 ÷ R02",
+      "caliber": "分母 > 0 时计算",
+      "type": "复合指标",
+      "entities": [],
+      "attributes": "（由其他指标计算）",
+      "unit": "%",
+      "dimension": "—",
+      "sqlCodes": "需新增"
+    },
+    "C09": {
+      "code": "C09",
+      "name": "其余未签单商机预测金额／电量及占比",
+      "definition": "R02 − R04 及其占比",
+      "formula": "其余 = R02 − R04；占比 = 其余 ÷ R02",
+      "caliber": "对应一般客户",
+      "type": "复合指标",
+      "entities": [],
+      "attributes": "（由其他指标计算）",
+      "unit": "亿元／GWh、%",
+      "dimension": "—",
+      "sqlCodes": "需新增"
+    },
+    "P0-01": {
+      "code": "P0-01",
+      "name": "商机获取阶段平均周期",
+      "definition": "创建至准入确认（阶段一结束）的天数均值，在途算至测量日，按电芯 / PACK 动态计算",
+      "formula": "avg(阶段一结束日期或测量日 − 创建日)",
+      "caliber": "V5.5 标杆 35 天（参考）",
+      "type": "原子指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0490 商机管理.创建时间（createdon，空 0%）\nLE01-A0101 商机管理.阶段一结束日期（new_stage1enddate，空 63.04%）",
+      "unit": "天",
+      "dimension": "—",
+      "sqlCodes": "M0038（现按静态标杆 M0039）"
+    },
+    "P0-02": {
+      "code": "P0-02",
+      "name": "商机获取阶段超平均周期 50% 的商机预测总量",
+      "definition": "单笔周期 > P0-01 × 1.5 的商机预测量",
+      "formula": "sum(B02) where 单笔周期 > 1.5 × P0-01",
+      "caliber": "商机 ID 去重",
+      "type": "派生指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0490 商机管理.创建时间（createdon，空 0%）\nLE01-A0101 商机管理.阶段一结束日期（new_stage1enddate，空 63.04%）",
+      "unit": "亿元／GWh",
+      "dimension": "—",
+      "sqlCodes": "需新增"
+    },
+    "P2-01": {
+      "code": "P2-01",
+      "name": "方案推动阶段平均周期",
+      "definition": "进入方案推动至协议确认（阶段二结束 → 阶段三结束）的天数均值",
+      "formula": "avg(阶段三结束日期或测量日 − 阶段二结束日期)",
+      "caliber": "V5.5 标杆 21 天（参考）",
+      "type": "原子指标",
+      "entities": [
+        "LE01"
+      ],
+      "attributes": "LE01-A0243 商机管理.阶段二结束日期（new_stage2enddate，空 66.19%）\nLE01-A0100 商机管理.阶段三结束日期（new_stage3enddate，空 74.35%）",
+      "unit": "天",
+      "dimension": "—",
+      "sqlCodes": "需新增"
+    },
+    "S03": {
+      "code": "S03",
+      "name": "投标平均周期",
+      "definition": "进入投标至投标完成的天数均值",
+      "formula": "avg(中标人公布时间或测量日 − 录入时间)",
+      "caliber": "投标与商机按名称匹配",
+      "type": "原子指标",
+      "entities": [
+        "LE09"
+      ],
+      "attributes": "LE09-A0003 投标信息.输入时间（input_time，空 1.63%）\nLE09-A0039 投标信息.中标人公布时间（winner_announce_time，空 55.98%）",
+      "unit": "天",
+      "dimension": "—",
+      "sqlCodes": "M0047（现按静态标杆 M0048）"
+    }
+  },
+  "rules": {
+    "BR-Q01": {
+      "code": "BR-Q01",
+      "name": "商机预测金额口径",
+      "description": "月度预测：早于测量日所在月份取正式订单金额，当月及以后取预测金额",
+      "trigger": "计算 B02 及其派生指标",
+      "result": "金额为空不补 0；按月度预测主键累计一次",
+      "action": "—",
+      "category": "口径规则"
+    },
+    "BR-Q02": {
+      "code": "BR-Q02",
+      "name": "签单判定",
+      "description": "该商机下有效订单数 ≥ 1 为已签单，= 0 为未签单",
+      "trigger": "计算 D015 / R02",
+      "result": "订单经订单产品 new_opportunity_id 关联商机；订单 statecode = 0 且非取消；按订单 ID 去重",
+      "action": "未能关联订单的商机按未签单，需在结果中标注关联覆盖率",
+      "category": "口径规则"
+    },
+    "BR-Q03": {
+      "code": "BR-Q03",
+      "name": "去重规则",
+      "description": "商机按商机 ID、客户按客户 ID、订单按订单 ID 去重；同一商机在同一阶段只计一次",
+      "trigger": "所有计数与汇总",
+      "result": "—",
+      "action": "—",
+      "category": "口径规则"
+    },
+    "BR-Q04": {
+      "code": "BR-Q04",
+      "name": "重点跟踪口径",
+      "description": "战略客户与重点客户的未签单商机均属于重点跟踪",
+      "trigger": "计算 R04、C08、C09",
+      "result": "客户等级三档映射见 DR04~DR06",
+      "action": "取值对应待业务确认",
+      "category": "口径规则"
+    },
+    "BR-Q05": {
+      "code": "BR-Q05",
+      "name": "金额电量分开判定",
+      "description": "风险与原因的金额、电量分别计算、分别判定，不互相折算",
+      "trigger": "全部 R / C 规则",
+      "result": "—",
+      "action": "—",
+      "category": "口径规则"
+    },
+    "BR-Q06": {
+      "code": "BR-Q06",
+      "name": "动态平均周期",
+      "description": "同阶段 / 环节所有已进入商机的实际天数取均值；已完成算至结束，在途算至测量日；按电芯、PACK 分别计算",
+      "trigger": "P0-01、P2-01、S03 及超期判定",
+      "result": "单笔周期严格大于均值 × 1.5 判超期",
+      "action": "—",
+      "category": "口径规则"
+    },
+    "BR-Q07": {
+      "code": "BR-Q07",
+      "name": "投标关联",
+      "description": "投标项目名称与商机名称一致视为同一商机",
+      "trigger": "D_IS_BIDDING、R10、R11",
+      "result": "名称不一致会漏判，需在结果中标注",
+      "action": "—",
+      "category": "口径规则"
+    },
+    "BR-DQ01": {
+      "code": "BR-DQ01",
+      "name": "缺值不补零",
+      "description": "依赖字段为空时结果置空，不按 0 参与判定（依据数据字典“字段问题及方案”）",
+      "trigger": "所有指标",
+      "result": "结果标注“数据不足”",
+      "action": "推送数据治理清单",
+      "category": "数据质量规则"
+    },
+    "BR-A01": {
+      "code": "BR-A01",
+      "name": "商机预测覆盖不足判定",
+      "description": "商机总预测低于年度目标",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "R01 > 0 成立（金额、电量分别判断）；等级：缺口率 ≥ 10% 高；5%~10% 中；< 5% 低",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A02": {
+      "code": "BR-A02",
+      "name": "签单进度滞后判定",
+      "description": "签单进度落后于时间进度",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "逐日：签单进度 < 时间进度；季度窗口：7–9 月待签及缺口占比 > 50%、10–12 月 > 25%；等级：落后 ≥ 15 个百分点 极高；10~15 高；< 10 中",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A03": {
+      "code": "BR-A03",
+      "name": "重点跟踪未签单商机判定",
+      "description": "战略、重点客户仍有未签单商机且总预测存在缺口",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "R01 > 0 且 R04 商机数 > 0、预测金额或电量 > 0；等级：战略客户 高；重点客户 中",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A04": {
+      "code": "BR-A04",
+      "name": "电芯类待签商机风险判定",
+      "description": "电芯类待签预测 > 0，且该类预测不足或签单进度落后",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "R05 > 0 且（电芯总预测 < 电芯目标 或 按 R03 电芯签单进度落后）；等级：待签 ≥ 30 亿元 高；10~30 中",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A05": {
+      "code": "BR-A05",
+      "name": "PACK 类待签商机风险判定",
+      "description": "PACK 类待签预测 > 0，且该类预测不足或签单进度落后",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "R06 > 0 且（PACK 总预测 < PACK 目标 或 按 R03 PACK 签单进度落后）；等级：待签 ≥ 30 亿元 高；10~30 中",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A06": {
+      "code": "BR-A06",
+      "name": "客户预测不足判定",
+      "description": "有商机客户的预测低于客户目标",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "有商机且 R08 缺口 > 0；等级：战略客户 高；其他 中",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A07": {
+      "code": "BR-A07",
+      "name": "战略客户待突破（无商机）判定",
+      "description": "战略客户名单内无任何商机",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "R09 > 0；等级：存在即高",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A08": {
+      "code": "BR-A08",
+      "name": "战略客户有商机未投标判定",
+      "description": "战略客户有商机但均未进入投标",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "R10 > 0；当前阶段用时 > 动态平均周期 × 1.5 标记推进滞后；等级：存在即高；推进滞后 极高",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A09": {
+      "code": "BR-A09",
+      "name": "投标中商机超期判定",
+      "description": "投标中商机在途用时超过投标环节动态平均周期 1.5 倍",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "在途用时 > S03 × 1.5（严格大于）；等级：战略 / 重点客户 高；其他 中",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-A10": {
+      "code": "BR-A10",
+      "name": "商机获取阶段超期判定",
+      "description": "商机获取阶段单笔周期超过动态平均周期 1.5 倍",
+      "trigger": "指标计算完成（E02）后检测",
+      "result": "单笔周期 > P0-01 × 1.5（严格大于）；等级：影响预测 ≥ 10 亿元 高；其他 中",
+      "action": "生成指标异常（E03）并登记风险实例（A03）",
+      "category": "指标异常判定（→ 风险）"
+    },
+    "BR-C01": {
+      "code": "BR-C01",
+      "name": "战略客户需求确认未落实成立判定",
+      "description": "C01 相关",
+      "trigger": "风险实例登记后（E04）",
+      "result": "存在战略客户 P0、未签单且需求确认未完成的商机，数量及预测金额或电量 > 0",
+      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
+      "category": "根因成立判定"
+    },
+    "BR-C02": {
+      "code": "BR-C02",
+      "name": "投标前置条件未满足成立判定",
+      "description": "C02 相关",
+      "trigger": "风险实例登记后（E04）",
+      "result": "战略客户待投标商机至少一项适用的商务或技术投标前置条件不满足",
+      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
+      "category": "根因成立判定"
+    },
+    "BR-C03": {
+      "code": "BR-C03",
+      "name": "方案推动超期成立判定",
+      "description": "C07 相关",
+      "trigger": "风险实例登记后（E04）",
+      "result": "未签单商机处于 P2 且在途用时 > P2 动态平均周期 × 1.5（严格大于）",
+      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
+      "category": "根因成立判定"
+    },
+    "BR-C04": {
+      "code": "BR-C04",
+      "name": "产品部销售缺口成立判定",
+      "description": "C05、C03、C04 相关",
+      "trigger": "风险实例登记后（E04）",
+      "result": "同一产品部累计实际销售 − 年度目标 < 0（金额、电量分别判断）",
+      "action": "规则判定写入根因分析结果",
+      "category": "根因成立判定"
+    },
+    "BR-C05": {
+      "code": "BR-C05",
+      "name": "产品结构待签集中成立判定",
+      "description": "R05、R06 相关",
+      "trigger": "风险实例登记后（E04）",
+      "result": "某产品类型待签预测占该类总预测 ≥ 20%",
+      "action": "规则判定写入根因分析结果",
+      "category": "根因成立判定"
+    },
+    "BR-C06": {
+      "code": "BR-C06",
+      "name": "重点跟踪商机承接不足成立判定",
+      "description": "C08 相关",
+      "trigger": "风险实例登记后（E04）",
+      "result": "分母 > 0 且 R04 ÷ R02 < 70%（严格小于；等于 70% 不成立）",
+      "action": "规则判定写入根因分析结果",
+      "category": "根因成立判定"
+    },
+    "BR-C07": {
+      "code": "BR-C07",
+      "name": "其余商机需求未确认成立判定",
+      "description": "C06、C09 相关",
+      "trigger": "风险实例登记后（E04）",
+      "result": "C09 其余占比 ≥ 30%，且其中存在 P0、需求确认未完成的商机（数量、预测金额或电量 > 0）",
+      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
+      "category": "根因成立判定"
+    },
+    "BR-C08": {
+      "code": "BR-C08",
+      "name": "商机获取环节卡点成立判定",
+      "description": "P0-01、P0-02 相关",
+      "trigger": "风险实例登记后（E04）",
+      "result": "P0 小环节（保密协议、客户需求、协作团队、需求输入、销售预测、客户组织架构）单笔周期 > 对应动态平均周期 × 1.5",
+      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
+      "category": "根因成立判定"
+    },
+    "BR-L01": {
+      "code": "BR-L01",
+      "name": "根因关联风险",
+      "description": "根因成立且对应商机 / 客户属于风险影响范围时，判定其解释该风险",
+      "trigger": "根因判定后",
+      "result": "列出具体卡点及受影响预测量；R01 总体缺口单独计算",
+      "action": "—",
+      "category": "风险根因关联"
+    },
+    "BR-D01": {
+      "code": "BR-D01",
+      "name": "建议生成",
+      "description": "每个成立根因至少生成一条建议，引用建议库模板，由 AI 补充具体对象、数字与时间",
+      "trigger": "根因分析完成（E05）",
+      "result": "建议须含措施、责任角色、期限、目标值、验收标准、跟踪指标",
+      "action": "—",
+      "category": "决策建议规则"
+    },
+    "BR-D02": {
+      "code": "BR-D02",
+      "name": "数字来源约束",
+      "description": "AI 输出中的金额、电量、比例、数量必须来自指标结果或证据，不得自行计算或编造",
+      "trigger": "AI 根因分析与建议生成",
+      "result": "输出后校验：出现输入中没有的数字即判失败并重试",
+      "action": "—",
+      "category": "决策建议规则"
+    },
+    "BR-D03": {
+      "code": "BR-D03",
+      "name": "任务令人工确认",
+      "description": "建议合并为任务令后须经人工核对责任分工、期限与目标值，确认后下发",
+      "trigger": "建议确认（E07）",
+      "result": "未确认不得下发；下发后建议状态置为“已下发”",
+      "action": "—",
+      "category": "决策建议规则"
+    }
+  },
+  "risks": {
+    "RK01": {
+      "code": "RK01",
+      "name": "商机预测覆盖不足",
+      "description": "商机总预测低于年度目标",
+      "indicators": "R01、B01、B02",
+      "rule": "BR-A01",
+      "condition": "R01 > 0 成立（金额、电量分别判断）",
+      "levelRule": "缺口率 ≥ 10% 高；5%~10% 中；< 5% 低",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC01",
+        "RC06",
+        "RC07",
+        "RC08"
+      ]
+    },
+    "RK02": {
+      "code": "RK02",
+      "name": "签单进度滞后",
+      "description": "签单进度落后于时间进度",
+      "indicators": "R03、R02、R01",
+      "rule": "BR-A02",
+      "condition": "逐日：签单进度 < 时间进度；季度窗口：7–9 月待签及缺口占比 > 50%、10–12 月 > 25%",
+      "levelRule": "落后 ≥ 15 个百分点 极高；10~15 高；< 10 中",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC01",
+        "RC02",
+        "RC06",
+        "RC07",
+        "RC08"
+      ]
+    },
+    "RK03": {
+      "code": "RK03",
+      "name": "重点跟踪未签单商机",
+      "description": "战略、重点客户仍有未签单商机且总预测存在缺口",
+      "indicators": "R04、R01",
+      "rule": "BR-A03",
+      "condition": "R01 > 0 且 R04 商机数 > 0、预测金额或电量 > 0",
+      "levelRule": "战略客户 高；重点客户 中",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC01",
+        "RC07"
+      ]
+    },
+    "RK04": {
+      "code": "RK04",
+      "name": "电芯类待签商机风险",
+      "description": "电芯类待签预测 > 0，且该类预测不足或签单进度落后",
+      "indicators": "R05、B01、B02、R03",
+      "rule": "BR-A04",
+      "condition": "R05 > 0 且（电芯总预测 < 电芯目标 或 按 R03 电芯签单进度落后）",
+      "levelRule": "待签 ≥ 30 亿元 高；10~30 中",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC03",
+        "RC04",
+        "RC05"
+      ]
+    },
+    "RK05": {
+      "code": "RK05",
+      "name": "PACK 类待签商机风险",
+      "description": "PACK 类待签预测 > 0，且该类预测不足或签单进度落后",
+      "indicators": "R06、B01、B02、R03",
+      "rule": "BR-A05",
+      "condition": "R06 > 0 且（PACK 总预测 < PACK 目标 或 按 R03 PACK 签单进度落后）",
+      "levelRule": "待签 ≥ 30 亿元 高；10~30 中",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC03",
+        "RC04",
+        "RC05"
+      ]
+    },
+    "RK06": {
+      "code": "RK06",
+      "name": "客户预测不足",
+      "description": "有商机客户的预测低于客户目标",
+      "indicators": "R08",
+      "rule": "BR-A06",
+      "condition": "有商机且 R08 缺口 > 0",
+      "levelRule": "战略客户 高；其他 中",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC01"
+      ]
+    },
+    "RK07": {
+      "code": "RK07",
+      "name": "战略客户待突破（无商机）",
+      "description": "战略客户名单内无任何商机",
+      "indicators": "R09",
+      "rule": "BR-A07",
+      "condition": "R09 > 0",
+      "levelRule": "存在即高",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC01"
+      ]
+    },
+    "RK08": {
+      "code": "RK08",
+      "name": "战略客户有商机未投标",
+      "description": "战略客户有商机但均未进入投标",
+      "indicators": "R10",
+      "rule": "BR-A08",
+      "condition": "R10 > 0；当前阶段用时 > 动态平均周期 × 1.5 标记推进滞后",
+      "levelRule": "存在即高；推进滞后 极高",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC01",
+        "RC02"
+      ]
+    },
+    "RK09": {
+      "code": "RK09",
+      "name": "投标中商机超期",
+      "description": "投标中商机在途用时超过投标环节动态平均周期 1.5 倍",
+      "indicators": "R11、S03",
+      "rule": "BR-A09",
+      "condition": "在途用时 > S03 × 1.5（严格大于）",
+      "levelRule": "战略 / 重点客户 高；其他 中",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC02"
+      ]
+    },
+    "RK10": {
+      "code": "RK10",
+      "name": "商机获取阶段超期",
+      "description": "商机获取阶段单笔周期超过动态平均周期 1.5 倍",
+      "indicators": "P0-01、P0-02",
+      "rule": "BR-A10",
+      "condition": "单笔周期 > P0-01 × 1.5（严格大于）",
+      "levelRule": "影响预测 ≥ 10 亿元 高；其他 中",
+      "impact": "商机、客户、产品类型、产品团队",
+      "candidateCauses": [
+        "RC01",
+        "RC08"
+      ]
+    }
+  },
+  "causes": {
+    "RC01": {
+      "code": "RC01",
+      "name": "战略客户需求确认未落实",
+      "group": "原因 1",
+      "indicators": "C01",
+      "rule": "BR-C01",
+      "condition": "存在战略客户 P0、未签单且需求确认未完成的商机，数量及预测金额或电量 > 0",
+      "risks": [
+        "RK01",
+        "RK02",
+        "RK03",
+        "RK06",
+        "RK07",
+        "RK08",
+        "RK10"
+      ],
+      "method": "规则 + AI",
+      "aiFocus": "AI 读取商机最新项目进展、需求审核状态与卡点文本，归纳未落实的具体环节（需求未提出 / 未审核 / 被驳回）及客户侧原因；输出受影响商机清单与预测量",
+      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
+    },
+    "RC02": {
+      "code": "RC02",
+      "name": "投标前置条件未满足",
+      "group": "原因 1",
+      "indicators": "C02",
+      "rule": "BR-C02",
+      "condition": "战略客户待投标商机至少一项适用的商务或技术投标前置条件不满足",
+      "risks": [
+        "RK02",
+        "RK08",
+        "RK09"
+      ],
+      "method": "AI 为主（缺结构化数据）",
+      "aiFocus": "AI 从项目进展、方案与报价记录中识别商务（资质、付款、价格）/ 技术（方案、规格、认证）不满足项；需人工复核",
+      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
+    },
+    "RC03": {
+      "code": "RC03",
+      "name": "方案推动超期",
+      "group": "原因 2（一）",
+      "indicators": "C07",
+      "rule": "BR-C03",
+      "condition": "未签单商机处于 P2 且在途用时 > P2 动态平均周期 × 1.5（严格大于）",
+      "risks": [
+        "RK04",
+        "RK05"
+      ],
+      "method": "规则 + AI",
+      "aiFocus": "AI 归纳超期商机的卡点类别（技术协议、质保协议、规格书、中信保限额）并给出滞留天数分布",
+      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
+    },
+    "RC04": {
+      "code": "RC04",
+      "name": "产品部销售缺口",
+      "group": "原因 2（二）",
+      "indicators": "C05、C03、C04",
+      "rule": "BR-C04",
+      "condition": "同一产品部累计实际销售 − 年度目标 < 0（金额、电量分别判断）",
+      "risks": [
+        "RK04",
+        "RK05"
+      ],
+      "method": "规则",
+      "aiFocus": "规则判定；AI 仅用于解释缺口归属与同部门待签商机",
+      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
+    },
+    "RC05": {
+      "code": "RC05",
+      "name": "产品结构待签集中",
+      "group": "原因 2",
+      "indicators": "R05、R06",
+      "rule": "BR-C05",
+      "condition": "某产品类型待签预测占该类总预测 ≥ 20%",
+      "risks": [
+        "RK04",
+        "RK05"
+      ],
+      "method": "规则",
+      "aiFocus": "—",
+      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
+    },
+    "RC06": {
+      "code": "RC06",
+      "name": "重点跟踪商机承接不足",
+      "group": "原因 3（一）",
+      "indicators": "C08",
+      "rule": "BR-C06",
+      "condition": "分母 > 0 且 R04 ÷ R02 < 70%（严格小于；等于 70% 不成立）",
+      "risks": [
+        "RK01",
+        "RK02"
+      ],
+      "method": "规则",
+      "aiFocus": "—",
+      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
+    },
+    "RC07": {
+      "code": "RC07",
+      "name": "其余商机需求未确认",
+      "group": "原因 3（二）",
+      "indicators": "C06、C09",
+      "rule": "BR-C07",
+      "condition": "C09 其余占比 ≥ 30%，且其中存在 P0、需求确认未完成的商机（数量、预测金额或电量 > 0）",
+      "risks": [
+        "RK01",
+        "RK02",
+        "RK03"
+      ],
+      "method": "规则 + AI",
+      "aiFocus": "AI 对其余未签单商机按需求确认状态与进展文本分组，列出需优先确认的商机",
+      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
+    },
+    "RC08": {
+      "code": "RC08",
+      "name": "商机获取环节卡点",
+      "group": "阶段周期",
+      "indicators": "P0-01、P0-02",
+      "rule": "BR-C08",
+      "condition": "P0 小环节（保密协议、客户需求、协作团队、需求输入、销售预测、客户组织架构）单笔周期 > 对应动态平均周期 × 1.5",
+      "risks": [
+        "RK01",
+        "RK10"
+      ],
+      "method": "AI 为主（多数环节缺事件字段）",
+      "aiFocus": "AI 依据可得事件（客户需求提交 / 审批、销售预测完成）与进展文本定位卡点环节",
+      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
+    }
+  },
+  "advice": {
+    "DS01": {
+      "code": "DS01",
+      "name": "战略客户突破计划",
+      "causes": [
+        "RC01",
+        "RC02"
+      ],
+      "measure": "针对 20 家战略客户制定突破计划，分别跟进无商机与未进入投标客户",
+      "owner": "销售 VP（牵头）",
+      "deadline": "20 个工作日",
+      "tracking": "R09、R10",
+      "method": "规则模板 + AI 补充具体对象与数字",
+      "source": "V3.1 原型（商机获取任务令）"
+    },
+    "DS02": {
+      "code": "DS02",
+      "name": "推动有商机战略客户进入投标",
+      "causes": [
+        "RC02"
+      ],
+      "measure": "推动已有商机的战略客户进入投标，逐项关闭商务 / 技术前置条件",
+      "owner": "销售 VP（牵头）",
+      "deadline": "20 个工作日",
+      "tracking": "R10、R11",
+      "method": "规则模板 + AI 补充具体对象与数字",
+      "source": "V3.1 原型（商机获取任务令）"
+    },
+    "DS03": {
+      "code": "DS03",
+      "name": "无商机战略客户限期建立商机",
+      "causes": [
+        "RC01"
+      ],
+      "measure": "针对无商机的战略客户限期建立商机，明确目标产品部与需求调研计划",
+      "owner": "销售 VP（牵头）",
+      "deadline": "20 个工作日",
+      "tracking": "R09",
+      "method": "规则模板 + AI 补充具体对象与数字",
+      "source": "V3.1 原型（商机获取任务令）"
+    },
+    "DS04": {
+      "code": "DS04",
+      "name": "电芯与 PACK 待签分产品转化",
+      "causes": [
+        "RC04",
+        "RC05"
+      ],
+      "measure": "对未签单电芯类与 PACK 分别制定转化计划，优先保障缺口最大的产品部",
+      "owner": "对应产品部总经理",
+      "deadline": "按突破计划协同",
+      "tracking": "R05、R06、C05",
+      "method": "规则模板 + AI 补充具体对象与数字",
+      "source": "V3.1 原型（商机获取任务令）"
+    },
+    "DS05": {
+      "code": "DS05",
+      "name": "技术卡点项目优先排资源",
+      "causes": [
+        "RC03",
+        "RC08"
+      ],
+      "measure": "对方案推动超期与技术卡点项目优先排资源、补齐技术输入",
+      "owner": "方案负责人",
+      "deadline": "15 个工作日",
+      "tracking": "C07、P2-01",
+      "method": "规则模板 + AI 补充具体对象与数字",
+      "source": "V3.1 原型（商机获取任务令）"
+    },
+    "DS06": {
+      "code": "DS06",
+      "name": "纳入月度经营对账",
+      "causes": [
+        "RC04",
+        "RC06"
+      ],
+      "measure": "战略客户商机推进率与产品部达成率纳入月度经营分析对账",
+      "owner": "经营管理负责人",
+      "deadline": "按月",
+      "tracking": "C05、C08",
+      "method": "规则模板 + AI 补充具体对象与数字",
+      "source": "V3.1 原型（商机获取任务令）"
+    },
+    "DS07": {
+      "code": "DS07",
+      "name": "扩大重点跟踪纳管",
+      "causes": [
+        "RC06"
+      ],
+      "measure": "将战略、重点客户未签单商机纳入重点跟踪，使重点跟踪占未签单预测 ≥ 70%",
+      "owner": "销售运营",
+      "deadline": "10 个工作日",
+      "tracking": "C08",
+      "method": "规则模板 + AI 补充具体对象与数字",
+      "source": "业务专家规则推导"
+    },
+    "DS08": {
+      "code": "DS08",
+      "name": "其余商机需求确认专项",
+      "causes": [
+        "RC07"
+      ],
+      "measure": "对其余（一般客户）未签单商机中 P0 需求未确认的商机逐条确认需求与预计签约时间",
+      "owner": "销售负责人",
+      "deadline": "15 个工作日",
+      "tracking": "C06、C09",
+      "method": "规则模板 + AI 补充具体对象与数字",
+      "source": "业务专家规则推导"
+    }
+  },
+  "links": {
+    "RK01": {
+      "risk": "RK01",
+      "causes": [
+        "RC01",
+        "RC06",
+        "RC07",
+        "RC08"
+      ],
+      "advice": [
+        "DS01",
+        "DS03",
+        "DS06",
+        "DS07",
+        "DS08",
+        "DS05"
+      ]
+    },
+    "RK02": {
+      "risk": "RK02",
+      "causes": [
+        "RC01",
+        "RC02",
+        "RC06",
+        "RC07",
+        "RC08"
+      ],
+      "advice": [
+        "DS01",
+        "DS03",
+        "DS02",
+        "DS06",
+        "DS07",
+        "DS08",
+        "DS05"
+      ]
+    },
+    "RK03": {
+      "risk": "RK03",
+      "causes": [
+        "RC01",
+        "RC07"
+      ],
+      "advice": [
+        "DS01",
+        "DS03",
+        "DS08"
+      ]
+    },
+    "RK04": {
+      "risk": "RK04",
+      "causes": [
+        "RC03",
+        "RC04",
+        "RC05"
+      ],
+      "advice": [
+        "DS05",
+        "DS04",
+        "DS06"
+      ]
+    },
+    "RK05": {
+      "risk": "RK05",
+      "causes": [
+        "RC03",
+        "RC04",
+        "RC05"
+      ],
+      "advice": [
+        "DS05",
+        "DS04",
+        "DS06"
+      ]
+    },
+    "RK06": {
+      "risk": "RK06",
+      "causes": [
+        "RC01"
+      ],
+      "advice": [
+        "DS01",
+        "DS03"
+      ]
+    },
+    "RK07": {
+      "risk": "RK07",
+      "causes": [],
+      "advice": [
+        "DS03"
+      ]
+    },
+    "RK08": {
+      "risk": "RK08",
+      "causes": [
+        "RC01",
+        "RC02"
+      ],
+      "advice": [
+        "DS01",
+        "DS03",
+        "DS02"
+      ]
+    },
+    "RK09": {
+      "risk": "RK09",
+      "causes": [
+        "RC02"
+      ],
+      "advice": [
+        "DS01",
+        "DS02"
+      ]
+    },
+    "RK10": {
+      "risk": "RK10",
+      "causes": [
+        "RC01",
+        "RC08"
+      ],
+      "advice": [
+        "DS01",
+        "DS03",
+        "DS05"
+      ]
+    }
+  },
+  "overrides": {
+    "BR-Q02": {
+      "decision": "签单按合同签订判断，订单数不构成签单",
+      "field": "new_contractconfirmation",
+      "confirmed": [
+        "1"
+      ],
+      "notConfirmed": [
+        "0"
+      ],
+      "unknown": "空值或非 0/1",
+      "note": "new_contractconfirmation_date 实库 0% 覆盖，不能用于测量日判断。"
+    },
+    "RK07": {
+      "decision": "解除 RK07 与 RC01 的矛盾关联",
+      "reason": "RK07 客户无商机，不能同时要求存在该客户的 P0 商机。",
+      "causes": [],
+      "advice": [
+        "DS03"
+      ]
+    },
+    "customerTier": {
+      "strategic": [
+        "0",
+        "1"
+      ],
+      "priority": [
+        "2",
+        "4"
+      ],
+      "general": [
+        "3"
+      ]
+    },
+    "stage": {
+      "11": "P0",
+      "12": "P1",
+      "13": "P2",
+      "14": "P3",
+      "15": "P4"
+    },
+    "bidMatch": {
+      "strategy": "trimmed exact project name; ambiguous duplicate names never judged not bidding",
+      "idRelationAvailable": false
+    },
+    "dynamicCycle": {
+      "multiplier": 1.5,
+      "strict": true,
+      "sample": "同年度同产品类型、截至测量日已进入阶段的有效商机；完成记录算至结束时间，在途算至测量日；排除缺进入时间或时间倒置记录。"
+    },
+    "targetAggregation": {
+      "decision": "销售目标按行求和，不按客户/产品去重",
+      "reason": "本体 BR-Q03 仅要求商机、客户、订单按 ID 去重；目标表无经验证的业务唯一键，按客户/产品 DISTINCT 会破坏目标规模。"
+    },
+    "electricitySource": {
+      "field": "new_orderforecast_qty",
+      "nativeUnit": "kWh",
+      "outputUnit": "GWh",
+      "reason": "本体登记的 new_forcastpower 实库仅 1 条非空，无法用于指标计算；new_orderforecast_qty 覆盖 99.97%，金额/数量比约 330–530 元/kWh。"
+    },
+    "measurementDate": "历史期间固定在期末；当前期间使用分析启动日，并写入卡片上下文。",
+    "thresholds": {
+      "gapRateHigh": 0.1,
+      "gapRateMedium": 0.05,
+      "signLagExtremePoints": 15,
+      "signLagHighPoints": 10,
+      "quarterWindows": {
+        "3": 0.5,
+        "4": 0.25
+      },
+      "focusTrackingRatio": 0.7,
+      "productPendingRatio": 0.2,
+      "otherPendingRatio": 0.3,
+      "productRiskAmountHigh": 30,
+      "productRiskAmountMedium": 10
+    }
+  },
+  "enums": {
+    "customerLevel": {
+      "0": "战略",
+      "1": "战略",
+      "2": "重点",
+      "4": "重点",
+      "3": "一般"
+    },
+    "productType": {
+      "1": "电芯",
+      "2": "PACK"
+    },
+    "processStage": {
+      "11": "P0",
+      "12": "P1",
+      "13": "P2",
+      "14": "P3",
+      "15": "P4"
+    },
+    "acneed": {
+      "1": "未申请",
+      "2": "审核中",
+      "3": "审核通过",
+      "4": "已驳回",
+      "5": "废弃"
+    },
+    "opportunityStatus": {
+      "0": "已开始",
+      "1": "赢单",
+      "2": "丢单",
+      "3": "结案"
+    },
+    "oppApproval": {
+      "1": "制单",
+      "2": "审核中",
+      "3": "已审核",
+      "4": "已驳回"
+    },
+    "monthApproval": {
+      "1": "制单",
+      "2": "审核中",
+      "3": "已审核",
+      "4": "已驳回",
+      "5": "已否决",
+      "6": "已撤回"
+    },
+    "monthState": {
+      "0": "有效",
+      "1": "停用"
+    },
+    "orderState": {
+      "0": "有效",
+      "1": "已提交",
+      "2": "已取消",
+      "3": "已完成",
+      "4": "已开发票"
+    }
+  }
+}

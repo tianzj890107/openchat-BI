@@ -166,16 +166,52 @@ def test_manual_card_refresh_requeues_a_completed_stage_in_the_running_round(tmp
         'manual':True,'slotId':'opportunity-risk','page':'analysis'}).json()
 
     assert response['queued'] is False and response['status']=='running'
-    assert service.pending[0]=='opportunity'
-    assert 'opportunity' not in service.completed
-    assert response['manualUpdate']['pendingStages'][0]=='opportunity'
+    assert service.pending[0]=='opportunity-risk'
+    assert 'opportunity' in service.completed
+    assert 'opportunity-risk' not in service.completed
+    assert response['manualUpdate']['pendingStages'][0]=='opportunity-risk'
     assert response['manualUpdate']['activeStage']=='shipment'
 
-    service.active='opportunity'
+    service.active='opportunity-risk'
     service.pending=['shipment']
     service._progress()
     service.refresh('opportunity-risk','analysis')
-    assert service.pending.count('opportunity')==0
+    assert service.pending.count('opportunity-risk')==0
+
+
+def test_frozen_card_analysis_can_generate_a_task_draft(tmp_path):
+    from bi_agent.cockpit.router import build_cockpit_router, set_external_analysis_lookup
+
+    store,_,body=fixture(tmp_path)
+    item=deepcopy(body['items']['opportunity'])
+    item.update(
+        id='frozen-opportunity-risk',
+        context=dict(stage='opportunity',slotId='opportunity-risk',period='2026',id=1,stageName='商机获取'),
+        result=dict(
+            cardContract='cockpit-cards-v1',summary='商机风险需要核查',limitations=[],
+            causes=[dict(id='c1',kind='hypothesis',status='hypothesis',title='客户推进受阻',
+                         description='项目进展提示需要核实',evidenceIds=['e1'],missingEvidence=[])],
+            recommendations=[dict(id='a1',actionType='investigation',causeIds=['c1'],evidenceIds=['e1'],
+                                   action='逐条核对战略客户商机进展',ownerRole='销售运营',deadlineDays=5,
+                                   acceptance='形成客户、商机与下一步动作清单')],
+        ),
+        evidence=dict(facts=[dict(id='e1',label='事实e1')],records=[],
+                      evidence=[dict(id='e1',claim='记录e1')],limitations=[]),
+    )
+    store.publish_stage('opportunity-risk',item)
+    service=FrozenAnnualService(store)
+    set_external_analysis_lookup(service.published_analysis)
+    try:
+        app=FastAPI()
+        app.include_router(build_cockpit_router(lambda: str(tmp_path)))
+        client=TestClient(app)
+        response=client.post('/api/cockpit/analyses/frozen-opportunity-risk/draft',
+                             json={'id':1,'recommendationIds':['a1']})
+        assert response.status_code==200,response.text
+        assert response.json()['status']=='draft'
+        assert response.json()['analysisId']=='frozen-opportunity-risk'
+    finally:
+        set_external_analysis_lookup(None)
 
 
 def test_independent_combined_failure_does_not_retry_or_block_other_stages(tmp_path):
@@ -290,6 +326,14 @@ def test_full_evidence_pages_reuse_the_canvas_renderer_and_escape_records(tmp_pa
 def test_combined_can_run_first_without_other_successes_and_empty_result_retains_old(tmp_path):
     store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
     class Runner:
+        def run_slot(self,period,stage):
+            if stage!='opportunity-risk':
+                return self.run_stage(period,stage)
+            calls.append(stage)
+            item=deepcopy(body['items']['opportunity'])
+            item.update(id=stage,updatedAt=10)
+            item['context']=dict(item['context'],slotId=stage)
+            return item
         def run_stage(self,period,stage):
             calls.append(stage)
             item=deepcopy(body['items'][stage]);item['updatedAt']=10
@@ -331,3 +375,96 @@ def test_stopped_round_does_not_leave_cards_looking_running(tmp_path):
     store.finish('failed','restart')
     job=store.job()
     assert all(work['status']=='failed' and work['finishedAt']>1 for work in job['stageProgress'].values())
+
+
+def test_opportunity_risk_publishes_without_replacing_shared_opportunity_card(tmp_path):
+    store,_,body=fixture(tmp_path)
+    shared=store.read()['items']['opportunity']
+    independent=deepcopy(shared)
+    independent.update(id='opportunity-v2-independent',updatedAt=2)
+    independent['context']=dict(independent['context'],slotId='opportunity-risk')
+    independent['result']=dict(independent['result'],summary='商机 V2 独立规则结果')
+    store.publish_stage('opportunity-risk',independent)
+
+    release=store.read()
+    assert release['items']['opportunity']['id']=='opportunity'
+    value=FrozenAnnualService(store).envelope(1)
+    risk=value['slots']['opportunity-risk']
+    coverage=value['slots']['opportunity-coverage-note']
+    assert risk['publicationKey']=='opportunity-risk'
+    assert risk['payload']['id']=='opportunity-v2-independent'
+    assert coverage['publicationKey']=='opportunity'
+    assert coverage['payload']['id']=='opportunity'
+    manifest,_=FrozenAnnualService(store).compact_publications(1)
+    assert 'opportunity-risk' in manifest['stageVersions']
+    assert 'opportunity' in manifest['stageVersions']
+    client=TestClient(FrozenCockpitSurface(FastAPI(),FrozenAnnualService(store)))
+    evidence=client.get('/api/cockpit/ai-publications/stages/opportunity-risk/evidence',
+                        params={'id':1,'analysisId':'opportunity-v2-independent'}).json()
+    assert evidence['analysisId']=='opportunity-v2-independent'
+
+
+def test_manual_refresh_runs_the_independent_slot_without_touching_shared_stage(tmp_path):
+    store,_,body=fixture(tmp_path)
+    calls=[];done=threading.Event()
+    class Runner:
+        def run_slot(self,period,stage):
+            if stage!='opportunity-risk':
+                return self.run_stage(period,stage)
+            calls.append(stage)
+            item=deepcopy(body['items']['opportunity'])
+            item.update(id='independent',updatedAt=9)
+            item['context']=dict(item['context'],slotId='opportunity-risk')
+            return item
+        def run_stage(self,period,stage):
+            item=deepcopy(body['items'][stage]);item['updatedAt']=9
+            return item
+    original=store.finish
+    def finish(*args):original(*args);done.set()
+    store.finish=finish
+    service=FrozenAnnualService(store,Runner())
+    service.refresh('opportunity-risk','analysis')
+    assert done.wait(3)
+    assert calls==['opportunity-risk']
+    release=store.read()['items']
+    assert release['opportunity-risk']['id']=='independent'
+    assert release['opportunity']['id']=='opportunity'
+
+
+def test_independent_and_shared_opportunity_publications_never_replace_each_other(tmp_path):
+    store,_,body=fixture(tmp_path)
+    shared=deepcopy(body['items']['opportunity'])
+    independent=deepcopy(shared)
+    independent.update(id='opportunity-v2-independent',updatedAt=20)
+    independent['context']=dict(independent['context'],slotId='opportunity-risk')
+    independent['result']=dict(independent['result'],summary='专用卡结果')
+
+    # Dedicated first, shared later: the later shared timestamp must not become
+    # the dedicated card's payload.
+    store.publish_stage('opportunity-risk',independent)
+    shared_later=deepcopy(shared)
+    shared_later.update(id='shared-later',updatedAt=30)
+    shared_later['result']=dict(shared_later['result'],summary='共享卡结果')
+    store.publish_stage('opportunity',shared_later)
+    slots=FrozenAnnualService(store).envelope(1)['slots']
+    assert slots['opportunity-risk']['payload']['id']=='opportunity-v2-independent'
+    assert slots['opportunity-coverage-note']['payload']['id']=='shared-later'
+
+    # Shared first, dedicated later: the dedicated publication remains scoped
+    # to opportunity-risk and replaces only its own card.
+    dedicated_later=deepcopy(independent)
+    dedicated_later.update(id='opportunity-v2-later',updatedAt=40)
+    dedicated_later['result']=dict(dedicated_later['result'],summary='专用卡新结果')
+    store.publish_stage('opportunity-risk',dedicated_later)
+    slots=FrozenAnnualService(store).envelope(1)['slots']
+    assert slots['opportunity-risk']['payload']['id']=='opportunity-v2-later'
+    assert slots['opportunity-coverage-note']['payload']['id']=='shared-later'
+
+
+def test_independent_card_refresh_targets_only_its_own_slot(tmp_path):
+    store,_,_=fixture(tmp_path)
+    service=FrozenAnnualService(store,lambda period:None)
+    assert service.priority_order('opportunity-risk','analysis')==['opportunity-risk']
+    page_order=service.priority_order(None,'analysis')
+    assert 'opportunity-risk' in page_order
+    assert 'opportunity' in page_order

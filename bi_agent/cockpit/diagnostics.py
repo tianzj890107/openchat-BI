@@ -72,3 +72,41 @@ def record_failure(store, exc, *, phase, identity=1, stage='', analysis_id='', r
         logging.getLogger(__name__).warning('cockpit_diagnostic persistence failed id=%s',value['diagnosticId'])
     logging.getLogger(__name__).warning('cockpit_diagnostic %s',json.dumps(value,ensure_ascii=False))
     return value
+
+
+def record_query_failure(store, *, phase='database_query', query='', code='QUERY_FAILED',
+                         message='', upstream_code='', duration_seconds=0, identity=1,
+                         stage='', analysis_id='', run_id=''):
+    """Persist one redacted query/model diagnostic and return its id.
+
+    Query diagnostics intentionally keep the statement name, SQLSTATE and
+    duration so an operator can distinguish a connection failure from a field
+    error, timeout or row-limit condition.  The raw driver message is redacted;
+    it is never returned by the public card API.
+    """
+    scope = current_scope()
+    value = dict(
+        diagnosticId=uuid.uuid4().hex,
+        analysisId=analysis_id,
+        runId=run_id or scope.get('runId', ''),
+        identity=int(identity),
+        stage=stage or scope.get('stage', ''),
+        phase=str(phase or 'database_query')[:60],
+        query=str(query or '')[:80],
+        errorCode=redact(str(code or 'QUERY_FAILED'))[:120],
+        errorType='QueryDiagnostic',
+        upstreamStatus=None,
+        upstreamCode=redact(str(upstream_code or ''))[:120] or None,
+        message=redact(message or '')[:1600],
+        lastTool='',
+        durationSeconds=round(float(duration_seconds or 0), 3),
+        queryHash='',
+        createdAt=time.time(),
+        createdAtIso=datetime.now(timezone.utc).isoformat(),
+    )
+    try:
+        store.save_diagnostic(value)
+    except Exception:
+        logging.getLogger(__name__).warning('cockpit_query_diagnostic persistence failed id=%s', value['diagnosticId'])
+    logging.getLogger(__name__).warning('cockpit_query_diagnostic %s', json.dumps(value, ensure_ascii=False))
+    return value

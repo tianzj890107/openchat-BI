@@ -38,6 +38,13 @@ from .refresh import (RefreshManager, RefreshScheduler, publication_status, sche
 from . import periods
 
 RESULT_CONTRACT_VERSION="compact-v1"
+_external_analysis_lookup = None
+
+
+def set_external_analysis_lookup(lookup):
+    """Let the customer fixed-release surface resolve published card ids."""
+    global _external_analysis_lookup
+    _external_analysis_lookup = lookup
 
 
 def _default_display_scope(ui_scope: str) -> bool:
@@ -355,6 +362,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         except ValueError as exc:raise HTTPException(422,str(exc))
     def get_analysis(aid):
         value=store().get_analysis(aid)
+        if not value and _external_analysis_lookup is not None:
+            value=_external_analysis_lookup(aid)
         if not value:raise HTTPException(404,"分析记录不存在")
         return value
     def context_value(c,s):

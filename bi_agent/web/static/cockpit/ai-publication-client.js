@@ -50,8 +50,8 @@ export function createAiPublicationClient({
         if(token!==generation)return null;
         const slots={};
         for(const [id,meta] of Object.entries(body.slots||{})) {
-          const group=stageCache.get(meta.stage), slot=group?.slots?.[id];
-          slots[id]=slot?{...(group.version===body.stageVersions[meta.stage]?meta:slot),payload:slot.payload}:{...meta,status:'missing'};
+          const publicationKey=meta.publicationKey||meta.stage, group=stageCache.get(publicationKey), slot=group?.slots?.[id];
+          slots[id]=slot?{...(group.version===body.stageVersions[publicationKey]?meta:slot),payload:slot.payload}:{...meta,status:'missing'};
         }
         body={...body,slots};
       }
