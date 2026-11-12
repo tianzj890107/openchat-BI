@@ -281,14 +281,10 @@ class FrozenAnnualService:
         if not isinstance(visible_slots, list) or len(visible_slots)>15 or any(not isinstance(v, str) or v not in registry for v in visible_slots):
             raise HTTPException(422, 'Invalid visible slots')
         if slot_id:
-            target = _item_key(registry[slot_id])
-            if target in INDEPENDENT_ITEMS:
-                # A dedicated card retry owns the round. Appending the rest of
-                # the page here previously let a shared opportunity task finish
-                # later and compete with the independently published card.
-                return [target]
-        candidates = ([_item_key(registry[slot_id])] if slot_id else [])
-        candidates += [_item_key(registry[v]) for v in visible_slots]
+            # A card's "重新分析" analyses that card only.  It never drags in
+            # visible cards, the rest of the page or the other stages.
+            return [_item_key(registry[slot_id])]
+        candidates = [_item_key(registry[v]) for v in visible_slots]
         # A page-wide refresh keeps the shared stage targets.  Independent
         # cards join only when the user targets them or they are visible.
         candidates += [_item_key(s) for s in registry.values() if s['page']==page]
@@ -314,22 +310,25 @@ class FrozenAnnualService:
         job = self.store.job()
         return dict(queued=queued, status=job.get('status', 'idle'), manualUpdate=job)
 
-    def _requeue(self, stage):
-        if not stage or self.active == stage:
+    def _enqueue(self, stage):
+        """Join the running round at the back; other cards keep their place."""
+        if not stage or self.active == stage or stage in self.pending:
             return
-        self.pending[:] = [item for item in self.pending if item != stage]
         self.completed[:] = [item for item in self.completed if item != stage]
         self.failures[:] = [item for item in self.failures if item.get('stage') != stage]
-        self.pending.insert(0, stage)
+        self.pending.append(stage)
         self.stage_progress[stage] = dict(status='queued', phase='queued', queuedAt=time.time())
 
     def prioritize(self, slot_id=None, page=None, visible_slots=None, requeue=False):
+        """Validate the request; only an explicit card refresh changes the queue.
+
+        Scrolling used to reorder and even drop queued stages.  The queue now
+        belongs to the cards the user asked for, in the order they asked.
+        """
         order = self.priority_order(slot_id, page, visible_slots)
         with self.queue_lock:
-            if self.store.job()['status']=='running':
-                if requeue and slot_id:
-                    self._requeue(order[0])
-                self.pending[:] = [s for s in order if s in self.pending]
+            if requeue and slot_id and self.store.job()['status']=='running':
+                self._enqueue(order[0])
                 self._progress()
         return self._job_response(False)
 

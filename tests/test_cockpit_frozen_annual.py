@@ -104,17 +104,15 @@ def test_manual_refresh_uses_public_query_data_envelope(tmp_path, monkeypatch):
     assert captured['query'](1,'analysis',{'analysisConfig':{}})==expected
 
 
-def test_priority_incremental_publication_and_failure_isolation(tmp_path):
+def test_card_refresh_runs_only_its_own_stage_and_later_cards_queue_behind(tmp_path):
     store,_,body=fixture(tmp_path)
-    entered=threading.Event();release=threading.Event();second=threading.Event();finish_second=threading.Event();done=threading.Event()
+    entered=threading.Event();release=threading.Event();done=threading.Event()
     calls=[]
     class Runner:
         def run_stage(self,period,stage):
             calls.append(stage)
             if len(calls)==1:
                 entered.set();assert release.wait(5)
-            if len(calls)==2:
-                second.set();assert finish_second.wait(5)
             if stage=='order':raise RuntimeError('stage source unavailable')
             item=deepcopy(body['items'][stage]);item['updatedAt']=2
             return item
@@ -123,29 +121,33 @@ def test_priority_incremental_publication_and_failure_isolation(tmp_path):
     store.finish=finished
     service=FrozenAnnualService(store,Runner())
     client=TestClient(FrozenCockpitSurface(FastAPI(),service))
-    r=client.post('/api/cockpit/publications/refresh',json={'manual':True,'slotId':'shipment-risk-summary','page':'analysis','visibleSlots':['opportunity-risk']})
+    refresh=lambda slot,**extra:client.post('/api/cockpit/publications/refresh',json={'manual':True,'slotId':slot,'page':'analysis',**extra})
+    # Visible cards and the rest of the page are not pulled into the round.
+    r=refresh('shipment-risk-summary',visibleSlots=['opportunity-risk','quote-summary'])
     assert r.status_code==200 and entered.wait(2)
-    assert calls==['shipment']
-    # Reprioritize an existing job; never start a competing model execution.
-    response=client.post('/api/cockpit/publications/priority',json={'slotId':'quote-summary','page':'operations'})
+    assert calls==['shipment'] and store.job()['pendingStages']==[]
+    # Two more cards join at the back, in click order; repeats do not duplicate.
+    assert refresh('order-risk-summary').json()['queued'] is False
+    assert refresh('bid-summary').status_code==200
+    assert refresh('order-risk-summary').status_code==200
+    assert store.job()['pendingStages']==['order','bid']
+    # Scrolling (visibility priority) never reorders or drops queued cards.
+    response=client.post('/api/cockpit/publications/priority',json={'page':'operations','visibleSlots':['quote-summary']})
     assert response.status_code==200
-    release.set();assert second.wait(2)
+    assert store.job()['pendingStages']==['order','bid']
+    release.set();assert done.wait(5)
+    assert calls==['shipment','order','bid']
     current=store.read()
-    assert current['items']['shipment']['updatedAt']==2
-    assert current['items']['quotation']['updatedAt']==1
-    assert calls==['shipment','quotation']
-    assert service.envelope(1)['readyCount']==15
-    finish_second.set();assert done.wait(3)
-    current=store.read()
-    # A failed stage is cleared instead of keeping its last card.
+    assert current['items']['shipment']['updatedAt']==2 and current['items']['bid']['updatedAt']==2
+    # Untouched cards keep their content; the failed card is cleared.
+    assert current['items']['quotation']['updatedAt']==1 and current['items']['opportunity']['updatedAt']==1
     assert 'order' not in current['items']
-    assert current['items']['bid']['updatedAt']==2
-    assert len(calls)==len(set(calls))==6
     assert store.job()['status']=='partial'
     work=store.job()['stageProgress']
+    assert set(work)=={'shipment','order','bid'}
     assert work['shipment']['status']=='completed'
     assert work['shipment']['finishedAt']>=work['shipment']['startedAt']
-    assert work['order']['status']=='failed'
+    assert work['order']['status']=='failed' and work['bid']['status']=='completed'
     failure=store.job()['failedStages'][0]
     assert failure['stage']=='order' and failure['code']=='RuntimeError'
     # Without a tailored explanation the dialog shows the redacted error itself.
@@ -156,12 +158,12 @@ def test_priority_incremental_publication_and_failure_isolation(tmp_path):
     assert Store(store.path.parent/'history.sqlite3').list_diagnostics()[0]['diagnosticId']==failure['diagnosticId']
 
 
-def test_manual_card_refresh_requeues_a_completed_stage_in_the_running_round(tmp_path):
+def test_manual_card_refresh_joins_the_running_round_at_the_back(tmp_path):
     store,_,_=fixture(tmp_path)
     service=FrozenAnnualService(store,lambda period:None)
     assert store.claim()
     service.pending=['shipment','combined']
-    service.completed=['opportunity']
+    service.completed=['opportunity','opportunity-risk']
     service.active='shipment'
     service.phase='analysing'
     service._progress()
@@ -171,17 +173,18 @@ def test_manual_card_refresh_requeues_a_completed_stage_in_the_running_round(tmp
         'manual':True,'slotId':'opportunity-risk','page':'analysis'}).json()
 
     assert response['queued'] is False and response['status']=='running'
-    assert service.pending[0]=='opportunity-risk'
+    # Already-queued cards keep their place; a finished card can run again.
+    assert service.pending==['shipment','combined','opportunity-risk']
     assert 'opportunity' in service.completed
     assert 'opportunity-risk' not in service.completed
-    assert response['manualUpdate']['pendingStages'][0]=='opportunity-risk'
+    assert response['manualUpdate']['pendingStages']==['shipment','combined','opportunity-risk']
     assert response['manualUpdate']['activeStage']=='shipment'
 
     service.active='opportunity-risk'
     service.pending=['shipment']
     service._progress()
     service.refresh('opportunity-risk','analysis')
-    assert service.pending.count('opportunity-risk')==0
+    assert service.pending==['shipment']
 
 
 def test_frozen_card_analysis_can_generate_a_task_draft(tmp_path):
@@ -219,7 +222,7 @@ def test_frozen_card_analysis_can_generate_a_task_draft(tmp_path):
         set_external_analysis_lookup(None)
 
 
-def test_independent_combined_failure_does_not_retry_or_block_other_stages(tmp_path):
+def test_failed_card_refresh_touches_no_other_card(tmp_path):
     store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
     class Runner:
         def run_stage(self,period,stage):
@@ -232,12 +235,13 @@ def test_independent_combined_failure_does_not_retry_or_block_other_stages(tmp_p
     service=FrozenAnnualService(store,Runner())
     service.refresh('sales-shipment-issues','analysis')
     assert done.wait(3)
-    assert calls[0]=='combined' and calls.count('combined')==1
-    assert store.job()['status']=='partial'
+    assert calls==['combined']
+    assert store.job()['status']=='failed'
     assert 'combined' not in store.read()['items']
-    assert store.read()['items']['opportunity']['updatedAt']==3
+    assert store.read()['items']['opportunity']['updatedAt']==1
     envelope=service.envelope(1)
     assert envelope['slots']['sales-shipment-issues']['status']=='missing'
+    assert envelope['slots']['order-risk-summary']['status']=='ready'
 
 
 def test_visibility_updates_and_page_reads_cannot_start_analysis(tmp_path):
@@ -250,13 +254,13 @@ def test_visibility_updates_and_page_reads_cannot_start_analysis(tmp_path):
     assert calls==[] and store.job()['status']=='idle'
 
 
-def test_combined_priority_can_overtake_other_stage_tasks(tmp_path):
+def test_visibility_priority_leaves_the_queue_untouched(tmp_path):
     store,_,_=fixture(tmp_path);service=FrozenAnnualService(store,lambda p:None)
     store.claim()
     service.pending=['opportunity','order','combined']
     service.prioritize('sales-shipment-issues','analysis')
-    assert service.pending==['combined','opportunity','order']
-    assert service.store.job()['pendingStages']==service.pending
+    service.prioritize(None,'analysis',['opportunity-risk'])
+    assert service.pending==['opportunity','order','combined']
     client=TestClient(FrozenCockpitSurface(FastAPI(),service))
     assert client.post('/api/cockpit/publications/priority',json={'visibleSlots':[{}]}).status_code==422
 
@@ -330,17 +334,11 @@ def test_full_evidence_pages_reuse_the_canvas_renderer_and_escape_records(tmp_pa
     assert client.get(path.replace('analysisId=shipment','analysisId=outdated')).status_code==409
 
 
-def test_combined_can_run_first_without_other_successes_and_empty_result_clears_old(tmp_path):
+def test_stage_without_evidence_clears_only_its_own_card(tmp_path):
     store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
     class Runner:
         def run_slot(self,period,stage):
-            if stage!='opportunity-risk':
-                return self.run_stage(period,stage)
-            calls.append(stage)
-            item=deepcopy(body['items']['opportunity'])
-            item.update(id=stage,updatedAt=10)
-            item['context']=dict(item['context'],slotId=stage)
-            return item
+            return self.run_stage(period,stage)
         def run_stage(self,period,stage):
             calls.append(stage)
             item=deepcopy(body['items'][stage]);item['updatedAt']=10
@@ -350,14 +348,28 @@ def test_combined_can_run_first_without_other_successes_and_empty_result_clears_
     def finish(*args):original(*args);done.set()
     store.finish=finish
     service=FrozenAnnualService(store,Runner())
-    service.refresh('sales-shipment-issues','analysis')
+    service.refresh('quote-summary','operations')
     assert done.wait(3)
-    assert calls[0]=='combined' and calls.count('combined')==1
-    assert store.read()['items']['combined']['updatedAt']==10
+    assert calls==['quotation']
     assert 'quotation' not in store.read()['items']
+    assert store.read()['items']['combined']['updatedAt']==1
     assert 'quotation' not in store.job()['completedStages']
     assert store.job()['failedStages'][0]['stage']=='quotation'
     assert store.job()['heartbeatAt']>0
+
+
+def test_page_wide_refresh_without_a_card_still_covers_every_stage(tmp_path):
+    store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
+    class Runner:
+        def run_stage(self,period,stage):
+            calls.append(stage)
+            item=deepcopy(body['items'][stage]);item['updatedAt']=7;return item
+    original=store.finish
+    def finish(*args):original(*args);done.set()
+    store.finish=finish
+    FrozenAnnualService(store,Runner()).refresh()
+    assert done.wait(5)
+    assert set(calls)==set(STAGES) and len(calls)==len(STAGES)
 
 
 def test_full_evidence_is_read_on_demand_and_old_analysis_is_not_mislabelled(tmp_path):
