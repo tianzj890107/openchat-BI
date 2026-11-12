@@ -74,6 +74,20 @@ def test_result_exposes_the_full_ontology_trace():
     assert len(trace['causes']) == 9
     assert len(trace['advice']) == 12
     assert trace['risks'][0]['code'] == 'RK01' and trace['risks'][0]['name']
+    assert trace['links']['RK07'] == {'risk': 'RK07', 'causes': ['RC09'],
+                                      'advice': ['AC02', 'AC03']}
+
+
+def test_result_exposes_rule_assessments_and_query_sql_for_evidence_details():
+    data = _data()
+    data['queryCatalog'] = [dict(label='销售目标', sql='SELECT 1', params=[2026],
+                                 status='ok', durationSeconds=0.01, rowCount=1)]
+    value = evaluate(data)
+    assessments = value['result']['riskAssessments']
+    assert len(assessments) == 10
+    assert assessments[0]['code'] == 'RK01'
+    assert assessments[0]['rule'] and assessments[0]['ruleStatus']
+    assert value['result']['queryCatalog'] == data['queryCatalog']
 
 
 def test_contract_confirmation_drives_signing_and_unknown_is_not_zero():
@@ -286,15 +300,17 @@ def test_build_card_reports_internal_steps_in_execution_order():
             return EmptyResult()
 
     events = []
-    build_card('2026', database=Database(), measurement_date='2026-11-11',
-               text_interpreter=None,
-               progress=lambda phase, **detail: events.append((phase, detail)))
+    card = build_card('2026', database=Database(), measurement_date='2026-11-11',
+                      text_interpreter=None,
+                      progress=lambda phase, **detail: events.append((phase, detail)))
     phases = [phase for phase, _ in events]
     assert phases[0] == 'ontology'
     assert phases.count('fetching') >= 9
     assert phases[-3:] == ['rules', 'analysing', 'publishing']
     fetch = [detail for phase, detail in events if phase == 'fetching']
     assert fetch[-1]['completed'] == fetch[-1]['total'] == 9
+    assert len(card['result']['queryCatalog']) == 9
+    assert all(item['sql'] for item in card['result']['queryCatalog'])
 
 
 def test_model_generated_text_is_validated_against_evidence_numbers_and_links():

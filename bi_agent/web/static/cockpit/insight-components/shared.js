@@ -101,6 +101,14 @@ export function useInsight(props, emit) {
   const causes = computed(() => (result.value?.causes || []).map(cause=>({...cause,title:String(cause.title||'').replace(/^\[(待验证假设|结构定位|异常表现|数据缺口|记录支持)\]\s*/, '')})))
   const analysisDimensions = computed(() => riskDimensionLinks(result.value?.analysisDimensions || [],findings.value))
   const ontologyTrace = computed(() => result.value?.ontologyTrace || null)
+  const riskAssessments = computed(() => {
+    const values = {}
+    for (const item of result.value?.riskAssessments || []) {
+      if (item && item.code) values[item.code] = item
+    }
+    return values
+  })
+  const queryCatalog = computed(() => result.value?.queryCatalog || [])
   const recommendations = computed(() => result.value?.recommendations || [])
   const limitations = computed(() => result.value?.caliberNotes || result.value?.limitations || bundle.value.limitations || [])
   const summary = computed(() => result.value?.businessSummary ?? result.value?.summary ?? '')
@@ -132,6 +140,79 @@ export function useInsight(props, emit) {
   function ontologyText(items) {
     return (items || []).map(item => [item.code, item.name].filter(Boolean).join(' ')).join('、')
   }
+
+  function ontologyName(code) {
+    const trace = result.value?.ontologyTrace || {}
+    for (const section of ['metrics', 'risks', 'causes', 'advice']) {
+      const found = (trace[section] || []).find(item => item.code === code)
+      if (found) return found.name
+    }
+    return ''
+  }
+
+  function ontologyLabel(code) {
+    const name = ontologyName(code)
+    return name ? `${code} ${name}` : code
+  }
+
+  function distinctEvidenceCount(item) {
+    return new Set((item?.evidenceIds || []).map(String)).size
+  }
+
+  function riskCodesFor(item, kind) {
+    if (kind === 'finding') return [item?.riskCode || item?.riskKey].filter(Boolean)
+    const ids = new Set(item?.findingIds || [])
+    const codes = findings.value
+      .filter(finding => ids.has(finding.id))
+      .map(finding => finding.riskCode || finding.riskKey)
+    if (item?.causeCode) {
+      const cause = (result.value?.causes || []).find(entry => entry.causeCode === item.causeCode)
+      for (const code of cause?.linkedRiskCodes || cause?.riskCodes || []) codes.push(code)
+    }
+    return [...new Set(codes.filter(Boolean))]
+  }
+
+  function traceFor(item, kind) {
+    const riskCodes = riskCodesFor(item, kind)
+    const trace = result.value?.ontologyTrace || {}
+    const links = trace.links || {}
+    const shownCauses = new Set((result.value?.causes || []).map(entry => entry.causeCode))
+    const causes = new Set()
+    if (kind === 'cause' && item?.causeCode) causes.add(item.causeCode)
+    for (const code of riskCodes) {
+      for (const cause of links[code]?.causes || []) causes.add(cause)
+    }
+    const advice = new Set()
+    for (const code of riskCodes) {
+      for (const itemCode of links[code]?.advice || []) advice.add(itemCode)
+    }
+    const rules = []
+    const metrics = new Set()
+    for (const code of riskCodes) {
+      const assessment = riskAssessments.value[code]
+      if (!assessment) continue
+      rules.push({
+        code, name: assessment.name || '', rule: assessment.rule || '',
+        condition: assessment.condition || '', status: assessment.ruleStatus || '',
+      })
+      for (const metric of assessment.metricCodes || []) metrics.add(metric)
+    }
+    return {
+      rules,
+      risks: riskCodes.map(ontologyLabel),
+      causes: [...causes].filter(code => shownCauses.has(code)).map(ontologyLabel),
+      advice: [...advice].map(ontologyLabel),
+      metrics: [...metrics].map(ontologyLabel),
+      sql: queryCatalog.value,
+    }
+  }
+
+  const traces = computed(() => {
+    const values = {}
+    for (const finding of findings.value) values[finding.id] = traceFor(finding, 'finding')
+    for (const dimension of analysisDimensions.value) values[dimension.id] = traceFor(dimension, 'cause')
+    return values
+  })
 
   function factText(label) {
     return metricValue(fact(label))
@@ -232,6 +313,8 @@ export function useInsight(props, emit) {
     findings,
     analysisDimensions,
     ontologyTrace,
+    riskAssessments,
+    queryCatalog,
     causes,
     recommendations,
     openRecommendations,
@@ -248,6 +331,11 @@ export function useInsight(props, emit) {
     stateText,
     fact,
     ontologyText,
+    ontologyName,
+    ontologyLabel,
+    distinctEvidenceCount,
+    traceFor,
+    traces,
     factText,
     sumFacts,
     factSum,
@@ -308,7 +396,30 @@ export function createStageRiskComponent(options = {}) {
             <div class="stage-risk-analysis__summary" :title="summary"><number-text :text="summary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
-              <span class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——<number-text :text="finding.description" /></template></span>
+              <div class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——<number-text :text="finding.description" /></template>
+                <details v-if="traces[finding.id] && (traces[finding.id].rules.length || traces[finding.id].sql.length)" class="stage-risk-analysis__trace">
+                  <summary class="stage-risk-analysis__trace-summary">{{ distinctEvidenceCount(finding) }} 条证据</summary>
+                  <div class="stage-risk-analysis__trace-body">
+                    <div class="stage-risk-analysis__trace-title">识别的规则</div>
+                    <div v-for="rule in traces[finding.id].rules" :key="rule.code" class="stage-risk-analysis__trace-line">
+                      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.rule"> · 规则：{{ rule.rule }}</template><template v-if="rule.condition"> · 条件：{{ rule.condition }}</template>
+                    </div>
+                    <div class="stage-risk-analysis__trace-title">命中的本体</div>
+                    <div class="stage-risk-analysis__trace-line">风险：{{ traces[finding.id].risks.join('；') || '—' }}</div>
+                    <div v-if="traces[finding.id].causes.length" class="stage-risk-analysis__trace-line">原因：{{ traces[finding.id].causes.join('；') }}</div>
+                    <div v-if="traces[finding.id].metrics.length" class="stage-risk-analysis__trace-line">指标：{{ traces[finding.id].metrics.join('；') }}</div>
+                    <div v-if="traces[finding.id].advice.length" class="stage-risk-analysis__trace-line">建议：{{ traces[finding.id].advice.join('；') }}</div>
+                    <template v-if="traces[finding.id].sql.length">
+                      <div class="stage-risk-analysis__trace-title">取数 SQL</div>
+                      <details v-for="query in traces[finding.id].sql" :key="query.label" class="stage-risk-analysis__trace-query">
+                        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行</summary>
+                        <pre>{{ query.sql }}</pre>
+                        <div v-if="query.params && query.params.length" class="stage-risk-analysis__trace-params">参数：{{ JSON.stringify(query.params) }}</div>
+                      </details>
+                    </template>
+                  </div>
+                </details>
+              </div>
             </div>
           </article>
 
@@ -319,9 +430,31 @@ export function createStageRiskComponent(options = {}) {
             </div>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
-              <span class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——<number-text :text="dimension.description" />
-                <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }} · {{ evidenceFor(dimension).length }} 条证据</small>
-              </span>
+              <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——<number-text :text="dimension.description" />
+                <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
+                <details v-if="traces[dimension.id] && (traces[dimension.id].rules.length || traces[dimension.id].sql.length)" class="stage-risk-analysis__trace">
+                  <summary class="stage-risk-analysis__trace-summary">{{ evidenceFor(dimension).length }} 条证据</summary>
+                  <div class="stage-risk-analysis__trace-body">
+                    <div class="stage-risk-analysis__trace-title">识别的规则</div>
+                    <div v-for="rule in traces[dimension.id].rules" :key="rule.code" class="stage-risk-analysis__trace-line">
+                      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.rule"> · 规则：{{ rule.rule }}</template><template v-if="rule.condition"> · 条件：{{ rule.condition }}</template>
+                    </div>
+                    <div class="stage-risk-analysis__trace-title">命中的本体</div>
+                    <div class="stage-risk-analysis__trace-line">风险：{{ traces[dimension.id].risks.join('；') || '—' }}</div>
+                    <div v-if="traces[dimension.id].causes.length" class="stage-risk-analysis__trace-line">原因：{{ traces[dimension.id].causes.join('；') }}</div>
+                    <div v-if="traces[dimension.id].metrics.length" class="stage-risk-analysis__trace-line">指标：{{ traces[dimension.id].metrics.join('；') }}</div>
+                    <div v-if="traces[dimension.id].advice.length" class="stage-risk-analysis__trace-line">建议：{{ traces[dimension.id].advice.join('；') }}</div>
+                    <template v-if="traces[dimension.id].sql.length">
+                      <div class="stage-risk-analysis__trace-title">取数 SQL</div>
+                      <details v-for="query in traces[dimension.id].sql" :key="query.label" class="stage-risk-analysis__trace-query">
+                        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行</summary>
+                        <pre>{{ query.sql }}</pre>
+                        <div v-if="query.params && query.params.length" class="stage-risk-analysis__trace-params">参数：{{ JSON.stringify(query.params) }}</div>
+                      </details>
+                    </template>
+                  </div>
+                </details>
+              </div>
             </div>
           </article>
 

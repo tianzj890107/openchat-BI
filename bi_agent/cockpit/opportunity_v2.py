@@ -377,11 +377,19 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     budget = _fetch_budget_seconds()
     total_queries = 9
     completed_queries = 0
+    query_catalog: list[dict] = []
+    query_specs: dict[str, tuple[str, list]] = {}
 
     def report_query(label, status, duration, error=None, value=None):
         nonlocal completed_queries
         completed_queries += 1
         query_status[label] = status
+        sql, params = query_specs.get(label, ("", []))
+        query_catalog.append(dict(
+            label=label, sql=sql, params=list(params), status=status,
+            durationSeconds=round(duration, 3),
+            rowCount=len(results.get(label) or []) if label in results else 0,
+        ))
         if error is not None:
             entry = dict(stage=label, code=error.get("code") or "QUERY_FAILED",
                          sqlstate=error.get("upstreamCode") or "",
@@ -715,6 +723,8 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         ("订单关联", order_sql, []),
         ("产品团队", team_sql, []),
     ]
+    query_specs.update({label: (sql, params) for label, sql, params in specs})
+    query_specs["商机聚合"] = (aggregate_sql, [past, past, past, year, measured])
     deadline = started + budget
     results = {}
     with _reader_group(database, workers=3) as (readers, parallel):
@@ -967,6 +977,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         schema=schema,
         fetchBudgetSeconds=budget,
         queryTimeoutMs=statement_timeout,
+        queryCatalog=query_catalog,
         fetchedAt=time.time(),
         durationSeconds=round(time.monotonic() - started, 3),
     )
@@ -2215,6 +2226,7 @@ def evaluate(data, config=None, measured=None):
         modelExcludedRiskCodes=[],
         ontologyVersion=config.get("version"),
         ontologyTrace=_ontology_trace(config),
+        queryCatalog=deepcopy(data.get("queryCatalog") or []),
         sourceConfigDigest=config_digest(),
         measurementDate=data.get("measurementDate"),
     )
@@ -2886,6 +2898,7 @@ def _ontology_trace(config):
         ontology=_text(config.get("ontology")),
         version=_text(config.get("version")),
         digest=config_digest()[:12],
+        links=deepcopy(config.get("links") or {}),
         metrics=entries("metrics"),
         risks=entries("risks"),
         causes=entries("causes"),

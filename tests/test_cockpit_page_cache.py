@@ -131,10 +131,14 @@ def test_compact_cards_keep_ui_evidence_without_narrative_or_query_provenance(tm
     store,_,req,_=fixture(tmp_path);item=store.get_analysis(req.analysisIds['shipment'])
     item['result']['narrative']='full report'*100
     item['result']['ontologyTrace']={'version':'opportunity-v3-rules-1','metrics':[]}
+    item['result']['riskAssessments']=[{'code':'RK01','rule':'条件','ruleStatus':'triggered'}]
+    item['result']['queryCatalog']=[{'label':'销售目标','sql':'SELECT 1'}]
     item['evidence']['evidence']=[{'id':'E1','record':{'id':'R1'},'provenance':{'sql':'large query'}}]
     slim=compact_analysis(item)
     assert slim['evidence']['evidence']==[{'id':'E1','record':{'id':'R1'}}]
     assert slim['result']['ontologyTrace']=={'version':'opportunity-v3-rules-1','metrics':[]}
+    assert slim['result']['riskAssessments'][0]['code']=='RK01'
+    assert slim['result']['queryCatalog'][0]['sql']=='SELECT 1'
     assert 'narrative' not in slim['result'] and 'narrative' in item['result']
 
 
