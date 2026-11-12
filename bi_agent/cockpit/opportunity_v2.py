@@ -2701,11 +2701,27 @@ def _looks_truncated_json(text):
     return in_string or depth > 0
 
 
+class ModelEmptyResponse(RuntimeError):
+    """The model stream ended without any answer text."""
+
+    def __init__(self, message, *, stop_reason="", finish_reason="", usage=None,
+                 reasoning_chars=0, elapsed=0.0, max_tokens=0, timeout=0):
+        super().__init__(message)
+        self.stop_reason = stop_reason
+        self.finish_reason = finish_reason
+        self.usage = dict(usage or {})
+        self.reasoning_chars = reasoning_chars
+        self.elapsed = elapsed
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+
+
 def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, timeout):
     from ..llm.runtime_config import request_config
 
     events = []
     stream_error = None
+    started = time.monotonic()
     try:
         with request_config(thinking=False, request_timeout=timeout):
             for event in provider.stream_message(
@@ -2714,8 +2730,11 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
                 events.append(event)
     except Exception as exc:  # noqa: BLE001 - keep a partially received answer
         stream_error = exc
+    elapsed = time.monotonic() - started
     text = "".join(event.get("text", "") for event in events
                    if event.get("type") == "text_delta").strip()
+    reasoning_chars = sum(len(event.get("text") or "") for event in events
+                          if event.get("type") in {"thinking_block", "thinking_delta"})
     errors = [event.get("error", "") for event in events if event.get("type") == "error"]
     if errors:
         if text:
@@ -2732,14 +2751,27 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
             ) from stream_error
         raise stream_error
     ends = [event for event in events if event.get("type") == "message_end"]
+    end = ends[-1] if ends else {}
     if not text:
-        raise RuntimeError("模型未返回完整文本")
+        stop = str(end.get("stop_reason") or "")
+        finish = str(end.get("finish_reason") or "")
+        usage = end.get("usage") or {}
+        facts = [f"结束原因 {finish or stop or '无（流没有正常结束）'}",
+                 f"推理内容 {reasoning_chars} 字",
+                 f"输出 token {usage.get('output_tokens', '未知')} / 上限 {max_tokens}",
+                 f"输入 token {usage.get('input_tokens', '未知')}",
+                 f"耗时 {elapsed:.1f} 秒"]
+        raise ModelEmptyResponse(
+            "模型未返回正文（" + "，".join(facts) + "）",
+            stop_reason=stop, finish_reason=finish, usage=usage,
+            reasoning_chars=reasoning_chars, elapsed=elapsed,
+            max_tokens=max_tokens, timeout=timeout)
     if not ends:
         raise ModelJSONOutputError(
             "模型流缺少结束事件，已保留部分正文",
             raw_text=text, stop_reason="stream_error",
         )
-    return text, str(ends[-1].get("stop_reason") or ""), ends[-1].get("usage") or {}
+    return text, str(end.get("stop_reason") or ""), end.get("usage") or {}
 
 
 _MODEL_KEY_ENV = "COCKPIT_OPPORTUNITY_V2_MODEL_KEY"
@@ -2845,14 +2877,29 @@ def default_text_interpreter(payload):
                 provider, key, messages, system_prompt,
                 max_tokens=max_tokens, timeout=attempt_timeout,
             )
-        except ModelJSONOutputError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - transport failure on this route
+        except Exception as exc:  # noqa: BLE001 - annotated, then re-raised
+            _annotate_model_error(exc, key, messages, started, attempt_timeout, max_tokens)
+            if isinstance(exc, ModelJSONOutputError):
+                raise
             last_transport_error = exc
             remaining_budget -= time.monotonic() - started
             if index + 1 >= len(candidate_keys) or remaining_budget <= 0:
                 raise
     raise last_transport_error or RuntimeError("模型未返回结果")
+
+
+def _annotate_model_error(exc, key, messages, started, timeout, max_tokens):
+    """Attach the call context an operator needs to read a model failure."""
+    try:
+        from ..llm.registry import get_model
+        route = _text((get_model(key) or {}).get("model_id")) or _text(key)
+    except Exception:  # noqa: BLE001 - context is best effort
+        route = _text(key)
+    exc.model_route = route
+    exc.input_chars = sum(len(_text(message.get("content"))) for message in messages)
+    exc.elapsed = round(time.monotonic() - started, 1)
+    exc.timeout = timeout
+    exc.max_tokens = max_tokens
 
 
 def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, timeout):
@@ -2990,15 +3037,129 @@ def _model_summary_valid(text, limit, allowed_numbers):
             and not _SUMMARY_FORBIDDEN.search(text))
 
 
+def _model_error_context(exc):
+    return dict(
+        modelRoute=_text(getattr(exc, "model_route", "")),
+        modelInputChars=getattr(exc, "input_chars", None),
+        modelElapsedSeconds=getattr(exc, "elapsed", None),
+        modelTimeoutSeconds=getattr(exc, "timeout", None),
+        modelMaxTokens=getattr(exc, "max_tokens", None),
+        modelFinishReason=_text(getattr(exc, "finish_reason", "")),
+        modelReasoningChars=getattr(exc, "reasoning_chars", None),
+        modelUsage=dict(getattr(exc, "usage", None) or {}),
+        modelErrorType=type(exc).__name__,
+    )
+
+
+def _has(text, *words):
+    return any(word in text for word in words)
+
+
+def classify_model_failure(model_status):
+    """Return (category, explanation, suggestion) for a stopped model step."""
+    message = _text(model_status.get("modelErrorMessage"))
+    lowered = message.lower()
+    error = _text(model_status.get("error"))
+    error_type = _text(model_status.get("modelErrorType"))
+    stop = _text(model_status.get("modelStopReason")).lower()
+    finish = _text(model_status.get("modelFinishReason")).lower()
+    reasoning = model_status.get("modelReasoningChars") or 0
+    timeout = model_status.get("modelTimeoutSeconds")
+    if error == "MODEL_DISABLED":
+        return ("未启用模型分析", "COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED 已关闭，商机卡片必须由模型生成。",
+                "在 .env 中开启该开关后重新分析。")
+    if error == "MODEL_ANALYSIS_REJECTED":
+        return ("模型分析不符合要求", "模型有返回，但内容没有通过校验：" + message,
+                "检查模型是否逐条判断了全部本体风险、是否为成立风险给出根因和建议；可换用更强的模型。")
+    if _has(lowered, "context_length", "context length", "maximum context", "too many tokens",
+            "prompt is too long", "input is too long", "token limit", "exceeds the model",
+            "error code: 413", "上下文") or (_has(lowered, "too long") and "400" in lowered):
+        return ("上下文超出模型限制", "本次发送给模型的输入超过了模型允许的上下文长度，请求被拒绝。",
+                "换用上下文更长的模型，或减少发送的事实、记录和进展样本数量。")
+    if "content_filter" in finish or _has(lowered, "content_filter", "content filter", "safety",
+                                           "sensitive", "refus", "敏感", "违规", "审核"):
+        return ("模型拒绝回答或内容被安全过滤", "模型服务因内容安全策略拦截了本次输出，没有返回正文。",
+                "联系模型服务方确认过滤规则，或换用其他模型。")
+    if _has(lowered, "error code: 401", "error code: 403", "unauthorized", "invalid api key",
+            "incorrect api key", "authentication", "permission denied", "forbidden"):
+        return ("模型服务认证失败", "模型服务拒绝了本次调用的凭据（API Key 无效、过期或无权限）。",
+                "检查 .env 中的模型 API Key 与可用模型权限。")
+    if _has(lowered, "error code: 429", "rate limit", "rate_limit", "too many requests", "quota",
+            "insufficient_quota", "insufficient balance", "余额", "额度"):
+        return ("模型服务限流或额度不足", "模型服务返回限流或额度不足，本次调用被拒绝。",
+                "稍后重试，或联系模型服务方提高并发与额度。")
+    if _has(lowered, "error code: 404", "model_not_found", "model not found", "does not exist",
+            "no such model"):
+        return ("模型不存在或名称配置错误", "模型服务找不到配置的模型名称。",
+                "核对 TEAM_MODEL 或 COCKPIT_OPPORTUNITY_V2_MODEL_KEY 中的模型名。")
+    if error_type == "ModelEmptyResponse" or "模型未返回正文" in message or "模型未返回完整文本" in message:
+        if reasoning:
+            return ("模型只输出了推理过程，没有正文",
+                    f"模型把输出预算用在了推理上（推理内容 {reasoning} 字），没有生成答案正文。",
+                    "改用不带推理的模型路由（COCKPIT_OPPORTUNITY_V2_MODEL_KEY），或调大 "
+                    "COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS。")
+        if stop in {"max_tokens", "length"} or finish == "length":
+            return ("输出预算被耗尽", "模型达到输出 token 上限仍没有生成正文。",
+                    "调大 COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS，或换用不带推理的模型。")
+        if not finish and not stop:
+            return ("模型连接中途断开", "模型服务没有正常结束本次响应，也没有返回任何正文。",
+                    "检查模型网关稳定性与超时设置后重试。")
+        return ("模型返回为空", "模型正常结束了响应，但没有返回任何正文。",
+                "确认模型服务是否正常；如持续出现，换用其他模型。")
+    if _has(lowered, "timeout", "timed out", "time out", "超时", "readtimeout"):
+        return ("模型请求超时", f"在 {timeout or '设定'} 秒内没有收到模型的后续输出。",
+                "模型响应过慢或网络不稳定；可稍后重试，或换用更快的模型。")
+    if _has(lowered, "connection", "connect", "name resolution", "refused", "unreachable",
+            "ssl", "certificate", "network"):
+        return ("无法连接模型服务", "网络或证书问题导致没有连上模型服务。",
+                "检查服务器到模型地址的网络、代理与证书配置。")
+    if _has(lowered, "error code: 500", "error code: 502", "error code: 503", "error code: 504",
+            "internal server error", "bad gateway", "service unavailable", "overloaded"):
+        return ("模型服务端异常", "模型服务返回了服务端错误。", "稍后重试；持续出现时联系模型服务方。")
+    if error == "MODEL_OUTPUT_INVALID" or error_type == "ModelJSONOutputError":
+        if stop in {"max_tokens", "length"} or _has(message, "token 上限"):
+            return ("输出超过长度上限", "模型输出在达到 token 上限时被截断，JSON 不完整。",
+                    "调大 COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS，或换用输出更简洁的模型。")
+        if stop == "stream_error" or _has(message, "流中断", "流返回错误", "缺少结束事件"):
+            return ("模型输出中途中断", "模型已开始输出，但连接在输出完成前断开，结果不完整。",
+                    "检查模型网关稳定性后重试。")
+        if _has(message, "总预算已用尽"):
+            return ("模型输出格式不对且没有时间修复", "模型返回的不是合法 JSON，剩余时间不够再发起修复。",
+                    "换用响应更快、格式更稳定的模型。")
+        return ("模型输出格式不对", "模型返回的内容不是要求的 JSON 格式，自动修复也没有成功。",
+                "换用格式遵循更稳定的模型；原始返回片段见诊断记录。")
+    if _has(lowered, "error code: 400", "invalid_request", "bad request", "unsupported", "invalid"):
+        return ("模型拒绝了请求参数", "模型服务认为本次请求的参数不合法。",
+                "核对模型名称与是否支持 thinking、max_tokens 等参数。")
+    return ("模型调用失败", "模型调用没有成功，未能识别具体类型。", "按诊断 ID 查看完整错误后处理。")
+
+
 def _model_failure_message(model_status):
-    """User-facing reason for a stopped model step; raw responses stay in diagnostics."""
+    """Multi-line, user-facing explanation; full responses stay in diagnostics."""
     from .diagnostics import redact
 
-    status = model_status.get("status")
-    detail = re.sub(r"\s+", " ", redact(model_status.get("modelErrorMessage")
-                                        or model_status.get("error") or "")).strip()[:200]
-    head = "模型调用中断" if status == "failed" else "模型分析未通过校验"
-    return f"{head}：{detail}" if detail else head
+    category, explanation, suggestion = classify_model_failure(model_status)
+    raw = re.sub(r"\s+", " ", redact(model_status.get("modelErrorMessage")
+                                     or model_status.get("error") or "")).strip()[:300]
+    context = []
+    if model_status.get("modelRoute"):
+        context.append(f"模型 {model_status['modelRoute']}")
+    if model_status.get("modelInputChars"):
+        context.append(f"输入约 {model_status['modelInputChars']} 字")
+    usage = model_status.get("modelUsage") or {}
+    if usage.get("input_tokens"):
+        context.append(f"输入 {usage['input_tokens']} token")
+    if model_status.get("modelElapsedSeconds") is not None:
+        context.append(f"耗时 {model_status['modelElapsedSeconds']} 秒")
+    if model_status.get("modelCalls"):
+        context.append(f"调用 {model_status['modelCalls']} 次")
+    lines = [f"原因：{category}", f"说明：{explanation}"]
+    if raw and raw not in explanation:
+        lines.append(f"模型返回：{raw}")
+    if context:
+        lines.append("调用情况：" + " · ".join(context))
+    lines.append(f"建议：{suggestion}")
+    return "\n".join(lines)
 
 
 def apply_text_interpretation(evaluated, interpreter=None):
@@ -3414,6 +3575,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
             rejectedCauses=list(getattr(exc, "rejected_causes", []) or []),
             rejectedAdvice=list(getattr(exc, "rejected_advice", []) or []),
             missingRiskCodes=list(getattr(exc, "missing_risk_codes", []) or []),
+            **_model_error_context(exc),
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),
             modelRawResponseTail=raw_text[-800:],
@@ -3426,6 +3588,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
         return dict(
             status="failed", error=type(exc).__name__,
             modelCalls=int(getattr(exc, "attempts", 1) or 1),
+            **_model_error_context(exc),
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),
             modelRawResponseTail=raw_text[-800:],
@@ -3624,7 +3787,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
         disabled = OpportunityV2ModelUnavailable(
             "未启用模型分析，商机卡片不能只按本体模板生成", status="failed",
             error="MODEL_DISABLED")
-        disabled.public_message = "未启用模型分析（COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED），商机卡片必须由模型生成"
+        disabled.public_message = _model_failure_message(dict(status="failed", error="MODEL_DISABLED"))
         raise disabled
     _report_progress(progress, "ontology", message="读取本体与规则配置")
     config = config or load_config()
@@ -3696,8 +3859,13 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
                  rejectedCauses=model_status.get("rejectedCauses") or [],
                  rejectedAdvice=model_status.get("rejectedAdvice") or [],
                  analysedRiskCount=model_status.get("analysedRiskCount"),
-                 riskCandidateCount=model_status.get("riskCandidateCount")),
-            ensure_ascii=False,
+                 riskCandidateCount=model_status.get("riskCandidateCount"),
+                 failureCategory=classify_model_failure(model_status)[0],
+                 **{key: model_status.get(key) for key in (
+                     "modelRoute", "modelInputChars", "modelElapsedSeconds", "modelTimeoutSeconds",
+                     "modelMaxTokens", "modelFinishReason", "modelReasoningChars", "modelUsage",
+                     "modelErrorType")}),
+            ensure_ascii=False, default=str,
         )
         failure.public_message = _model_failure_message(model_status)
         if diagnostic_reporter is not None:

@@ -1131,7 +1131,8 @@ def test_model_failure_does_not_replace_the_published_card():
         assert exc.phase == 'model'
         assert exc.code == 'MODEL_ANALYSIS_INCOMPLETE'
         assert exc.model_status == 'failed'
-        assert exc.public_message == '模型调用中断：model connection failed'
+        assert exc.public_message.splitlines()[0] == '原因：无法连接模型服务'
+        assert '模型返回：model connection failed' in exc.public_message
     else:
         raise AssertionError('model failure must not publish template output')
     assert captured and captured[0]['phase'] == 'model'
@@ -1427,7 +1428,8 @@ def test_rejected_model_answer_is_not_published():
     except OpportunityV2ModelUnavailable as exc:
         assert exc.model_status == 'rejected'
         assert exc.model_error == 'MODEL_OUTPUT_INVALID'
-        assert exc.public_message == '模型分析未通过校验：模型未返回合法 JSON'
+        assert exc.public_message.splitlines()[0] == '原因：模型输出格式不对'
+        assert '模型返回：模型未返回合法 JSON' in exc.public_message
     else:
         raise AssertionError('a rejected model answer must not publish a card')
 
@@ -1463,3 +1465,58 @@ def test_model_prompt_treats_ontology_as_context_not_template(monkeypatch):
     assert '不得照抄候选' in prompt
     assert 'ownerRole' in prompt and 'acceptance' in prompt and 'deadlineDays' in prompt
     assert '程序会用本体候选字段补齐' not in prompt
+
+
+def test_reasoning_only_stream_is_explained_with_call_context(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        return iter([
+            dict(type='thinking_block', text='推' * 500),
+            dict(type='message_end', stop_reason='end_turn', finish_reason='stop',
+                 usage=dict(input_tokens=21000, output_tokens=12000)),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a'])
+    value = _model_evaluated()
+    status = apply_text_interpretation(value, module.default_text_interpreter)
+    assert status['status'] == 'failed'
+    assert status['modelErrorType'] == 'ModelEmptyResponse'
+    assert status['modelReasoningChars'] == 500
+    assert status['modelFinishReason'] == 'stop'
+    assert status['modelRoute'] == 'route-a' and status['modelInputChars'] > 0
+    message = module._model_failure_message(status)
+    lines = message.splitlines()
+    assert lines[0] == '原因：模型只输出了推理过程，没有正文'
+    assert any(line.startswith('调用情况：模型 route-a · 输入约 ') for line in lines)
+    assert '推理内容 500 字' in message and '输出 token 12000' in message
+    assert lines[-1].startswith('建议：改用不带推理的模型路由')
+
+
+def test_model_failures_are_classified_for_the_user():
+    from bi_agent.cockpit.opportunity_v2 import classify_model_failure
+
+    def category(**status):
+        return classify_model_failure(dict(status='failed', **status))[0]
+
+    assert category(modelErrorMessage="Team API request failed: Error code: 400 - "
+                    "{'error': {'code': 'context_length_exceeded'}}") == '上下文超出模型限制'
+    assert category(modelErrorMessage='Error code: 401 - invalid api key') == '模型服务认证失败'
+    assert category(modelErrorMessage='Error code: 429 - rate limit reached') == '模型服务限流或额度不足'
+    assert category(modelErrorMessage='Error code: 404 - model_not_found') == '模型不存在或名称配置错误'
+    assert category(modelErrorMessage='APITimeoutError: Request timed out.') == '模型请求超时'
+    assert category(modelErrorMessage='Error code: 503 - service unavailable') == '模型服务端异常'
+    assert category(modelErrorType='ModelEmptyResponse', modelFinishReason='content_filter',
+                    modelErrorMessage='模型未返回正文') == '模型拒绝回答或内容被安全过滤'
+    assert category(modelErrorType='ModelEmptyResponse', modelErrorMessage='模型未返回正文',
+                    modelStopReason='max_tokens') == '输出预算被耗尽'
+    assert category(modelErrorType='ModelEmptyResponse', modelErrorMessage='模型未返回正文') \
+        == '模型连接中途断开'
+    assert category(error='MODEL_OUTPUT_INVALID', modelErrorType='ModelJSONOutputError',
+                    modelStopReason='max_tokens', modelErrorMessage='模型输出达到 token 上限') \
+        == '输出超过长度上限'
+    assert category(error='MODEL_ANALYSIS_REJECTED',
+                    modelErrorMessage='模型未完成全部本体风险判断：RK03') == '模型分析不符合要求'
+    assert category(error='MODEL_DISABLED') == '未启用模型分析'

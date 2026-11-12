@@ -181,6 +181,7 @@ def stream(
 
     tc_state: dict[int, dict[str, Any]] = {}
     stop_reason = "end_turn"
+    finish_raw = ""
     usage = {"input_tokens": 0, "output_tokens": 0}
     reasoning_buf = ""
 
@@ -202,6 +203,7 @@ def stream(
                 finish = getattr(choice, "finish_reason", None)
                 if finish:
                     stop_reason = FINISH_MAP.get(finish, "end_turn")
+                    finish_raw = str(finish)
                 continue
 
             reasoning = getattr(delta, "reasoning_content", None)
@@ -245,6 +247,7 @@ def stream(
             finish = getattr(choice, "finish_reason", None)
             if finish:
                 stop_reason = FINISH_MAP.get(finish, "end_turn")
+                finish_raw = str(finish)
 
         if reasoning_buf:
             yield {"type": "thinking_block", "text": reasoning_buf}
@@ -263,6 +266,7 @@ def stream(
                 "name": state["name"],
                 "input": tool_input,
             }
-        yield {"type": "message_end", "stop_reason": stop_reason, "usage": usage}
+        yield {"type": "message_end", "stop_reason": stop_reason, "usage": usage,
+               "finish_reason": finish_raw}
     except Exception as e:
         yield {"type": "error", "error": f"Team API stream error: {type(e).__name__}: {e}"}

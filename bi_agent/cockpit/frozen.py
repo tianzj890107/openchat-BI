@@ -209,8 +209,8 @@ class FrozenAnnualStore:
 
 def stage_failure_message(exc):
     """Explain a failed stage without exposing raw driver or upstream text."""
-    reason = getattr(exc, 'public_message', '') or '后台分析未完成，详细原因已记录到诊断'
-    return f"{reason.rstrip('。.；; ')}。本轮未发布，卡片已清空，请稍后重试。"
+    reason = getattr(exc, 'public_message', '') or '原因：后台分析未完成，详细原因已记录到诊断'
+    return reason.rstrip('。.；; ') + '\n结果：本轮未发布，卡片已清空，请稍后重试。'
 
 
 class FrozenAnnualService:

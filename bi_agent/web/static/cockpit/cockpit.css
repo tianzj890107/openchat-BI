@@ -162,7 +162,7 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .cockpit-dialog__list{margin:0;padding:0;list-style:none}
 .cockpit-dialog__item{padding:10px 12px;border:1px solid var(--cockpit-divider);border-radius:6px;background:var(--cockpit-error-bg)}
 .cockpit-dialog__item+.cockpit-dialog__item{margin-top:8px}
-.cockpit-dialog__item p{margin:4px 0;font-size:13px;line-height:20px;overflow-wrap:anywhere}
+.cockpit-dialog__item p{margin:4px 0;font-size:13px;line-height:20px;overflow-wrap:anywhere;white-space:pre-line}
 .cockpit-dialog__item small{color:var(--cockpit-text-help);font-size:12px;overflow-wrap:anywhere}
 .cockpit-dialog__actions{display:flex;justify-content:flex-end;margin-top:16px}
 .cockpit-dialog__close{padding:4px 16px;border:0;border-radius:4px;background:var(--cockpit-primary);color:#fff;font-size:13px;line-height:22px;cursor:pointer}
