@@ -55,6 +55,7 @@ def test_probe_timeout_is_local_and_does_not_modify_normal_requests():
     from bi_agent.llm.runtime_config import request_config,scoped_request_timeout
     assert scoped_request_timeout() is None
     with request_config(request_timeout=20):assert scoped_request_timeout()==20
+    with request_config(request_timeout=120):assert scoped_request_timeout()==120
     assert scoped_request_timeout() is None
     with pytest.raises(ValueError):
         with request_config(request_timeout=600):pass

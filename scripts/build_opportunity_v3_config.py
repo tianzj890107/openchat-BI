@@ -131,8 +131,244 @@ def build_fields(workbook):
     return entities, fields
 
 
+def build_rule_index(workbook):
+    return {clean(row.get("规则编码")): row for row in rows(workbook, "业务规则")}
+
+
+def _match(pattern, text, label):
+    match = re.search(pattern, text)
+    if not match:
+        raise SystemExit(f"本体规则无法解析：{label}")
+    return match
+
+
+def build_thresholds(workbook):
+    """Read risk thresholds from the ontology's BR-A/BR-C rule text.
+
+    No threshold is duplicated in code.  If a rule loses its numeric wording,
+    the build fails and names the rule instead of silently using a default.
+    """
+    rules = build_rule_index(workbook)
+
+    def result(code):
+        row = rules.get(code)
+        if not row:
+            raise SystemExit(f"本体缺少业务规则：{code}")
+        return clean(row.get("判断或结果")) or clean(row.get("规则描述"))
+
+    a01, a02 = result("BR-A01"), result("BR-A02")
+    a04, a05, a10 = result("BR-A04"), result("BR-A05"), result("BR-A10")
+    c05, c06, c07 = result("BR-C05"), result("BR-C06"), result("BR-C07")
+
+    gap_high = int(_match(r"缺口率\s*≥\s*(\d+)%", a01, "BR-A01 缺口率高阈值").group(1))
+    gap_medium = int(_match(r"(\d+)%\s*[~～–-]\s*\d+%\s*中", a01, "BR-A01 缺口率中阈值").group(1))
+    sign_extreme = int(_match(r"≥\s*(\d+)\s*个百分点", a02, "BR-A02 签单落后极高阈值").group(1))
+    sign_high = int(_match(r"(\d+)\s*[~～–-]\s*\d+\s*高", a02, "BR-A02 签单落后高阈值").group(1))
+    quarter_q3 = int(_match(r"7\s*[~～–-]\s*9\s*月[^>]*>\s*(\d+)%", a02,
+                            "BR-A02 三季度窗口").group(1))
+    quarter_q4 = int(_match(r"10\s*[~～–-]\s*12\s*月[^>]*>\s*(\d+)%", a02,
+                            "BR-A02 四季度窗口").group(1))
+    product_high = int(_match(r"≥\s*(\d+)\s*亿元\s*高", a04, "BR-A04 待签高阈值").group(1))
+    product_medium = int(_match(r"(\d+)\s*[~～–-]\s*\d+\s*中", a04,
+                                "BR-A04 待签中阈值").group(1))
+    product_high_5 = int(_match(r"≥\s*(\d+)\s*亿元\s*高", a05, "BR-A05 待签高阈值").group(1))
+    product_medium_5 = int(_match(r"(\d+)\s*[~～–-]\s*\d+\s*中", a05,
+                                  "BR-A05 待签中阈值").group(1))
+    if (product_high, product_medium) != (product_high_5, product_medium_5):
+        raise SystemExit("本体 BR-A04 与 BR-A05 的待签阈值不一致，需先统一")
+    impact_high = int(_match(r"影响预测\s*≥\s*(\d+)\s*亿元", a10, "BR-A10 影响金额高阈值").group(1))
+    product_pending = int(_match(r"≥\s*(\d+)%", c05, "BR-C05 产品待签占比").group(1))
+    focus_ratio = int(_match(r"<\s*(\d+)%", c06, "BR-C06 重点跟踪占比").group(1))
+    other_ratio = int(_match(r"≥\s*(\d+)%", c07, "BR-C07 其余占比").group(1))
+
+    return {
+        "gapRateHigh": gap_high / 100,
+        "gapRateMedium": gap_medium / 100,
+        "signLagExtremePoints": sign_extreme,
+        "signLagHighPoints": sign_high,
+        "quarterWindows": {"3": quarter_q3 / 100, "4": quarter_q4 / 100},
+        "focusTrackingRatio": focus_ratio / 100,
+        "productPendingRatio": product_pending / 100,
+        "otherPendingRatio": other_ratio / 100,
+        "productRiskAmountHigh": product_high,
+        "productRiskAmountMedium": product_medium,
+        "impactAmountHigh": impact_high,
+        "sources": {
+            "gapRateHigh": "BR-A01", "gapRateMedium": "BR-A01",
+            "signLagExtremePoints": "BR-A02", "signLagHighPoints": "BR-A02",
+            "quarterWindows": "BR-A02", "productRiskAmountHigh": "BR-A04/BR-A05",
+            "productRiskAmountMedium": "BR-A04/BR-A05", "impactAmountHigh": "BR-A10",
+            "productPendingRatio": "BR-C05", "focusTrackingRatio": "BR-C06",
+            "otherPendingRatio": "BR-C07",
+        },
+    }
+
+
+def build_dynamic_cycle(workbook):
+    rules = build_rule_index(workbook)
+    row = rules.get("BR-Q06") or {}
+    blob = " ".join(clean(row.get(key)) for key in ("规则描述", "触发条件", "判断或结果"))
+    multiplier = float(_match(r"[×xX*]\s*([0-9.]+)", blob, "BR-Q06 动态周期倍数").group(1))
+    return {
+        "multiplier": multiplier,
+        "strict": "严格大于" in blob,
+        "sample": clean(row.get("判断或结果")) or clean(row.get("规则描述")),
+        "source": "BR-Q06",
+    }
+
+
+def build_stage_rules(workbook):
+    stages = {}
+    for row in rows(workbook, "维度派生规则"):
+        if clean(row.get("维度编码")) != "D_STAGE":
+            continue
+        expression = clean(row.get("规则表达式"))
+        match = re.search(r"new_processstage\s*=\s*'([^']+)'", expression)
+        if not match:
+            raise SystemExit(f"本体阶段规则无法解析：{expression}")
+        stages[match.group(1)] = clean(row.get("维度枚举值名称"))
+    if not stages:
+        raise SystemExit("本体缺少 D_STAGE 阶段规则")
+    return stages
+
+
+def build_product_names(workbook):
+    products = {}
+    for row in rows(workbook, "维度派生规则"):
+        if clean(row.get("维度编码")) != "D003":
+            continue
+        expression = clean(row.get("规则表达式"))
+        match = re.search(r"\bIN\s*\(([^)]*)\)", expression, re.IGNORECASE)
+        if not match:
+            continue
+        levels = re.findall(r"'([^']*)'", match.group(1))
+        if levels and levels[0].isdigit():
+            products[levels[0]] = clean(row.get("维度枚举值名称"))
+    if not products:
+        raise SystemExit("本体缺少 D003 产品类型规则")
+    return products
+
+
+def _dictionary_enum(dictionary, table, field):
+    prefix = "ded_public."
+    table = clean(table)
+    if table.startswith(prefix):
+        table = table[len(prefix):]
+    found = {}
+    rows_iter = dictionary["CRM枚举附录"].iter_rows(values_only=True)
+    next(rows_iter, None)
+    for row in rows_iter:
+        if len(row) < 6:
+            continue
+        if clean(row[1]) != table or clean(row[2]) != field:
+            continue
+        for item in re.split(r"[;\n]+", clean(row[5])):
+            if "=" in item:
+                key, label = item.split("=", 1)
+                found[clean(key)] = clean(label)
+    return found
+
+
+def build_enums(workbook, dictionary, fields, customer_tier):
+    tables = {entity: next(iter(values.values()))["table"]
+              for entity, values in fields.items() if values}
+    specs = {
+        "productType": ("LE01", "new_accproducttype"),
+        "processStage": ("LE01", "new_processstage"),
+        "acneed": ("LE01", "new_approvalstatus_acneed"),
+        "opportunityStatus": ("LE01", "new_opportunitystatus"),
+        "oppApproval": ("LE01", "new_approvalstatus"),
+        "monthApproval": ("LE02", "new_approvalstatus"),
+        "monthState": ("LE02", "statecode"),
+        "orderState": ("LE07", "statecode"),
+    }
+    enums = {}
+    for key, (entity, field) in specs.items():
+        values = _dictionary_enum(dictionary, tables[entity], field)
+        if not values:
+            raise SystemExit(f"数据字典缺少枚举：{entity}.{field}")
+        enums[key] = values
+    tier_labels = {"strategic": "战略", "priority": "重点", "general": "一般"}
+    customer_level = {}
+    for tier in ("strategic", "priority", "general"):
+        for level in customer_tier[tier]:
+            customer_level[level] = tier_labels[tier]
+    enums["customerLevel"] = customer_level
+    return enums
+
+
+TIER_LABELS = {"战略客户": "strategic", "重点客户": "priority", "一般客户": "general"}
+
+
+def _rule_levels(expression):
+    match = re.search(r"\bIN\s*\(([^)]*)\)", expression, re.IGNORECASE)
+    if match:
+        return [item.strip() for item in re.findall(r"'([^']*)'", match.group(1))]
+    match = re.search(r"=\s*'([^']*)'", expression)
+    return [match.group(1).strip()] if match else []
+
+
+def _has_strategic_customer_list(workbook):
+    """True only when the workbook carries an actual customer-name list."""
+    for sheet in workbook.worksheets:
+        if "战略" in sheet.title and "名单" in sheet.title:
+            return True
+        header = next(sheet.iter_rows(values_only=True), ())
+        labels = {clean(value) for value in header}
+        if "名单" in sheet.title and ({"客户名称", "客户编码"} <= labels
+                                      or {"accountid", "name"} <= labels):
+            return True
+    return False
+
+
+def build_customer_tier_rules(workbook):
+    dimensions = {clean(row.get("维度编码")): row for row in rows(workbook, "维度")}
+    dimension = dimensions.get("D005") or {}
+    if not dimension:
+        raise SystemExit("V3 本体缺少客户等级维度 D005")
+    derived = {clean(row.get("维度枚举值名称")): row
+               for row in rows(workbook, "维度派生规则")
+               if clean(row.get("维度编码")) == "D005"}
+    tiers, tier_meta, rule_codes, pending = {}, {}, [], []
+    for label, key in TIER_LABELS.items():
+        row = derived.get(label)
+        if not row:
+            raise SystemExit(f"V3 本体缺少客户等级派生规则：{label}")
+        expression = clean(row.get("规则表达式"))
+        levels = _rule_levels(expression)
+        if not levels:
+            raise SystemExit(f"V3 本体客户等级规则无法解析：{label} {expression}")
+        code = clean(row.get("维度派生规则编码"))
+        status = "pending" if ("待确认" in expression or "待业务确认" in expression) else "confirmed"
+        tiers[key] = levels
+        tier_meta[key] = dict(rule=code, levels=levels, status=status, expression=expression)
+        rule_codes.append(code)
+        if status == "pending":
+            pending.append(f"{code} {label}：{expression}")
+    available = _has_strategic_customer_list(workbook)
+    return {
+        **tiers,
+        "status": "pending" if pending or not available else "confirmed",
+        "statusReason": ("；".join(pending) if pending else "本体客户等级映射已确认") +
+                        ("" if available else "；本体未提供战略客户名单工作表"),
+        "tierMeta": tier_meta,
+        "source": {
+            "dimension": "D005", "rulessheet": "维度派生规则",
+            "rules": rule_codes, "definition": clean(dimension.get("维度定义")),
+        },
+        "strategicList": {
+            "available": available,
+            "reason": ("本体提供战略客户名单" if available else
+                       "本体只有按客户等级的派生规则，未提供战略客户名单"),
+            "status": ("available" if available and tier_meta["strategic"]["status"] == "confirmed"
+                       else "unavailable"),
+        },
+    }
+
+
 def build_config(workbook):
     entities, fields = build_fields(workbook)
+    dictionary = openpyxl.load_workbook(DICTIONARY, data_only=True, read_only=True)
     metrics = {}
     for row in rows(workbook, "指标"):
         code = clean(row.get("指标编码"))
@@ -247,9 +483,36 @@ def build_config(workbook):
             if code not in entry["advice"]
         )
 
-    # Business decisions locked for this card.  They intentionally override
-    # the workbook where the workbook conflicts with the accepted contract.
-    overrides = {
+    customer_tier = build_customer_tier_rules(workbook)
+    stage_rules = build_stage_rules(workbook)
+    product_names = build_product_names(workbook)
+    thresholds = build_thresholds(workbook)
+    dynamic_cycle = build_dynamic_cycle(workbook)
+    electricity_attribute = (fields.get("LE02") or {}).get("new_forcastpower") or {}
+    if not electricity_attribute:
+        raise SystemExit("本体 B02 未提供电量字段 new_forcastpower")
+    unit_match = re.search(r"\((kWh|MWh|GWh)\)",
+                           clean(electricity_attribute.get("name")))
+    if not unit_match:
+        raise SystemExit("本体 B02 电量字段未标注单位")
+    electricity_source = {
+        "field": "new_forcastpower",
+        "attribute": electricity_attribute.get("attribute"),
+        "nativeUnit": unit_match.group(1),
+        "outputUnit": "GWh",
+        "source": "B02",
+    }
+    bid_rule = build_rule_index(workbook).get("BR-Q07") or {}
+    bid_blob = " ".join(clean(bid_rule.get(key)) for key in ("规则描述", "判断或结果"))
+    bid_match = {
+        "strategy": clean(bid_rule.get("判断或结果")) or clean(bid_rule.get("规则描述")),
+        "idRelationAvailable": "名称" not in bid_blob,
+        "source": "BR-Q07",
+    }
+
+    # User-approved corrections to a workbook statement.  They are kept
+    # separate so the ontology-derived overrides never hide a manual decision.
+    business_corrections = {
         "BR-Q02": {
             "decision": "签单按合同签订判断，订单数不构成签单",
             "field": "new_contractconfirmation",
@@ -264,31 +527,20 @@ def build_config(workbook):
             "causes": ["RC09"],
             "advice": ["AC02", "AC03"],
         },
-        "customerTier": {"strategic": ["0", "1"], "priority": ["2", "4"], "general": ["3"]},
-        "stage": {"11": "P0", "12": "P1", "13": "P2", "14": "P3", "15": "P4"},
-        "bidMatch": {
-            "strategy": "trimmed exact project name; ambiguous duplicate names never judged not bidding",
-            "idRelationAvailable": False,
-        },
-        "dynamicCycle": {
-            "multiplier": 1.5,
-            "strict": True,
-            "sample": "同年度同产品类型、截至测量日已进入阶段的有效商机；完成记录算至结束时间，在途算至测量日；排除缺进入时间或时间倒置记录。",
-        },
-        "targetAggregation": {
-            "decision": "销售目标按行求和，不按客户/产品去重",
-            "reason": "本体 BR-Q03 仅要求商机、客户、订单按 ID 去重；目标表无经验证的业务唯一键，按客户/产品 DISTINCT 会破坏目标规模。",
-        },
-        "electricitySource": {
-            "field": "new_orderforecast_qty",
-            "nativeUnit": "kWh",
-            "outputUnit": "GWh",
-            "reason": "本体登记的 new_forcastpower 实库仅 1 条非空，无法用于指标计算；new_orderforecast_qty 覆盖 99.97%，金额/数量比约 330–530 元/kWh。",
-        },
-        "measurementDate": "历史期间固定在期末；当前期间使用分析启动日，并写入卡片上下文。",
+    }
+
+    # Every analysis parameter below is read from the workbook or the data
+    # dictionary.  A missing definition fails the build instead of falling
+    # back to a value invented in code.
+    overrides = {
+        "customerTier": customer_tier,
+        "stage": stage_rules,
+        "products": product_names,
+        "bidMatch": bid_match,
+        "dynamicCycle": dynamic_cycle,
+        "electricitySource": electricity_source,
         "recentActivity": {
-            "windowDays": 90,
-            "description": "无商机战略客户在窗口内存在线索、线索进展、客户拜访或最新销售活动时，不认定开拓不足。",
+            "description": "无商机战略客户在本体定义的近期窗口内存在线索、线索进展、客户拜访或最新销售活动时，不认定开拓不足。",
             "accountFields": {
                 "lastVisitAt": "new_lastapptime",
                 "lastVisitDays": "new_lastjgtime",
@@ -305,24 +557,13 @@ def build_config(workbook):
             "leadProgressLeadField": "new_leadid",
             "leadProgressCreatedField": "createdon",
         },
-        "thresholds": {
-            "gapRateHigh": 0.10,
-            "gapRateMedium": 0.05,
-            "signLagExtremePoints": 15,
-            "signLagHighPoints": 10,
-            "quarterWindows": {"3": 0.50, "4": 0.25},
-            "focusTrackingRatio": 0.70,
-            "productPendingRatio": 0.20,
-            "otherPendingRatio": 0.30,
-            "productRiskAmountHigh": 30,
-            "productRiskAmountMedium": 10,
-        },
+        "thresholds": thresholds,
     }
     # The resolved link table must already reflect the explicit business
     # overrides; the UI and task drafting never re-interpret the workbook.
     links["RK07"] = {"risk": "RK07", "causes": ["RC09"], "advice": ["AC02", "AC03"]}
     config = dict(
-        version="opportunity-v3-rules-1",
+        version="opportunity-v3-rules-2",
         ontology="商机获取节点 V3",
         source=dict(path=str(SOURCE.relative_to(ROOT)), sha256=digest(SOURCE)),
         dictionary=dict(path=str(DICTIONARY.relative_to(ROOT)), sha256=digest(DICTIONARY)),
@@ -335,17 +576,8 @@ def build_config(workbook):
         advice=advice,
         links=links,
         overrides=overrides,
-        enums=dict(
-            customerLevel={"0": "战略", "1": "战略", "2": "重点", "4": "重点", "3": "一般"},
-            productType={"1": "电芯", "2": "PACK"},
-            processStage={"11": "P0", "12": "P1", "13": "P2", "14": "P3", "15": "P4"},
-            acneed={"1": "未申请", "2": "审核中", "3": "审核通过", "4": "已驳回", "5": "废弃"},
-            opportunityStatus={"0": "已开始", "1": "赢单", "2": "丢单", "3": "结案"},
-            oppApproval={"1": "制单", "2": "审核中", "3": "已审核", "4": "已驳回"},
-            monthApproval={"1": "制单", "2": "审核中", "3": "已审核", "4": "已驳回", "5": "已否决", "6": "已撤回"},
-            monthState={"0": "有效", "1": "停用"},
-            orderState={"0": "有效", "1": "已提交", "2": "已取消", "3": "已完成", "4": "已开发票"},
-        ),
+        businessCorrections=business_corrections,
+        enums=build_enums(workbook, dictionary, fields, customer_tier),
     )
     return config
 

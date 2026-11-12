@@ -53,7 +53,7 @@ def _complete_risk_assessments(value):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-1'
+    assert config_version() == 'opportunity-v3-rules-2'
     assert len(config_digest()) == 64
     assert len(config['metrics']) == 25
     assert len(config['risks']) == 10
@@ -67,7 +67,7 @@ def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
     assert trace['ontology'] == '商机获取节点 V3'
-    assert trace['version'] == 'opportunity-v3-rules-1'
+    assert trace['version'] == 'opportunity-v3-rules-2'
     assert len(trace['digest']) == 12
     assert len(trace['metrics']) == 25
     assert len(trace['risks']) == 10
@@ -206,11 +206,15 @@ def test_advice_is_inverted_from_cause_relations_and_keeps_risk_links():
 
 def test_no_opportunity_strategic_customer_uses_rc09_advice_and_keeps_deadline_text():
     data = _data(accounts=[dict(id='account-empty', name='无商机战略客户', level='1',
-                                tier='strategic')])
+                                tier='strategic')], queryStatus=dict(客户='ok'))
     value = evaluate(data)
     assert 'RK07' in {risk['code'] for risk in value['risks']}
     causes = [cause for cause in value['result']['causes'] if cause['causeCode'] == 'RC09']
-    assert causes and causes[0]['kind'] == 'verified'
+    # V3 defines RC09 as "no recent lead/visit/demand record" without a day
+    # window; without that window the cause stays a data gap instead of a
+    # verified finding.
+    assert causes and causes[0]['kind'] == 'data_gap'
+    assert causes[0]['missingEvidence']
     recommendations = value['result']['recommendations']
     assert {'AC02', 'AC03'} <= {item['adviceCode'] for item in recommendations}
     assert all(item['deadline'] for item in recommendations)
@@ -612,6 +616,77 @@ def test_default_text_interpreter_only_parses_bounded_json(monkeypatch):
     assert value['risks'][0]['code'] == 'RK08'
     assert value['causes'][0]['code'] == 'RC02'
     assert value['advice'] == []
+
+
+def test_default_text_interpreter_repairs_malformed_json_once(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit.opportunity_v2 import default_text_interpreter
+
+    calls = []
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        calls.append((messages, system_prompt))
+        if len(calls) == 1:
+            return iter([
+                dict(type='text_delta', text='{"summary":"缺少逗号" "risks":[]}'),
+                dict(type='message_end', stop_reason='end_turn'),
+            ])
+        return iter([
+            dict(type='text_delta', text='{"summary":"修复后的摘要","risks":[],"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    value = default_text_interpreter({'progressSamples': []})
+    assert value['summary'] == '修复后的摘要'
+    assert value.model_calls == 2
+    assert 'JSON 修复器' in calls[1][1]
+
+
+def test_default_text_interpreter_regenerates_truncated_json_once(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit.opportunity_v2 import default_text_interpreter
+
+    calls = []
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        calls.append((messages, system_prompt))
+        if len(calls) == 1:
+            return iter([
+                dict(type='text_delta', text='{"summary":"输出被截断","risks":['),
+                dict(type='message_end', stop_reason='max_tokens'),
+            ])
+        return iter([
+            dict(type='text_delta', text='{"summary":"重新生成的摘要","risks":[],"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    value = default_text_interpreter({'progressSamples': []})
+    assert value['summary'] == '重新生成的摘要'
+    assert value.model_calls == 2
+    assert '压缩文字' in calls[1][1]
+
+
+def test_model_json_failure_keeps_raw_tail_for_diagnostics(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit.opportunity_v2 import ModelJSONOutputError, default_text_interpreter
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        return iter([
+            dict(type='text_delta', text='{"summary":"始终不合法" "risks":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    try:
+        default_text_interpreter({'progressSamples': []})
+    except ModelJSONOutputError as exc:
+        assert exc.attempts == 2
+        assert exc.raw_text.startswith('{"summary"')
+        assert 'JSON 解析失败' in str(exc)
+    else:
+        raise AssertionError('malformed model JSON must not be accepted')
 
 
 def test_target_rows_are_summed_not_distincted_by_customer_or_product():

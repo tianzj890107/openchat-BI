@@ -36,7 +36,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-1"
+RULES_VERSION = "opportunity-v3-rules-2"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -44,12 +44,9 @@ _CAUSE_STAGE = {
     "RC04": "opportunity", "RC05": "opportunity", "RC06": "opportunity",
     "RC07": "opportunity", "RC08": "opportunity", "RC09": "opportunity",
 }
-_PRODUCT_NAMES = {"1": "电芯", "2": "PACK"}
 # Governance actions repair the measurement source itself; they must not take
 # the place of business remediation in the重点建议 slot.
 _GOVERNANCE_ADVICE = {"AC05"}
-_STAGE_NAMES = {"11": "P0 商机获取", "12": "P1 技术交流", "13": "P2 方案推动",
-                "14": "P3 合同签订", "15": "P4 批量交付"}
 _AP_SUPPLEMENT_CODES = {
     "B01.amount": "YWLN_M0002",
     "B01.energy": "YWLN_M0007",
@@ -98,6 +95,25 @@ class OpportunityV2ModelUnavailable(OpportunityV2Unavailable):
             f"modelStatus={status}; error={error or 'none'}; "
             f"missingRiskCodes={','.join(self.missing_risk_codes) or 'none'}"
         )
+
+
+class ModelJSONOutputError(RuntimeError):
+    """The model returned text, but it could not be accepted as JSON."""
+
+    def __init__(self, message, *, raw_text="", repair_text="", stop_reason="", attempts=1):
+        super().__init__(message)
+        self.raw_text = str(raw_text or "")
+        self.repair_text = str(repair_text or "")
+        self.stop_reason = str(stop_reason or "")
+        self.attempts = int(attempts or 1)
+
+
+class ModelJSONResult(dict):
+    """Parsed model output carrying non-payload call metadata."""
+
+    def __init__(self, value, *, model_calls=1):
+        super().__init__(value)
+        self.model_calls = int(model_calls or 1)
 
 
 def _text(value):
@@ -151,28 +167,73 @@ def _slug(value):
     return re.sub(r"[^a-z0-9_]+", "_", _text(value).lower()).strip("_") or "value"
 
 
+def _customer_tier_config(config=None):
+    return ((config or {}).get("overrides") or {}).get("customerTier") or {}
+
+
+def _strategic_scope(config=None):
+    """Whether the ontology supplies an executable strategic-customer rule.
+
+    DR04 in the ontology is an executable customer-level rule.  The absence of
+    a separate customer-name sheet is recorded as a limitation, not a reason to
+    disable the rule; inventing a list here would be a mapping of our own.
+    """
+    tier = _customer_tier_config(config)
+    meta = (tier.get("tierMeta") or {}).get("strategic") or {}
+    levels = [_text(value) for value in tier.get("strategic") or [] if _text(value)]
+    rule = _text(meta.get("rule")) or _text(tier.get("rule"))
+    if levels and rule:
+        return True, ""
+    reason = _text(tier.get("statusReason")) or "本体未提供可执行的战略客户派生规则"
+    return False, reason
+
+
 def _customer_tier(level, config=None):
     level = _text(level)
-    mapping = ((config or {}).get("overrides") or {}).get("customerTier") or {}
+    mapping = _customer_tier_config(config)
+    strategic_ok = _strategic_scope(config)[0]
     for tier in ("strategic", "priority", "general"):
         if level in {_text(value) for value in mapping.get(tier) or []}:
-            return tier
+            return "unknown" if tier == "strategic" and not strategic_ok else tier
     return "unknown"
+
+
+def _product_name(value, config=None):
+    names = ((config or {}).get("overrides") or {}).get("products") or {}
+    return names.get(_text(value)) or (_text(value) or "未分类")
+
+
+def _stage_name(value, config=None):
+    names = ((config or {}).get("overrides") or {}).get("stage") or {}
+    return names.get(_text(value)) or (_text(value) or "未分类")
+
+
+_THRESHOLD_KEYS = ("gapRateHigh", "gapRateMedium", "signLagExtremePoints",
+                   "signLagHighPoints", "focusTrackingRatio", "productPendingRatio",
+                   "otherPendingRatio", "productRiskAmountHigh",
+                   "productRiskAmountMedium", "impactAmountHigh")
 
 
 def _thresholds(config):
     value = ((config or {}).get("overrides") or {}).get("thresholds") or {}
+    missing = [key for key in _THRESHOLD_KEYS if _number(value.get(key)) is None]
+    quarters = value.get("quarterWindows") or {}
+    if _number(quarters.get("3")) is None or _number(quarters.get("4")) is None:
+        missing.append("quarterWindows")
+    if missing:
+        raise OpportunityV2Unavailable("本体业务规则未定义阈值：" + "、".join(missing))
     return dict(
-        gapRateHigh=_number(value.get("gapRateHigh")) if _number(value.get("gapRateHigh")) is not None else 0.10,
-        gapRateMedium=_number(value.get("gapRateMedium")) if _number(value.get("gapRateMedium")) is not None else 0.05,
-        signLagExtremePoints=_number(value.get("signLagExtremePoints")) if _number(value.get("signLagExtremePoints")) is not None else 15,
-        signLagHighPoints=_number(value.get("signLagHighPoints")) if _number(value.get("signLagHighPoints")) is not None else 10,
-        quarterWindows=value.get("quarterWindows") or {"3": 0.50, "4": 0.25},
-        focusTrackingRatio=_number(value.get("focusTrackingRatio")) if _number(value.get("focusTrackingRatio")) is not None else 0.70,
-        productPendingRatio=_number(value.get("productPendingRatio")) if _number(value.get("productPendingRatio")) is not None else 0.20,
-        otherPendingRatio=_number(value.get("otherPendingRatio")) if _number(value.get("otherPendingRatio")) is not None else 0.30,
-        productRiskAmountHigh=_number(value.get("productRiskAmountHigh")) if _number(value.get("productRiskAmountHigh")) is not None else 30,
-        productRiskAmountMedium=_number(value.get("productRiskAmountMedium")) if _number(value.get("productRiskAmountMedium")) is not None else 10,
+        gapRateHigh=_number(value["gapRateHigh"]),
+        gapRateMedium=_number(value["gapRateMedium"]),
+        signLagExtremePoints=_number(value["signLagExtremePoints"]),
+        signLagHighPoints=_number(value["signLagHighPoints"]),
+        quarterWindows={"3": _number(quarters["3"]), "4": _number(quarters["4"])},
+        focusTrackingRatio=_number(value["focusTrackingRatio"]),
+        productPendingRatio=_number(value["productPendingRatio"]),
+        otherPendingRatio=_number(value["otherPendingRatio"]),
+        productRiskAmountHigh=_number(value["productRiskAmountHigh"]),
+        productRiskAmountMedium=_number(value["productRiskAmountMedium"]),
+        impactAmountHigh=_number(value["impactAmountHigh"]),
     )
 
 
@@ -531,6 +592,16 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     oc = _columns(config, "LE01")
     mc = _columns(config, "LE02")
     ac = _columns(config, "LE05")
+    energy_cfg = (config.get("overrides") or {}).get("electricitySource") or {}
+    energy_field = _text(energy_cfg.get("field"))
+    energy_unit = _text(energy_cfg.get("nativeUnit"))
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", energy_field):
+        raise OpportunityV2Unavailable("本体 B02 未定义合法的电量字段")
+    if energy_field not in mc:
+        raise OpportunityV2Unavailable("本体 B02 电量字段未在运行时字段映射中：" + energy_field)
+    energy_divisor = {"kWh": 1_000_000.0, "MWh": 1_000.0, "GWh": 1.0}.get(energy_unit)
+    if energy_divisor is None:
+        raise OpportunityV2Unavailable("本体 B02 电量单位无法换算：" + (energy_unit or "未定义"))
     past = measured.month
     opp_sql = (
         f"WITH agg AS ("
@@ -538,12 +609,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
         f" THEN m.{mc['new_amt_rmb']} ELSE m.{mc['new_forecast_amt_rmb']} END) AS amount_yuan, "
         f" SUM(m.{mc['new_forecast_amt_rmb']}) AS forecast_amount_full_yuan, "
-        f" SUM(m.{mc['new_orderforecast_qty']}) / 1000000.0 AS energy_gwh, "
+        f" SUM(m.{mc[energy_field]}) / {energy_divisor} AS energy_gwh, "
         f" COUNT(*) AS month_rows, "
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s THEN 1 ELSE 0 END) AS past_rows, "
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
         f" AND m.{mc['new_amt_rmb']} IS NOT NULL THEN 1 ELSE 0 END) AS past_amount_rows, "
-        f" SUM(CASE WHEN m.{mc['new_orderforecast_qty']} IS NOT NULL THEN 1 ELSE 0 END) AS energy_rows "
+        f" SUM(CASE WHEN m.{mc[energy_field]} IS NOT NULL THEN 1 ELSE 0 END) AS energy_rows "
         f" FROM {month_table} m "
         f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
         f" AND m.{mc['statecode']} = 0 AND m.{mc['new_approvalstatus']} = 3 "
@@ -591,12 +662,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
         f" THEN m.{mc['new_amt_rmb']} ELSE m.{mc['new_forecast_amt_rmb']} END) AS amount_yuan, "
         f" SUM(m.{mc['new_forecast_amt_rmb']}) AS forecast_amount_full_yuan, "
-        f" SUM(m.{mc['new_orderforecast_qty']}) / 1000000.0 AS energy_gwh, "
+        f" SUM(m.{mc[energy_field]}) / {energy_divisor} AS energy_gwh, "
         f" COUNT(*) AS month_rows, "
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s THEN 1 ELSE 0 END) AS past_rows, "
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
         f" AND m.{mc['new_amt_rmb']} IS NOT NULL THEN 1 ELSE 0 END) AS past_amount_rows, "
-        f" SUM(CASE WHEN m.{mc['new_orderforecast_qty']} IS NOT NULL THEN 1 ELSE 0 END) AS energy_rows "
+        f" SUM(CASE WHEN m.{mc[energy_field]} IS NOT NULL THEN 1 ELSE 0 END) AS energy_rows "
         f" FROM {month_table} m "
         f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
         f" AND m.{mc['statecode']} = 0 AND m.{mc['new_approvalstatus']} = 3 "
@@ -618,9 +689,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" GROUP BY 1,2,3,4,5,6"
     )
 
-    strategic_levels = [str(value) for value in
-                        ((config.get("overrides") or {}).get("customerTier") or {}).get("strategic") or
-                        ["0", "1"]]
+    strategic_ok, strategic_reason = _strategic_scope(config)
+    strategic_levels = ([str(value) for value in
+                         _customer_tier_config(config).get("strategic") or []]
+                        if strategic_ok else [])
+    if strategic_ok and not strategic_levels:
+        raise OpportunityV2Unavailable("本体未给出可执行的战略客户等级映射")
     strategic_level_slots = ",".join(["%s"] * len(strategic_levels))
     activity = (config.get("overrides") or {}).get("recentActivity") or {}
     activity_fields = activity.get("accountFields") or {}
@@ -717,12 +791,21 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         ("产品类型", product_sql, []),
         ("商机预测", opp_sql, [past, past, past, year, measured]),
         ("全部商机", all_opp_sql, [measured]),
-        ("客户", accounts_sql, [measured, measured] + strategic_levels),
         ("投标", bid_sql, [measured]),
         ("项目进展", progress_sql, [measured, measured]),
         ("订单关联", order_sql, []),
         ("产品团队", team_sql, []),
     ]
+    if strategic_ok:
+        specs.insert(4, ("客户", accounts_sql, [measured, measured] + strategic_levels))
+    else:
+        query_status["客户"] = "unavailable"
+        query_catalog.append(dict(
+            label="客户", sql="", params=[], status="unavailable",
+            durationSeconds=0.0, rowCount=0,
+            reason=f"战略客户名单未配置：{strategic_reason}",
+        ))
+    total_queries = len(specs)
     query_specs.update({label: (sql, params) for label, sql, params in specs})
     query_specs["商机聚合"] = (aggregate_sql, [past, past, past, year, measured])
     deadline = started + budget
@@ -841,9 +924,9 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             accountLevel=level,
             tier=tier,
             productType=product if product in {"1", "2"} else "unknown",
-            productName=_PRODUCT_NAMES.get(product, "未分类"),
+            productName=_product_name(product, config),
             stage=stage,
-            stageName=_STAGE_NAMES.get(stage, stage or "未分类"),
+            stageName=_stage_name(stage, config),
             acneed=_text(row.get("acneed_status")),
             status=_text(row.get("opportunity_status")),
             contract=contract,
@@ -969,8 +1052,9 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
                             or query_status.get("商机聚合") == "ok"),
         detailComplete=query_status.get("商机预测") != "truncated",
         allOpportunitiesComplete=query_status.get("全部商机") != "truncated",
-        accountsComplete=query_status.get("客户") != "truncated",
+        accountsComplete=query_status.get("客户") == "ok",
         bidsComplete=query_status.get("投标") != "truncated",
+        strategicScope=dict(available=strategic_ok, reason=strategic_reason),
         errors=errors,
         queryDiagnostics=[dict(item) for item in errors],
         queryStatus=query_status,
@@ -1017,8 +1101,7 @@ def _tier_label(tier):
     return {"strategic": "战略", "priority": "重点", "general": "一般"}.get(tier, "未分类")
 
 
-def _level_for_gap(rate, thresholds=None):
-    thresholds = thresholds or _thresholds({})
+def _level_for_gap(rate, thresholds):
     if rate is None:
         return "中"
     if rate >= thresholds["gapRateHigh"]:
@@ -1069,8 +1152,16 @@ def _program_risk_assessment(candidate):
 def evaluate(data, config=None, measured=None):
     """Apply BR-A*/BR-C* rules to collected facts and return a card result."""
     config = config or load_config()
+    strategic_ok, strategic_reason = _strategic_scope(config)
     thresholds = _thresholds(config)
-    cycle_multiplier = _number((((config.get("overrides") or {}).get("dynamicCycle") or {}).get("multiplier"))) or 1.5
+    cycle_config = (config.get("overrides") or {}).get("dynamicCycle") or {}
+    cycle_multiplier = _number(cycle_config.get("multiplier"))
+    if cycle_multiplier is None:
+        raise OpportunityV2Unavailable("本体 BR-Q06 未定义动态周期倍数")
+    clean_cycle_sample = _text(cycle_config.get("sample"))
+    energy_cfg = (config.get("overrides") or {}).get("electricitySource") or {}
+    energy_field = _text(energy_cfg.get("field")) or "未定义"
+    energy_unit = _text(energy_cfg.get("nativeUnit")) or "未定义"
     measured = _day(measured or data.get("measurementDate")) or date.today()
     target = data.get("targets") or {}
     opps = [dict(item) for item in data.get("opportunities") or [] if isinstance(item, dict)]
@@ -1223,7 +1314,13 @@ def evaluate(data, config=None, measured=None):
     quarter_window = _number((thresholds.get("quarterWindows") or {}).get(str(quarter)))
 
     focus = [opp for opp in unsigned if opp.get("tier") in {"strategic", "priority"}]
-    if aggregate_ready:
+    if not strategic_ok:
+        # R04 is "战略 + 重点"; without an authoritative strategic list the
+        # value would silently collapse to priority-only, so it stays unknown.
+        focus_amount = focus_energy = None
+        focus_count = 0
+        focus_has_strategic = False
+    elif aggregate_ready:
         focus_predicate = lambda row: (row.get("contract") == "not_confirmed"
                                        and row.get("tier") in {"strategic", "priority"})
         focus_amount = aggregate_measure("amount", focus_predicate)
@@ -1524,15 +1621,23 @@ def evaluate(data, config=None, measured=None):
     f_r06_a = fact("R06-AMOUNT", "PACK 类合同未确认预测（金额）", products["2"]["pending_amount"], "亿元")
     f_r06_e = fact("R06-ENERGY", "PACK 类合同未确认预测（电量）", products["2"]["pending_energy"], "GWh")
     f_r08 = fact("R08", "客户预测缺口客户数", len(customer_gaps), "家", "客户目标 − 客户商机预测；金额或电量缺口大于 0")
-    supplement_r09 = _number((supplement.get("R09") or {}).get("count")) if isinstance(supplement.get("R09"), dict) else None
-    no_opportunity_count = len(no_opportunity)
-    r09_source = "customer PostgreSQL · ded_public"
-    if not accounts and supplement_r09 is not None:
-        no_opportunity_count = max(0, int(supplement_r09))
-        r09_source = supplement["R09"].get("source") or "AP 补充"
+    supplement_r09 = (_number((supplement.get("R09") or {}).get("count"))
+                      if strategic_ok and isinstance(supplement.get("R09"), dict) else None)
+    if strategic_ok:
+        no_opportunity_count = len(no_opportunity)
+        r09_source = "customer PostgreSQL · ded_public"
+        if not accounts and supplement_r09 is not None:
+            no_opportunity_count = max(0, int(supplement_r09))
+            r09_source = supplement["R09"].get("source") or "AP 补充"
+    else:
+        no_opportunity_count = None
+        r09_source = "本体未提供战略客户名单"
     f_r09 = fact("R09", "无商机战略客户数", no_opportunity_count, "家",
                  "战略客户名单内无任何商机；区分从未建立与历史有但当前无在推", source=r09_source)
-    f_r10 = fact("R10", "有商机未投标战略客户数", len(no_bidding), "家", "全部商机均未进入投标；同名歧义不判未投标")
+    f_r10 = fact("R10", "有商机未投标战略客户数",
+                 len(no_bidding) if strategic_ok else None, "家",
+                 "全部商机均未进入投标；同名歧义不判未投标" if strategic_ok
+                 else "本体未提供战略客户名单，未执行逐客户判断")
     f_r11 = fact("R11", "投标中商机数", len(in_progress_bids), "条", "已录入且尚未公布中标人")
     f_s03 = fact("S03", "投标平均周期", bid_average, "天", "中标公布时间或测量日 − 录入时间；全部有效投标")
     f_s03_p1 = fact("S03-P1", "电芯类投标平均周期", bid_average_by_product.get("1"), "天", "按关联商机产品类型拆分")
@@ -1835,11 +1940,11 @@ def evaluate(data, config=None, measured=None):
         product_pending_ratio[key] = _div(bucket.get("pending_amount"), bucket.get("total_amount")) if bucket.get("total_amount") else None
 
     activity_config = (config.get("overrides") or {}).get("recentActivity") or {}
-    try:
-        recent_days = max(1, min(int(activity_config.get("windowDays") or 90), 730))
-    except (TypeError, ValueError):
-        recent_days = 90
-    recent_floor = measured - timedelta(days=recent_days)
+    window_days = _number(activity_config.get("windowDays"))
+    recent_days = (max(1, min(int(window_days), 730))
+                   if window_days is not None else None)
+    recent_floor = (measured - timedelta(days=recent_days)
+                    if recent_days is not None else None)
 
     def recent_activity(account):
         dates = [
@@ -1848,11 +1953,16 @@ def evaluate(data, config=None, measured=None):
             _day(account.get("latestLeadAt")),
             _day(account.get("latestLeadProgressAt")),
         ]
+        if recent_floor is None:
+            return False
         active_dates = [item for item in dates if item and item <= measured]
         return any(item >= recent_floor for item in active_dates)
 
-    no_recent_activity = [account for account in no_opportunity if not recent_activity(account)]
-    activity_source_ready = bool(activity_config) and accounts_complete
+    activity_source_ready = (bool(activity_config) and accounts_complete
+                             and recent_floor is not None)
+    no_recent_activity = ([account for account in no_opportunity
+                           if not recent_activity(account)]
+                          if activity_source_ready else [])
 
     candidates = {}
     if strategic_p0:
@@ -1882,7 +1992,7 @@ def evaluate(data, config=None, measured=None):
     concentration = {key: ratio for key, ratio in product_pending_ratio.items()
                      if ratio is not None and ratio >= thresholds["productPendingRatio"]}
     if concentration:
-        parts = [f"{_PRODUCT_NAMES.get(key, key)} 待签占比 {ratio * 100:.1f}%" for key, ratio in concentration.items()]
+        parts = [f"{_product_name(key, config)} 待签占比 {ratio * 100:.1f}%" for key, ratio in concentration.items()]
         candidates["RC05"] = dict(
             kind="structure", status="hypothesis", stage="opportunity",
             title="产品结构待签集中",
@@ -1916,9 +2026,9 @@ def evaluate(data, config=None, measured=None):
             evidence=[f_p0, f_rk10] + top_opps(late_p0, 6),
             risks={"RK01", "RK10"} & {risk["code"] for risk in risks},
         )
-    if no_opportunity and no_recent_activity:
+    if no_opportunity:
         activity_evidence = [f_r09]
-        for account in no_recent_activity[:8]:
+        for account in (no_recent_activity or [])[:8]:
             activity_evidence.append(record(
                 f"opp-v2:account:{account.get('id')}:activity",
                 customer=account.get("name"),
@@ -2165,6 +2275,15 @@ def evaluate(data, config=None, measured=None):
 
     data_issues = []
     caliber_notes = []
+    if not strategic_ok:
+        data_issues.append(
+            "战略客户名单未配置：" + strategic_reason +
+            "；战略客户数量、无商机及未投标判断未执行，不按客户等级推算。")
+    if strategic_ok and recent_floor is None:
+        data_issues.append("本体 BR-C09 未定义“近期”窗口，战略客户开拓原因的近期活动判断未执行。")
+    if total_energy is None and total_amount is not None:
+        data_issues.append(
+            f"本体 B02 电量字段 {energy_field} 本次没有有效值；电量相关阈值和风险未判定。")
     if data.get("errors"):
         data_issues.append("部分可选查询未返回：" + "、".join(sorted({item.get('stage') or item.get('code') or '未知' for item in data["errors"]})))
     if aggregate_mode and not aggregate_ready:
@@ -2182,10 +2301,11 @@ def evaluate(data, config=None, measured=None):
         "合同签订按 new_contractconfirmation 判断；签订日期字段实库为空，不能用日期推断。",
         "签单进度按已确认签订覆盖率计算（合同已确认商机预测 ÷ 目标）；合同状态未知不计入已签或未签，也不单独触发进度滞后。",
         "目标表按行求和，未按客户或产品去重；目标表缺少经验证的业务唯一键。",
-        "预测电量使用 new_orderforecast_qty（kWh）换算 GWh；本体登记的 new_forcastpower 实库为空。",
-        "项目阶段按 11~15 映射 P0~P4；其他枚举不推断。投标关联仅使用去首尾空格后的精确名称，同名歧义不判未投标。",
+        f"预测电量按本体 B02 使用 {energy_field}（{energy_unit}）换算 {energy_cfg.get('outputUnit') or 'GWh'}。",
+        "项目阶段、产品类型与客户等级按本体维度派生规则映射；其他枚举不推断。"
+        "投标关联按本体 BR-Q07 使用去首尾空格后的项目名称，同名歧义不判未投标。",
         "RC04 产品部销售缺口需跨发货环节实际销售，本次不把不可得数据推成原因。",
-        "动态均值只取本年度进入该阶段、同产品类型、截至测量日的有效商机；缺进入时间或时间倒置的记录已排除。",
+        "动态均值按本体 BR-Q06 执行：" + (clean_cycle_sample or "样本范围未提供") + "。",
         "建议中的责任角色与期限为模板草稿，须人工确认后才能下发任务令。",
     ])
     if unknown_contract_count:
@@ -2338,18 +2458,102 @@ def evaluate(data, config=None, measured=None):
     )
 
 
+def _json_candidate(text):
+    """Extract the first JSON object from a model response."""
+    text = str(text or "").strip().lstrip("\ufeff")
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if fenced:
+        text = fenced.group(1).strip()
+    start = text.find("{")
+    if start < 0:
+        return ""
+    try:
+        _, end = json.JSONDecoder().raw_decode(text[start:])
+        return text[start:start + end]
+    except json.JSONDecodeError:
+        end = text.rfind("}")
+        return text[start:end + 1] if end >= start else text[start:]
+
+
+def _decode_model_json(text, *, stop_reason=""):
+    candidate = _json_candidate(text)
+    if not candidate:
+        raise ModelJSONOutputError("模型未返回 JSON", raw_text=text, stop_reason=stop_reason)
+    try:
+        value = json.loads(candidate)
+    except json.JSONDecodeError as first:
+        # A trailing comma is a common LLM formatting error and can be
+        # repaired without changing any facts or codes.
+        cleaned = re.sub(r",\s*([}\]])", r"\1", candidate)
+        try:
+            value = json.loads(cleaned)
+        except json.JSONDecodeError:
+            raise ModelJSONOutputError(
+                f"模型 JSON 解析失败：{type(first).__name__}: {first}",
+                raw_text=candidate, stop_reason=stop_reason,
+            ) from first
+    if not isinstance(value, dict):
+        raise ModelJSONOutputError("模型 JSON 不是对象", raw_text=candidate, stop_reason=stop_reason)
+    return value
+
+
+def _looks_truncated_json(text):
+    """Detect an unterminated object/string without trusting finish_reason."""
+    text = str(text or "")
+    depth = 0
+    in_string = False
+    escaped = False
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth = max(0, depth - 1)
+    return in_string or depth > 0
+
+
+def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, timeout):
+    from ..llm.runtime_config import request_config
+
+    events = []
+    with request_config(thinking=False, request_timeout=timeout):
+        for event in provider.stream_message(
+                messages, system_prompt, None, key,
+                max_tokens=max_tokens, temperature=0, thinking=False):
+            events.append(event)
+    errors = [event.get("error", "") for event in events if event.get("type") == "error"]
+    if errors:
+        raise RuntimeError(errors[-1])
+    ends = [event for event in events if event.get("type") == "message_end"]
+    text = "".join(event.get("text", "") for event in events
+                   if event.get("type") == "text_delta").strip()
+    if not text or not ends:
+        raise RuntimeError("模型未返回完整文本")
+    return text, str(ends[-1].get("stop_reason") or ""), ends[-1].get("usage") or {}
+
+
 def default_text_interpreter(payload):
-    """Use one deployment-model call to produce the card's analysis text.
+    """Use the deployment model to produce the card's analysis text.
 
     Rules and numeric facts are already settled by code.  The model receives
-    every triggered rule, ontology-approved cause/advice candidate and compact
-    evidence, then writes the summary, risk explanation, causes and advice.
-    The caller validates every returned code, number, evidence id and relation
-    before the text can replace the deterministic fallback.
+    every candidate risk, ontology-approved cause/advice candidate and compact
+    evidence.  Its output is parsed and validated by the caller.  A malformed
+    or truncated JSON response gets one bounded recovery attempt: truncated
+    output is regenerated with a compact response contract; otherwise the raw
+    JSON is sent to a repair-only call.  Network/model errors are not retried
+    here.
     """
     from ..llm import provider
     from ..llm.registry import get_default_model_key
-    from ..llm.runtime_config import request_config
 
     system_prompt = (
         "你是证据约束的商机经营分析助手。程序已按本体规则完成阈值和数值计算，"
@@ -2377,36 +2581,84 @@ def default_text_interpreter(payload):
         "优先沿用候选中的作用对象、目标值、验收标准、跟踪指标和原始期限表达。"
         "summary 只写主要经营问题、影响范围、最重要的数字和推进重点，不罗列全部风险；"
         "不得出现 RK/RC/BR/DS/AC 编码、规则核验、阈值、口径、证据、取数、字段缺失、排查、校验等实现说明。"
-        "不得使用‘逾期未完成’表述。"
+        "不得使用‘逾期未完成’表述。必须输出单个合法 JSON 对象，不得输出 Markdown、注释或额外解释。"
     )
-    events = []
     key = get_default_model_key()
     try:
         max_tokens = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", "12000"))
     except ValueError:
         max_tokens = 12000
     max_tokens = max(1200, min(max_tokens, 32000))
-    with request_config(thinking=False, request_timeout=max(15, min(
-            int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS", "60")), 120))):
-        for event in provider.stream_message(
-            [dict(role="user", content=json.dumps(payload, ensure_ascii=False))],
-            system_prompt, None, key, max_tokens=max_tokens, temperature=0, thinking=False,
-        ):
-            events.append(event)
-    errors = [event.get("error", "") for event in events if event.get("type") == "error"]
-    if errors:
-        raise RuntimeError(errors[-1])
-    text = "".join(event.get("text", "") for event in events if event.get("type") == "text_delta").strip()
-    if not text or not any(event.get("type") == "message_end" for event in events):
-        raise RuntimeError("模型未返回完整文本")
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
-    raw = fenced.group(1) if fenced else text[text.find("{"):text.rfind("}") + 1]
-    if not raw:
-        raise RuntimeError("模型未返回 JSON")
-    value = json.loads(raw)
-    if not isinstance(value, dict):
-        raise RuntimeError("模型 JSON 不是对象")
-    return value
+    try:
+        timeout = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS", "120"))
+    except ValueError:
+        timeout = 120
+    timeout = max(30, min(timeout, 180))
+    messages = [dict(role="user", content=json.dumps(payload, ensure_ascii=False))]
+
+    first_text = ""
+    first_stop = ""
+    try:
+        first_text, first_stop, _ = _read_model_stream(
+            provider, messages, system_prompt, key,
+            max_tokens=max_tokens, timeout=timeout,
+        )
+        if first_stop in {"max_tokens", "length"}:
+            raise ModelJSONOutputError(
+                "模型输出达到 token 上限", raw_text=first_text,
+                stop_reason=first_stop, attempts=1,
+            )
+        return ModelJSONResult(_decode_model_json(first_text, stop_reason=first_stop), model_calls=1)
+    except ModelJSONOutputError as first_error:
+        first_text = first_error.raw_text or first_text
+        first_stop = first_error.stop_reason or first_stop
+        truncated = (first_stop in {"max_tokens", "length"}
+                     or _looks_truncated_json(first_text))
+        retry_text = ""
+        retry_stop = ""
+        try:
+            if truncated:
+                retry_system = system_prompt + (
+                    " 上一次输出在生成过程中被截断。请重新完成同一分析，"
+                    "严格覆盖全部候选风险，但压缩文字：summary 不超过180字，"
+                    "每个风险说明不超过140字，每条原因不超过100字，每条建议不超过48字。"
+                    "不要输出思考过程、Markdown 或补充说明，只输出完整 JSON。"
+                )
+                retry_messages = [dict(
+                    role="user",
+                    content=messages[0]["content"] + "\n\n上一次输出因长度或格式中断，请按系统要求重新输出完整 JSON。",
+                )]
+            else:
+                retry_system = (
+                    "你是严格的 JSON 修复器。用户会提供一段不合法或包含多余文字的模型输出。"
+                    "只修复 JSON 语法，保留已有字段、编码、数字、证据编号和内容，不新增事实，不解释，"
+                    "不输出 Markdown，只输出一个合法 JSON 对象。"
+                )
+                retry_messages = [dict(
+                    role="user",
+                    content="请修复以下输出为合法 JSON：\n" + first_text,
+                )]
+            retry_text, retry_stop, _ = _read_model_stream(
+                provider, retry_messages, retry_system, key,
+                max_tokens=max_tokens, timeout=timeout,
+            )
+            if retry_stop in {"max_tokens", "length"}:
+                raise ModelJSONOutputError(
+                    "模型输出达到 token 上限", raw_text=retry_text,
+                    stop_reason=retry_stop, attempts=2,
+                )
+            value = _decode_model_json(retry_text, stop_reason=retry_stop)
+        except Exception as retry_error:
+            raise ModelJSONOutputError(
+                "模型 JSON 输出无效，自动恢复未成功；"
+                f"first={type(first_error).__name__}: {first_error}; "
+                f"retry={type(retry_error).__name__}: {retry_error}",
+                raw_text=first_text,
+                repair_text=retry_text,
+                stop_reason=first_stop,
+                attempts=2,
+            ) from retry_error
+        return ModelJSONResult(value, model_calls=2)
 
 
 def _model_numbers(value):
@@ -2554,6 +2806,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
         value = interpreter(payload)
         if not isinstance(value, dict):
             raise ValueError("模型结果不是对象")
+        model_calls = int(getattr(value, "model_calls", 1) or 1)
         risk_by_code = {risk["code"]: risk for risk in risk_candidates}
         triggered_by_code = {risk["code"]: risk for risk in triggered_risks}
         cause_by_code = {item["code"]: item for item in cause_candidates}
@@ -2849,7 +3102,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
         evaluated["riskAssessments"] = risk_assessments
         evaluated["causes"] = cause_items
         evaluated["recommendations"] = recommendations
-        return dict(status=model_status, error=model_error, modelCalls=1,
+        return dict(status=model_status, error=model_error, modelCalls=model_calls,
                     analysisMode=analysis_mode,
                     summaryApplied=summary_applied, appliedRisks=applied_risks,
                     appliedCauses=applied_causes, appliedAdvice=applied_advice,
@@ -2869,8 +3122,17 @@ def apply_text_interpretation(evaluated, interpreter=None):
                     validatedCauses=[], validatedAdvice=[],
                     mismatchedCauses=[], mismatchedAdvice=[])
     except Exception as exc:  # noqa: BLE001 - model analysis is optional
-        return dict(status="failed", error=type(exc).__name__, modelCalls=1,
-                    modelErrorMessage=str(exc)[:800])
+        raw_text = str(getattr(exc, "raw_text", "") or "")
+        repair_text = str(getattr(exc, "repair_text", "") or "")
+        return dict(
+            status="failed", error=type(exc).__name__,
+            modelCalls=int(getattr(exc, "attempts", 1) or 1),
+            modelErrorMessage=str(exc)[:800],
+            modelRawResponseLength=len(raw_text),
+            modelRawResponseTail=raw_text[-800:],
+            modelStopReason=str(getattr(exc, "stop_reason", "") or ""),
+            modelRepairResponseTail=repair_text[-400:],
+        )
 
 def _deadline_meta(value):
     text = _text(value)
@@ -2959,7 +3221,9 @@ def _missing_supplement_fields(data):
             missing.append("B02.energy")
     elif status in {"failed", "truncated"} and not aggregate_ready:
         missing.extend(("B02.amount", "B02.energy"))
-    if not data.get("accounts") and (data.get("queryStatus") or {}).get("客户") in {"failed", "truncated"}:
+    if ((data.get("strategicScope") or {}).get("available") is True
+            and not data.get("accounts")
+            and (data.get("queryStatus") or {}).get("客户") in {"failed", "truncated"}):
         missing.append("R09.count")
     return missing
 
@@ -3202,7 +3466,9 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     started = time.monotonic()
     measured = _measurement_context(period, measurement_date)
     collected_error = None
-    _report_progress(progress, "fetching", message="查询数据库", completed=0, total=9)
+    strategic_ok, strategic_reason = _strategic_scope(config)
+    _report_progress(progress, "fetching", message="查询数据库", completed=0,
+                     total=8 if not strategic_ok else 9)
     try:
         data = collect(period, measured, database=database, config=config, progress=progress,
                        diagnostic_reporter=diagnostic_reporter)
@@ -3222,6 +3488,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
             raise
         collected_error = exc
         data = _empty_collected(period, measured, exc)
+        data["strategicScope"] = dict(available=strategic_ok, reason=strategic_reason)
     missing = _missing_supplement_fields(data)
     supplement_errors = []
     if supplement is not None and missing:
@@ -3255,6 +3522,11 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
         failure.diagnostic_message = json.dumps(
             dict(modelStatus=model_status.get("status"), modelError=model_status.get("error"),
                  modelErrorMessage=model_status.get("modelErrorMessage") or "",
+                 modelCalls=model_status.get("modelCalls"),
+                 modelStopReason=model_status.get("modelStopReason") or "",
+                 modelRawResponseLength=model_status.get("modelRawResponseLength") or 0,
+                 modelRawResponseTail=model_status.get("modelRawResponseTail") or "",
+                 modelRepairResponseTail=model_status.get("modelRepairResponseTail") or "",
                  missingRiskCodes=model_status.get("missingRiskCodes") or [],
                  rejectedRisks=model_status.get("rejectedRisks") or [],
                  rejectedCauses=model_status.get("rejectedCauses") or [],

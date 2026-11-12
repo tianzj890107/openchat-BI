@@ -1,5 +1,5 @@
 {
-  "version": "opportunity-v3-rules-1",
+  "version": "opportunity-v3-rules-2",
   "ontology": "商机获取节点 V3",
   "source": {
     "path": "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3.xlsx",
@@ -2926,29 +2926,6 @@
     }
   },
   "overrides": {
-    "BR-Q02": {
-      "decision": "签单按合同签订判断，订单数不构成签单",
-      "field": "new_contractconfirmation",
-      "confirmed": [
-        "1"
-      ],
-      "notConfirmed": [
-        "0"
-      ],
-      "unknown": "空值或非 0/1",
-      "note": "new_contractconfirmation_date 实库 0% 覆盖，不能用于测量日判断。"
-    },
-    "RK07": {
-      "decision": "RK07 只关联 RC09，解除 RK07 与 RC01 的矛盾关联",
-      "reason": "RK07 客户无商机，不能同时要求存在该客户的 P0 商机。",
-      "causes": [
-        "RC09"
-      ],
-      "advice": [
-        "AC02",
-        "AC03"
-      ]
-    },
     "customerTier": {
       "strategic": [
         "0",
@@ -2960,38 +2937,84 @@
       ],
       "general": [
         "3"
-      ]
+      ],
+      "status": "pending",
+      "statusReason": "DR04 战略客户：客户等级 IN ('0','1')（核心、战略大客户）——三档映射待业务确认；DR05 重点客户：客户等级 IN ('2','4')（重要、BG 大客户）——待确认；本体未提供战略客户名单工作表",
+      "tierMeta": {
+        "strategic": {
+          "rule": "DR04",
+          "levels": [
+            "0",
+            "1"
+          ],
+          "status": "pending",
+          "expression": "客户等级 IN ('0','1')（核心、战略大客户）——三档映射待业务确认"
+        },
+        "priority": {
+          "rule": "DR05",
+          "levels": [
+            "2",
+            "4"
+          ],
+          "status": "pending",
+          "expression": "客户等级 IN ('2','4')（重要、BG 大客户）——待确认"
+        },
+        "general": {
+          "rule": "DR06",
+          "levels": [
+            "3"
+          ],
+          "status": "confirmed",
+          "expression": "客户等级 = '3'"
+        }
+      },
+      "source": {
+        "dimension": "D005",
+        "rulessheet": "维度派生规则",
+        "rules": [
+          "DR04",
+          "DR05",
+          "DR06"
+        ],
+        "definition": "0 核心 / 1 战略 / 2 重要 / 3 一般 / 4 BG 大客户 → 三档：战略、重点、一般"
+      },
+      "strategicList": {
+        "available": false,
+        "reason": "本体只有按客户等级的派生规则，未提供战略客户名单",
+        "status": "unavailable"
+      }
     },
     "stage": {
-      "11": "P0",
-      "12": "P1",
-      "13": "P2",
-      "14": "P3",
-      "15": "P4"
+      "11": "P0 商机获取",
+      "12": "P1 技术交流",
+      "13": "P2 方案推动",
+      "14": "P3 合同签订",
+      "15": "P4 批量交付"
+    },
+    "products": {
+      "1": "电芯",
+      "2": "PACK"
     },
     "bidMatch": {
-      "strategy": "trimmed exact project name; ambiguous duplicate names never judged not bidding",
-      "idRelationAvailable": false
+      "strategy": "名称不一致会漏判，需在结果中标注",
+      "idRelationAvailable": false,
+      "source": "BR-Q07"
     },
     "dynamicCycle": {
       "multiplier": 1.5,
       "strict": true,
-      "sample": "同年度同产品类型、截至测量日已进入阶段的有效商机；完成记录算至结束时间，在途算至测量日；排除缺进入时间或时间倒置记录。"
-    },
-    "targetAggregation": {
-      "decision": "销售目标按行求和，不按客户/产品去重",
-      "reason": "本体 BR-Q03 仅要求商机、客户、订单按 ID 去重；目标表无经验证的业务唯一键，按客户/产品 DISTINCT 会破坏目标规模。"
+      "sample": "单笔周期严格大于均值 × 1.5 判超期",
+      "source": "BR-Q06"
     },
     "electricitySource": {
-      "field": "new_orderforecast_qty",
-      "nativeUnit": "kWh",
+      "field": "new_forcastpower",
+      "attribute": "LE02-A0072",
+      "nativeUnit": "MWh",
       "outputUnit": "GWh",
-      "reason": "本体登记的 new_forcastpower 实库仅 1 条非空，无法用于指标计算；new_orderforecast_qty 覆盖 99.97%，金额/数量比约 330–530 元/kWh。"
+      "source": "B02"
     },
-    "measurementDate": "历史期间固定在期末；当前期间使用分析启动日，并写入卡片上下文。",
     "recentActivity": {
-      "windowDays": 90,
-      "description": "无商机战略客户在窗口内存在线索、线索进展、客户拜访或最新销售活动时，不认定开拓不足。",
+      "description": "无商机战略客户在本体定义的近期窗口内存在线索、线索进展、客户拜访或最新销售活动时，不认定开拓不足。",
       "accountFields": {
         "lastVisitAt": "new_lastapptime",
         "lastVisitDays": "new_lastjgtime",
@@ -3024,27 +3047,67 @@
       "productPendingRatio": 0.2,
       "otherPendingRatio": 0.3,
       "productRiskAmountHigh": 30,
-      "productRiskAmountMedium": 10
+      "productRiskAmountMedium": 10,
+      "impactAmountHigh": 10,
+      "sources": {
+        "gapRateHigh": "BR-A01",
+        "gapRateMedium": "BR-A01",
+        "signLagExtremePoints": "BR-A02",
+        "signLagHighPoints": "BR-A02",
+        "quarterWindows": "BR-A02",
+        "productRiskAmountHigh": "BR-A04/BR-A05",
+        "productRiskAmountMedium": "BR-A04/BR-A05",
+        "impactAmountHigh": "BR-A10",
+        "productPendingRatio": "BR-C05",
+        "focusTrackingRatio": "BR-C06",
+        "otherPendingRatio": "BR-C07"
+      }
+    }
+  },
+  "businessCorrections": {
+    "BR-Q02": {
+      "decision": "签单按合同签订判断，订单数不构成签单",
+      "field": "new_contractconfirmation",
+      "confirmed": [
+        "1"
+      ],
+      "notConfirmed": [
+        "0"
+      ],
+      "unknown": "空值或非 0/1",
+      "note": "new_contractconfirmation_date 实库 0% 覆盖，不能用于测量日判断。"
+    },
+    "RK07": {
+      "decision": "RK07 只关联 RC09，解除 RK07 与 RC01 的矛盾关联",
+      "reason": "RK07 客户无商机，不能同时要求存在该客户的 P0 商机。",
+      "causes": [
+        "RC09"
+      ],
+      "advice": [
+        "AC02",
+        "AC03"
+      ]
     }
   },
   "enums": {
-    "customerLevel": {
-      "0": "战略",
-      "1": "战略",
-      "2": "重点",
-      "4": "重点",
-      "3": "一般"
-    },
     "productType": {
       "1": "电芯",
       "2": "PACK"
     },
     "processStage": {
-      "11": "P0",
-      "12": "P1",
-      "13": "P2",
-      "14": "P3",
-      "15": "P4"
+      "0": "授予资格",
+      "1": "制定",
+      "2": "建议",
+      "3": "关闭",
+      "4": "识别",
+      "5": "研究",
+      "6": "解决",
+      "7": "审批",
+      "11": "商机获取",
+      "12": "技术交流",
+      "13": "方案推动",
+      "14": "合同签订",
+      "15": "批量交付"
     },
     "acneed": {
       "1": "未申请",
@@ -3063,7 +3126,9 @@
       "1": "制单",
       "2": "审核中",
       "3": "已审核",
-      "4": "已驳回"
+      "4": "已驳回",
+      "5": "已否决",
+      "6": "已撤回"
     },
     "monthApproval": {
       "1": "制单",
@@ -3083,6 +3148,13 @@
       "2": "已取消",
       "3": "已完成",
       "4": "已开发票"
+    },
+    "customerLevel": {
+      "0": "战略",
+      "1": "战略",
+      "2": "重点",
+      "4": "重点",
+      "3": "一般"
     }
   }
 }
