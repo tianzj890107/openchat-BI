@@ -1665,3 +1665,72 @@ def test_repair_feedback_numbers_are_not_whitelisted():
     # 999 appears in previousAnswer on the repair round but is still not evidence.
     assert status['status'] == 'rejected' and status['repairAttempted'] is True
     assert status['rejectionReasons']['summary'] == ['摘要含输入中不存在的数字 999']
+
+
+def test_model_input_drops_unusable_context_and_never_sends_templates():
+    value = _strategic_value()
+    interpreter, captured = _payload_answer(value)
+    status = apply_text_interpretation(value, interpreter)
+    assert status['status'] == 'completed'
+    payload = captured[0]
+    triggered = {item['code'] for item in value['riskCandidates'] if item['ruleStatus'] == 'triggered'}
+    assert 'fallbackSummary' not in payload
+    for item in payload['ruleOutcomes']:
+        if item['code'] not in triggered:
+            assert set(item) == {'code', 'name', 'ruleStatus', 'condition', 'observed'}
+    for name in ('causeCandidates', 'adviceCandidates'):
+        assert all(set(item['riskCodes']) & triggered for item in payload[name])
+        assert all(len(item['evidenceIds']) <= 8 for item in payload[name])
+
+
+def test_over_budget_input_keeps_confirmed_evidence_and_says_what_was_cut():
+    from bi_agent.cockpit.opportunity_v2 import _estimate_tokens, _fit_model_input
+    value = _strategic_value()
+    interpreter, captured = _payload_answer(value)
+    apply_text_interpretation(value, interpreter)
+    payload = dict(captured[0])
+    payload['records'] = [dict(id=f'extra-{i}', customer='客户' * 40, name='项目' * 40) for i in range(200)]
+    triggered = {item['code'] for item in value['riskCandidates'] if item['ruleStatus'] == 'triggered'}
+    budget = _estimate_tokens(dict(payload, records=[])) + 50
+    fitted, notes = _fit_model_input(payload, triggered, budget=budget)
+    assert _estimate_tokens(fitted) <= budget
+    assert not any(item['id'].startswith('extra-') for item in fitted['records'])
+    assert fitted['inputNotes'] == notes and any('明细记录只保留' in note for note in notes)
+    kept = {_id for item in fitted['ruleOutcomes'] if item['code'] in triggered
+            for _id in item.get('evidenceIds') or []}
+    fact_ids = {item['id'] for item in fitted['facts']}
+    assert {i for i in kept if i.startswith('opp-v2:metric')} <= fact_ids | {
+        i for i in kept if i not in {f['id'] for f in payload['facts']}}
+
+
+def test_input_that_cannot_fit_is_blocked_before_the_model_call(monkeypatch):
+    from bi_agent.cockpit import opportunity_v2 as module
+    monkeypatch.setenv('COCKPIT_OPPORTUNITY_V2_INPUT_TOKEN_BUDGET', '4000')
+    value = _strategic_value()
+    calls = []
+    status = apply_text_interpretation(value, lambda payload: calls.append(payload) or {})
+    assert calls == []
+    assert status['status'] == 'failed' and status['modelErrorType'] == 'ModelInputTooLarge'
+    assert status['modelInputBudget'] == 4000 and status['modelEstimatedTokens'] > 4000
+    message = module._model_failure_message(status)
+    assert message.splitlines()[0] == '原因：输入超出发送上限（发送前拦截）'
+    sections = {item['title']: item['lines'] for item in module._model_failure_details(status)}
+    assert sections['请求内容'][0].endswith('上限 4000 token，请求未发送')
+
+
+def test_repair_feedback_is_compacted_to_stay_in_budget():
+    from bi_agent.cockpit.opportunity_v2 import _estimate_tokens, _fit_feedback
+    payload = dict(ruleOutcomes=[], facts=[])
+    previous = dict(summary='摘' * 600,
+                    risks=[dict(code='RK01', include=True, description='说' * 900),
+                           dict(code='RK02', include=False)],
+                    causes=[dict(code='RC01', description='因' * 900)], advice=[])
+    feedback = dict(issues=['风险 RK01：风险说明超过 320 字'], previousAnswer=previous)
+    full = _estimate_tokens(dict(payload, validationFeedback=feedback))
+    fitted = _fit_feedback(payload, feedback, budget=full - 100)
+    compact = fitted['validationFeedback']['previousAnswer']
+    assert [item['code'] for item in compact['risks']] == ['RK01']
+    assert len(compact['risks'][0]['description']) <= 201 and len(compact['summary']) <= 241
+    bare = _fit_feedback(payload, feedback, budget=1700)
+    assert 'previousAnswer' not in bare['validationFeedback']
+    assert bare['validationFeedback']['issues'] == feedback['issues']

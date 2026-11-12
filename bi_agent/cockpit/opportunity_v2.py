@@ -2875,6 +2875,7 @@ def default_text_interpreter(payload):
         "ruleStatus=triggered 的每一条风险都必须恰好返回一次判断，不得遗漏或重复，遗漏视为分析失败；"
         "ruleStatus 不是 triggered 的风险一律 include=false（ruleStatus=insufficient 用 insufficient，"
         "其余用 not_applicable），也可以省略。"
+        "如果输入带有 inputNotes，说明部分输入因长度限制被裁剪，不得据此推断被裁剪的内容。"
         "如果输入中带有 validationFeedback，说明你上一次的回答没有通过程序校验："
         "previousAnswer 是上一次的回答，issues 是逐条问题。请只修正 issues 指出的问题，"
         "其余内容保持不变，重新输出完整 JSON；不得为了通过校验而编造数字或证据编号。"
@@ -2913,6 +2914,9 @@ def default_text_interpreter(payload):
         systemPromptChars=len(system_prompt), inputChars=len(messages[0]["content"]),
         maxTokens=max_tokens, timeoutSeconds=timeout, temperature=0, thinking=False,
         toolsSent=0,
+        estimatedInputTokens=int((len(system_prompt) + len(messages[0]["content"])) / _CHARS_PER_TOKEN) + 1,
+        inputTokenBudget=_input_token_budget(),
+        inputNotes=list(payload.get("inputNotes") or []) if isinstance(payload, dict) else [],
         sections={name: len(payload.get(name) or []) for name in (
             "ruleOutcomes", "causeCandidates", "adviceCandidates", "facts", "records",
             "progressSamples") if isinstance(payload, dict)},
@@ -3127,6 +3131,9 @@ def _model_error_context(exc, answer=None):
         modelToolCalls=list(getattr(exc, "tool_calls", None) or []),
         modelUsage=dict(getattr(exc, "usage", None) or {}),
         modelErrorType=type(exc).__name__,
+        modelInputNotes=list(getattr(exc, "input_notes", None) or request.get("inputNotes") or []),
+        modelEstimatedTokens=getattr(exc, "estimated_tokens", None) or request.get("estimatedInputTokens"),
+        modelInputBudget=getattr(exc, "budget_tokens", None) or request.get("inputTokenBudget"),
     )
 
 
@@ -3144,6 +3151,12 @@ def classify_model_failure(model_status):
     finish = _text(model_status.get("modelFinishReason")).lower()
     reasoning = model_status.get("modelReasoningChars") or 0
     timeout = model_status.get("modelTimeoutSeconds")
+    if model_status.get("modelErrorType") == "ModelInputTooLarge":
+        return ("输入超出发送上限（发送前拦截）",
+                f"本次输入预计 {model_status.get('modelEstimatedTokens')} token，超过上限 "
+                f"{model_status.get('modelInputBudget')} token；按规则裁剪后仍超出，没有向模型发送请求。",
+                "检查明细与候选数量是否异常增多；确认模型上下文足够时可调大 "
+                "COCKPIT_OPPORTUNITY_V2_INPUT_TOKEN_BUDGET。")
     if error == "MODEL_DISABLED":
         return ("未启用模型分析", "COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED 已关闭，商机卡片必须由模型生成。",
                 "在 .env 中开启该开关后重新分析。")
@@ -3246,13 +3259,20 @@ def _model_failure_details(model_status):
             f"thinking={'开' if request.get('thinking') else '关'}，"
             f"超时预算 {request.get('timeoutSeconds')} 秒",
             f"附带工具：{request.get('toolsSent', 0)} 个",
-            f"系统提示词：{request.get('systemPromptChars')} 字；输入数据：{request.get('inputChars')} 字",
+            f"系统提示词：{request.get('systemPromptChars')} 字；输入数据：{request.get('inputChars')} 字；"
+            f"预计 {request.get('estimatedInputTokens')} token（上限 {request.get('inputTokenBudget')}）",
             "输入组成：" + "；".join(
                 f"{_SECTION_LABELS.get(name, name)} {counts.get(name, 0)} 条"
                 + (f"（{chars[name]} 字）" if chars.get(name) else "")
                 for name in _SECTION_LABELS if name in counts),
         ]
+        lines.extend("输入裁剪：" + note for note in request.get("inputNotes") or [])
         sections.append(dict(title="请求内容", lines=lines))
+    elif model_status.get("modelErrorType") == "ModelInputTooLarge":
+        sections.append(dict(title="请求内容", lines=[
+            f"预计输入 {model_status.get('modelEstimatedTokens')} token，"
+            f"上限 {model_status.get('modelInputBudget')} token，请求未发送"]
+            + ["已做裁剪：" + note for note in model_status.get("modelInputNotes") or []]))
     trace = model_status.get("modelCallTrace") or []
     if trace:
         lines = []
@@ -3335,6 +3355,144 @@ def _model_failure_message(model_status):
         lines.append("调用情况：" + " · ".join(context))
     lines.append(f"建议：{suggestion}")
     return "\n".join(lines)
+
+
+_INPUT_BUDGET_ENV = "COCKPIT_OPPORTUNITY_V2_INPUT_TOKEN_BUDGET"
+_DEFAULT_INPUT_TOKEN_BUDGET = 24000
+# Measured on the customer gateway: 23.5k characters of prompt and JSON
+# payload were billed as 10.3k input tokens.  Two characters per token keeps
+# the estimate on the safe (high) side.
+_CHARS_PER_TOKEN = 2.0
+# The system prompt is sent with every call; reserve it in the budget.
+_SYSTEM_PROMPT_RESERVE_CHARS = 3000
+
+
+class ModelInputTooLarge(RuntimeError):
+    """The model input stays over budget after every allowed reduction."""
+
+    def __init__(self, message, *, estimated_tokens=0, budget_tokens=0, notes=()):
+        super().__init__(message)
+        self.estimated_tokens = estimated_tokens
+        self.budget_tokens = budget_tokens
+        self.input_notes = list(notes)
+
+
+def _input_token_budget():
+    try:
+        value = int(os.environ.get(_INPUT_BUDGET_ENV, str(_DEFAULT_INPUT_TOKEN_BUDGET)))
+    except ValueError:
+        value = _DEFAULT_INPUT_TOKEN_BUDGET
+    return max(4000, min(value, 200000))
+
+
+def _estimate_tokens(payload):
+    chars = len(json.dumps(payload, ensure_ascii=False, default=str)) + _SYSTEM_PROMPT_RESERVE_CHARS
+    return int(chars / _CHARS_PER_TOKEN) + 1
+
+
+def _short(value, limit):
+    value = _text(value)
+    return value if len(value) <= limit else value[:limit] + "…"
+
+
+def _fit_model_input(payload, triggered_codes, budget=None):
+    """Return ``(payload, notes)`` within the token budget, or raise.
+
+    Always: drop candidates no confirmed risk can use, keep untriggered risks
+    compact and bound long lists and texts.  Over budget: trim progress
+    samples, then records and facts no confirmed risk refers to.  Evidence of
+    program-triggered risks is never removed.  Every reduction is noted and
+    the notes are sent with the payload so the model knows what it lacks.
+    """
+    budget = budget or _input_token_budget()
+    payload = dict(payload)
+    notes = []
+    triggered = set(triggered_codes)
+
+    def evidence_cap(items, limit=8):
+        return [dict(item, evidenceIds=list(item.get("evidenceIds") or [])[:limit]) for item in items]
+
+    outcomes = []
+    for item in payload.get("ruleOutcomes") or []:
+        if item.get("code") in triggered:
+            outcomes.append(dict(item, description=_short(item.get("description"), 400),
+                                 observed=list(item.get("observed") or [])[:8],
+                                 evidenceIds=list(item.get("evidenceIds") or [])[:12]))
+        else:
+            # Settled by the program; kept only as context for the summary.
+            outcomes.append(dict(code=item.get("code"), name=item.get("name"),
+                                 ruleStatus=item.get("ruleStatus"),
+                                 condition=_short(item.get("condition"), 160),
+                                 observed=list(item.get("observed") or [])[:3]))
+    payload["ruleOutcomes"] = outcomes
+    for name in ("causeCandidates", "adviceCandidates"):
+        before = payload.get(name) or []
+        kept = [item for item in before if set(item.get("riskCodes") or []) & triggered]
+        if len(kept) < len(before):
+            notes.append(f"{_SECTION_LABELS.get(name, name)}只保留与已命中风险相关的 {len(kept)} 条（共 {len(before)} 条）")
+        payload[name] = evidence_cap([
+            {key: (_short(value, 300) if isinstance(value, str) else value) for key, value in item.items()}
+            for item in kept])
+
+    def referenced():
+        ids = set()
+        for name in ("ruleOutcomes", "causeCandidates", "adviceCandidates"):
+            for item in payload.get(name) or []:
+                if item.get("code") in triggered or name != "ruleOutcomes":
+                    ids.update(_text(value) for value in item.get("evidenceIds") or [])
+        return ids
+
+    def over():
+        return _estimate_tokens(payload) > budget
+
+    if over() and payload.get("progressSamples"):
+        before = payload["progressSamples"]
+        payload["progressSamples"] = [dict(item, text=_short(item.get("text"), 300)) for item in before[:3]]
+        notes.append(f"项目进展样本缩减为 {len(payload['progressSamples'])} 条（共 {len(before)} 条），每条最多 300 字")
+    for name in ("records", "facts"):
+        if not over():
+            break
+        before = payload.get(name) or []
+        used = referenced()
+        kept = [item for item in before if _text(item.get("id")) in used]
+        if len(kept) < len(before):
+            payload[name] = kept
+            notes.append(f"{_SECTION_LABELS.get(name, name)}只保留已命中风险及候选引用的 {len(kept)} 条（共 {len(before)} 条）")
+    estimated = _estimate_tokens(payload)
+    if estimated > budget:
+        raise ModelInputTooLarge(
+            f"模型输入预计 {estimated} token，超过发送上限 {budget} token；已按规则裁剪仍无法压缩，未发送请求",
+            estimated_tokens=estimated, budget_tokens=budget, notes=notes)
+    if notes:
+        payload["inputNotes"] = notes
+    return payload, notes
+
+
+def _fit_feedback(payload, feedback, budget=None):
+    """Attach repair feedback, shrinking the previous answer to fit the budget."""
+    budget = budget or _input_token_budget()
+    trial = dict(payload, validationFeedback=feedback)
+    if _estimate_tokens(trial) <= budget:
+        return trial
+    previous = feedback.get("previousAnswer") or {}
+    compact = dict(
+        summary=_short(previous.get("summary"), 240),
+        risks=[{key: (_short(value, 200) if isinstance(value, str) else value)
+                for key, value in item.items()}
+               for item in previous.get("risks") or [] if isinstance(item, dict) and item.get("include")],
+        causes=[{key: (_short(value, 200) if isinstance(value, str) else value)
+                 for key, value in item.items()} for item in previous.get("causes") or []
+                if isinstance(item, dict)],
+        advice=[{key: (_short(value, 200) if isinstance(value, str) else value)
+                 for key, value in item.items()} for item in previous.get("advice") or []
+                if isinstance(item, dict)])
+    trial = dict(payload, validationFeedback=dict(feedback, previousAnswer=compact,
+                                                  note="上一次回答已压缩，仅保留成立的风险及根因、建议"))
+    if _estimate_tokens(trial) <= budget:
+        return trial
+    return dict(payload, validationFeedback=dict(
+        issues=feedback.get("issues") or [],
+        note="上一次回答过长未附上，请根据 issues 重新完整作答"))
 
 
 _CLASSIFICATION_SYNONYMS = {
@@ -3482,18 +3640,20 @@ def _interpret_once(evaluated, interpreter=None, feedback=None):
                                acceptance=item.get("acceptance") or "",
                                causeCodes=item.get("causeCodes") or [], riskCodes=item.get("riskCodes") or [],
                                evidenceIds=item.get("evidenceIds") or []) for item in advice_candidates],
-        fallbackSummary=result.get("businessSummary") or result.get("summary") or "",
         facts=facts,
         records=records,
         progressSamples=samples[:6],
     )
-    # Numbers are checked against the evidence only, never against the
-    # model's own previous answer carried in the repair feedback.
-    allowed_numbers = _allowed_model_numbers(payload)
-    if feedback:
-        payload = dict(payload, validationFeedback=feedback)
     value = None
     try:
+        payload, _ = _fit_model_input(
+            payload, {risk.get("code") for risk in risk_candidates
+                      if risk.get("ruleStatus") == "triggered"})
+        # Numbers are checked against the evidence actually sent, never
+        # against the model's own previous answer in the repair feedback.
+        allowed_numbers = _allowed_model_numbers(payload)
+        if feedback:
+            payload = _fit_feedback(payload, feedback)
         value = interpreter(payload)
         if not isinstance(value, dict):
             raise ModelJSONOutputError("模型结果不是对象")
