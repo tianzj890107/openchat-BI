@@ -5,7 +5,7 @@
   "umdCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
   "importedAt": "2026-11-10",
   "mode": "active-runtime-adapter",
-  "notes": "Synchronized components, templates and ProBIUI from cba36d8. Inherited currentMonth relative date default, nonClearableDimensions and restoreDefault reset behavior are retained. Existing host activation rules, AP/AI adapters, palette and null-instance fitView guard are preserved. Three adapted AP-backed lists carry 5bbfcf7 sort semantics through the shared adapter; mock enrichment is not imported.",
+  "notes": "Synchronized components, templates and ProBIUI from cba36d8. The delivered date filter is pinned to the 2025 business year: empty default, 2025/annual and 2025 months for monthly grain, restoreDefault reset behavior retained. Existing host activation rules, AP/AI adapters, palette and null-instance fitView guard are preserved. Three adapted AP-backed lists carry 5bbfcf7 sort semantics through the shared adapter; mock enrichment is not imported.",
   "rootComponents": 2,
   "templates": 13,
   "totalComponents": 142,
@@ -29,8 +29,8 @@
     "title": 20
   },
   "dataSourceModes": {
-    "ap": 103,
-    "mock": 39
+    "ap": 102,
+    "mock": 40
   },
   "insights": 15,
   "insightComponents": 15,
@@ -47,7 +47,7 @@
   "files": [
     {
       "file": "components.json",
-      "sha256": "d7676f3b65282443d4fcd72cbde28719feae5f328da7bcf5999fa6a74e6d1f14"
+      "sha256": "903c38c06a8fcffc67e401e306108392637567edf4686765cbb55cab3ea831e9"
     },
     {
       "file": "template-registry.json",

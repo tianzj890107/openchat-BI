@@ -149,16 +149,21 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     ]
 
 
-def test_delivered_filter_does_not_pin_a_historical_month():
+def test_delivered_filter_defaults_to_empty_and_only_offers_2025():
     payload = runtime_payload()
     filter_component = next(
         component for component in payload["dashboard"]["components"]
         if component.get("type") == "composite-filter"
     )
-    base=filter_component["baseConfig"]
-    assert base["defaultValue"]["values"] == {"YWLN_D044":{"type":"relative","value":"currentMonth"}}
-    assert base["nonClearableDimensions"] == ["YWLN_D044"]
+    base = filter_component["baseConfig"]
+    assert base["defaultValue"]["values"] == {}
+    assert base["nonClearableDimensions"] == []
     assert base["resetBehavior"] == "restoreDefault"
+    config = filter_component["dataConfig"]
+    assert config["sourceType"] == "mock"
+    mock = config["mockData"]
+    assert mock["filters"] == [{"id": "YWLN_D044", "name": "日期", "type": "date"}]
+    assert mock["options"] == [{"label": "2025", "value": "2025"}]
     operations = next(
         component for component in payload["pages"]["operations"]["components"]
         if component.get("type") == "button-group"

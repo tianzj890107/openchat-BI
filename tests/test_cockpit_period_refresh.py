@@ -502,23 +502,33 @@ def test_pending_never_unfreezes_a_frozen_scope(tmp_path):
 
 # ------------------------------------------------------- 期间模式与边界
 
-def test_live_mode_uses_business_timezone_month(monkeypatch):
+def test_active_period_is_pinned_to_the_fixed_business_year(monkeypatch):
     from bi_agent.cockpit import periods
     monkeypatch.delenv('COCKPIT_ACTIVE_PERIOD', raising=False)
     monkeypatch.delenv('COCKPIT_PERIOD_MODE', raising=False)
+    monkeypatch.delenv('COCKPIT_BUSINESS_YEAR', raising=False)
     monkeypatch.setenv('COCKPIT_BUSINESS_TIMEZONE', 'Asia/Shanghai')
-    value = periods.active_period(dt.datetime(2026, 12, 1, 0, 30))
-    assert value == '2026-12'
+    assert periods.active_period(dt.datetime(2026, 12, 1, 0, 30)) == '2025'
 
 
-def test_default_period_uses_the_current_business_year_not_a_delivered_month(monkeypatch):
+def test_default_period_is_the_fixed_business_year_not_the_wall_clock(monkeypatch):
     from bi_agent.cockpit import periods
     monkeypatch.delenv('COCKPIT_ACTIVE_PERIOD', raising=False)
     monkeypatch.delenv('COCKPIT_PERIOD_MODE', raising=False)
+    monkeypatch.delenv('COCKPIT_BUSINESS_YEAR', raising=False)
     monkeypatch.setenv('COCKPIT_BUSINESS_TIMEZONE', 'Asia/Shanghai')
-    assert periods.default_period(dt.datetime(2026, 12, 1, 0, 30)) == '2026'
+    assert periods.default_period(dt.datetime(2026, 12, 1, 0, 30)) == '2025'
     assert periods.default_period(dt.datetime(2026, 12, 1, 0, 30),
-                                  period_type='month') == '2026-12'
+                                  period_type='month') == '2025-12'
+
+
+def test_business_year_can_be_overridden_explicitly(monkeypatch):
+    from bi_agent.cockpit import periods
+    monkeypatch.delenv('COCKPIT_ACTIVE_PERIOD', raising=False)
+    monkeypatch.setenv('COCKPIT_BUSINESS_YEAR', '2024')
+    assert periods.business_year() == '2024'
+    assert periods.default_period(dt.datetime(2026, 12, 1)) == '2024'
+    assert periods.active_period(dt.datetime(2026, 12, 1)) == '2024'
 
 
 def test_default_period_honours_an_explicit_backfill_range(monkeypatch):

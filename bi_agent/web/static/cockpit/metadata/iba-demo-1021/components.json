@@ -2,9 +2,21 @@
   {
     "dataConfig": {
       "mockData": {
-        "filters": []
+        "filters": [
+          {
+            "id": "YWLN_D044",
+            "name": "日期",
+            "type": "date"
+          }
+        ],
+        "options": [
+          {
+            "label": "2025",
+            "value": "2025"
+          }
+        ]
       },
-      "sourceType": "ap",
+      "sourceType": "mock",
       "dimensions": [
         {
           "fieldType": "Dimension",
@@ -53,16 +65,9 @@
         "YWLN_D044": "dropdown"
       },
       "defaultValue": {
-        "values": {
-          "YWLN_D044": {
-            "type": "relative",
-            "value": "currentMonth"
-          }
-        }
+        "values": {}
       },
-      "nonClearableDimensions": [
-        "YWLN_D044"
-      ],
+      "nonClearableDimensions": [],
       "resetBehavior": "restoreDefault"
     },
     "grainBindings": [

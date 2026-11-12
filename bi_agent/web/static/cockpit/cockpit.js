@@ -39,6 +39,48 @@
     return year ? year[1] : '';
   }
 
+  const PERIOD_FILTER_ID = 'YWLN_D044';
+  const PERIOD_FILTER_YEAR = '2025';
+  const PERIOD_FILTER_MONTHS = Array.from({length: 12},
+    (_, index) => `${PERIOD_FILTER_YEAR}-${String(index + 1).padStart(2, '0')}`);
+
+  function periodGrain(value) {
+    let raw = value;
+    if (raw && typeof raw === 'object') raw = raw.value || raw.code || raw.grain || '';
+    if (typeof raw === 'string') {
+      try {
+        const decoded = JSON.parse(raw);
+        if (typeof decoded === 'string') raw = decoded;
+        else if (decoded && typeof decoded === 'object') raw = decoded.value || decoded.code || decoded.grain || raw;
+      } catch (_) { /* plain YEAR/MONTH */ }
+    }
+    const text = String(raw || '').trim().toUpperCase();
+    if (text.includes('MONTH') || text === 'M' || text === '月') return 'MONTH';
+    if (text.includes('YEAR') || text === 'Y' || text === '年') return 'YEAR';
+    return '';
+  }
+
+  function periodFilterOptions(grain) {
+    const values = grain === 'MONTH' ? PERIOD_FILTER_MONTHS : [PERIOD_FILTER_YEAR];
+    return values.map(value => ({label: value, value}));
+  }
+
+  // The delivered board pins its date filter to the 2025 business year.  The
+  // grain button only changes which values are selectable: annual shows 2025,
+  // monthly shows the twelve 2025 months.  Mutating the reactive delivered
+  // metadata keeps the option list in sync without re-querying AP.
+  function applyPeriodFilterOptions(payload, grain) {
+    const components = payload?.dashboard?.components;
+    if (!Array.isArray(components)) return;
+    const filter = components.find(component => component?.type === 'composite-filter'
+      && (component.dataConfig?.dimensions || []).some(dim => dim.identifierCode === PERIOD_FILTER_ID));
+    const config = filter?.dataConfig;
+    if (!config?.mockData) return;
+    // Replace the mockData object instead of mutating it in place: the
+    // delivered select reloads its options when the object identity changes.
+    config.mockData = {...config.mockData, options: periodFilterOptions(grain)};
+  }
+
   function formatAnalysisDuration(value) {
     const seconds = Math.round(Number(value) || 0);
     if (!(seconds > 0)) return '';
@@ -1229,9 +1271,17 @@
       }
 
       function createRuntime(payload) {
-        const runtime=ProUIBi.createBiRuntime({runtimeKey:'iba-demo'});
-        if(payload?.templates)runtime.setTemplateRegistry?.(payload.templates);
-        return runtime;
+        const instance=ProUIBi.createBiRuntime({runtimeKey:'iba-demo'});
+        if(payload?.templates)instance.setTemplateRegistry?.(payload.templates);
+        const selectGrain=instance.setButtonGrainSelection;
+        if(typeof selectGrain==='function'){
+          instance.setButtonGrainSelection=function(...args){
+            const result=selectGrain.apply(this,args);
+            applyPeriodFilterOptions(runtime.value||payload,periodGrain(args[1]));
+            return result;
+          };
+        }
+        return instance;
       }
 
       async function loadRuntime() {
@@ -1327,7 +1377,10 @@
               for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
                 if(component.type!=='button-group')continue;
                 const grain=rawRuntime.getButtonGrainSelection(component.id,path);
-                if(grain)for(const item of component.buttonGroupConfig?.items||[])item.default=String(item.grain||'').toUpperCase()===grain;
+                if(grain){
+                  for(const item of component.buttonGroupConfig?.items||[])item.default=String(item.grain||'').toUpperCase()===grain;
+                  applyPeriodFilterOptions(runtime.value||payload,grain);
+                }
               }
             }
             fullSnapshot=snapshot;

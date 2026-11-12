@@ -197,23 +197,37 @@ def period_of_scope(ui_scope, fallback='') -> str:
     return period_state(ui_scope, fallback)['period']
 
 
-def default_period(now=None, period_type: str = '') -> str:
-    """Period shown when the delivered date filter is empty.
+DEFAULT_BUSINESS_YEAR = '2025'
 
-    The upstream dashboard ships an empty filter.  Its default grain is the
-    year, so an empty filter resolves to the current business year.  A
-    month-grain selection without an explicit date resolves to the active
-    business month.  An explicit backfill period still wins so operators can
-    replay a named range without changing the delivered metadata.
+
+def business_year() -> str:
+    """Business year the delivery is scoped to.
+
+    The cockpit is delivered against one closed business year.  Wall-clock
+    rollover must not silently move the default range into a later year, so
+    the year is fixed here and can only be changed explicitly through
+    ``COCKPIT_BUSINESS_YEAR``.
+    """
+    match = _YEAR_RE.search(os.getenv('COCKPIT_BUSINESS_YEAR', '') or '')
+    return match.group(1) if match else DEFAULT_BUSINESS_YEAR
+
+
+def default_period(now=None, period_type: str = '') -> str:
+    """Period used when the delivered date filter is empty.
+
+    The delivered dashboard ships an empty filter.  An empty filter resolves
+    to the fixed business year rather than the wall-clock year.  A month-grain
+    selection without an explicit date resolves to the last month of that
+    year.  An explicit backfill period still wins so operators can replay a
+    named range without changing the delivered metadata.
     """
     override = normalise(os.getenv('COCKPIT_ACTIVE_PERIOD', ''))
     grain = str(period_type or '').strip().lower()
     if grain == 'month':
-        return override if len(override) == 7 else active_period(now)
+        return override if len(override) == 7 else f'{business_year()}-12'
     if override:
         return override[:4] if len(override) == 7 else override
-    moment = _moment(now)
-    return f'{moment.year:04d}'
+    return business_year()
 
 
 def period_mode() -> str:
@@ -225,15 +239,14 @@ def period_mode() -> str:
 def active_period(now=None) -> str:
     """The period the deployment is currently responsible for.
 
-    ``live`` (default) follows the wall clock in the customer's business
-    timezone so a new month is picked up automatically.  ``backfill`` uses the
-    explicit ``COCKPIT_ACTIVE_PERIOD`` when present.
+    The delivery is pinned to :func:`business_year` instead of the wall clock,
+    so a 2026 wall-clock date cannot pull the cockpit onto a later year.
+    ``COCKPIT_ACTIVE_PERIOD`` still wins when an operator replays a range.
     """
     override = normalise(os.getenv('COCKPIT_ACTIVE_PERIOD', ''))
     if override:
         return override
-    moment = _moment(now)
-    return f'{moment.year:04d}-{moment.month:02d}'
+    return business_year()
 
 
 def business_timezone():
