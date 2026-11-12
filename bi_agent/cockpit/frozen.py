@@ -209,7 +209,16 @@ class FrozenAnnualStore:
 
 def stage_failure_message(exc):
     """Explain a failed stage without exposing raw driver or upstream text."""
-    reason = getattr(exc, 'public_message', '') or '原因：后台分析未完成，详细原因已记录到诊断'
+    reason = getattr(exc, 'public_message', '')
+    if not reason:
+        # No tailored explanation: show the redacted error itself so the
+        # failure can be located without opening the diagnostic store.
+        from .diagnostics import redact
+        code = str(getattr(exc, 'code', '') or '')
+        detail = ' '.join(redact(str(exc)).split())[:300]
+        reason = '原因：后台分析未完成\n错误类型：' + type(exc).__name__ + (f'（{code}）' if code else '')
+        if detail:
+            reason += '\n错误信息：' + detail
     return reason.rstrip('。.；; ') + '\n结果：本轮未发布，卡片已清空，请稍后重试。'
 
 
@@ -857,7 +866,17 @@ def recompute_from_router(app, cwd):
             result = manager.preheat_period(1, page, stage, period, force=True)
             hit = store.published_period(1, period, stage, {}, data_identity=get_gateway().config.identity())
             if result.get('status') not in {'published', 'frozen'} or not hit:
-                raise RuntimeError('Annual stage not ready: '+stage)
+                from .diagnostics import redact
+                status = str(result.get('status') or 'unknown')
+                detail = ' '.join(redact(str(result.get('error') or '')).split())[:300]
+                not_ready = RuntimeError(f'Annual stage not ready: {stage}; status={status}; error={detail}')
+                lines = [f'原因：{STAGE_LABELS.get(stage, stage)}环节分析没有产出可发布的卡片',
+                         f'说明：取数与分析任务结束状态为 {status}'
+                         + ('，没有找到本年度已发布的结果。' if not hit else '。')]
+                if detail:
+                    lines.append('错误信息：' + detail)
+                not_ready.public_message = '\n'.join(lines)
+                raise not_ready
             item=store.get_analysis(hit['analysis_id'])
             return item
     return Runner()

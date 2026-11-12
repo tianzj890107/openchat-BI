@@ -1520,3 +1520,30 @@ def test_model_failures_are_classified_for_the_user():
     assert category(error='MODEL_ANALYSIS_REJECTED',
                     modelErrorMessage='模型未完成全部本体风险判断：RK03') == '模型分析不符合要求'
     assert category(error='MODEL_DISABLED') == '未启用模型分析'
+
+
+def test_model_request_exposes_no_tools_and_tool_call_answers_are_explained(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    seen = []
+
+    def fake_stream(messages, system_prompt, allowed_tools, *args, **kwargs):
+        seen.append(allowed_tools)
+        return iter([
+            dict(type='tool_use_start', id='call-1', name='Ontology-MetricQuery'),
+            dict(type='tool_use_end', id='call-1', name='Ontology-MetricQuery', input={}),
+            dict(type='message_end', stop_reason='tool_use', finish_reason='tool_calls',
+                 usage=dict(input_tokens=11809, output_tokens=48)),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a'])
+    status = apply_text_interpretation(_model_evaluated(), module.default_text_interpreter)
+    # None would expose every registered tool; the analysis step must send none.
+    assert seen == [[]]
+    assert status['status'] == 'failed'
+    assert status['modelToolCalls'] == ['Ontology-MetricQuery']
+    message = module._model_failure_message(status)
+    assert message.splitlines()[0] == '原因：模型没有作答，而是发起了工具调用'
+    assert 'Ontology-MetricQuery' in message

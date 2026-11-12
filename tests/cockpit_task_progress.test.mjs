@@ -35,7 +35,7 @@ test('stage failures pop once and only for a round this page saw running',()=>{
      error:'模型调用中断：模型未返回完整文本。本轮未发布，卡片已清空，请稍后重试。'},
    order:{status:'failed'}}};
  assert.deepEqual(newStageFailures(failed,watch),[
-   {key:'r1:opportunity-risk',stage:'商机获取',diagnosticId:'d1',
+   {key:'r1:opportunity-risk',stage:'商机获取 · 风险分析卡',diagnosticId:'d1',
     message:'模型调用中断：模型未返回完整文本。本轮未发布，卡片已清空，请稍后重试。'},
    {key:'r1:order',stage:'订单接收',diagnosticId:'',message:'分析失败，本轮未发布，卡片已清空，请稍后重试。'},
  ]);

@@ -148,9 +148,10 @@ def test_priority_incremental_publication_and_failure_isolation(tmp_path):
     assert work['order']['status']=='failed'
     failure=store.job()['failedStages'][0]
     assert failure['stage']=='order' and failure['code']=='RuntimeError'
-    # The dialog text is generic for non-model failures; raw errors stay in diagnostics.
-    assert work['order']['error']==failure['message']=='原因：后台分析未完成，详细原因已记录到诊断\n结果：本轮未发布，卡片已清空，请稍后重试。'
-    assert 'stage source unavailable' not in work['order']['error']
+    # Without a tailored explanation the dialog shows the redacted error itself.
+    assert work['order']['error']==failure['message']==(
+        '原因：后台分析未完成\n错误类型：RuntimeError\n错误信息：stage source unavailable\n'
+        '结果：本轮未发布，卡片已清空，请稍后重试。')
     from bi_agent.cockpit.store import Store
     assert Store(store.path.parent/'history.sqlite3').list_diagnostics()[0]['diagnosticId']==failure['diagnosticId']
 
@@ -476,13 +477,15 @@ def test_independent_card_refresh_targets_only_its_own_slot(tmp_path):
     assert 'opportunity' in page_order
 
 
-def test_stage_failure_message_uses_public_model_reason_only():
+def test_stage_failure_message_prefers_public_reason_and_redacts_raw_errors():
     from bi_agent.cockpit.frozen import stage_failure_message
     from bi_agent.cockpit.opportunity_v2 import OpportunityV2ModelUnavailable
     exc=OpportunityV2ModelUnavailable('模型分析未完成，本轮不发布商机卡片')
     exc.public_message='模型调用中断：模型未返回完整文本。'
     assert stage_failure_message(exc)=='模型调用中断：模型未返回完整文本\n结果：本轮未发布，卡片已清空，请稍后重试。'
-    assert stage_failure_message(RuntimeError('db password=x'))=='原因：后台分析未完成，详细原因已记录到诊断\n结果：本轮未发布，卡片已清空，请稍后重试。'
+    generic=stage_failure_message(RuntimeError('db password=hunter2 connect failed'))
+    assert generic.splitlines()[:2]==['原因：后台分析未完成','错误类型：RuntimeError']
+    assert 'connect failed' in generic and 'hunter2' not in generic
 
 
 def test_unseeded_store_opens_empty_and_publishes_stages_one_by_one(tmp_path):

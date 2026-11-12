@@ -39,7 +39,8 @@ export function taskProgressText(manual, stage, now = Date.now()) {
 }
 
 const FAILURE_STAGE_LABELS = {
-  'opportunity-risk': '商机获取', opportunity: '商机获取', quotation: '报价', bid: '投标',
+  'opportunity-risk': '商机获取 · 风险分析卡', opportunity: '商机获取 · 商机推进与覆盖缺口卡',
+  quotation: '报价', bid: '投标',
   order: '订单接收', shipment: '发货', combined: '销售额与出货量跨环节共同问题分析',
 };
 

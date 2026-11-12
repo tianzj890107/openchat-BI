@@ -2705,8 +2705,9 @@ class ModelEmptyResponse(RuntimeError):
     """The model stream ended without any answer text."""
 
     def __init__(self, message, *, stop_reason="", finish_reason="", usage=None,
-                 reasoning_chars=0, elapsed=0.0, max_tokens=0, timeout=0):
+                 reasoning_chars=0, elapsed=0.0, max_tokens=0, timeout=0, tool_calls=()):
         super().__init__(message)
+        self.tool_calls = list(tool_calls)
         self.stop_reason = stop_reason
         self.finish_reason = finish_reason
         self.usage = dict(usage or {})
@@ -2724,8 +2725,11 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
     started = time.monotonic()
     try:
         with request_config(thinking=False, request_timeout=timeout):
+            # An empty allowlist means "no tools".  ``None`` would expose every
+            # registered tool and let the model answer with a tool call
+            # instead of the JSON analysis this step expects.
             for event in provider.stream_message(
-                    messages, system_prompt, None, key,
+                    messages, system_prompt, [], key,
                     max_tokens=max_tokens, temperature=0, thinking=False):
                 events.append(event)
     except Exception as exc:  # noqa: BLE001 - keep a partially received answer
@@ -2756,7 +2760,11 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
         stop = str(end.get("stop_reason") or "")
         finish = str(end.get("finish_reason") or "")
         usage = end.get("usage") or {}
+        tool_calls = list(dict.fromkeys(
+            _text(event.get("name")) for event in events
+            if event.get("type") in {"tool_use_start", "tool_use_end"} and event.get("name")))
         facts = [f"结束原因 {finish or stop or '无（流没有正常结束）'}",
+                 *([f"模型发起工具调用 {'、'.join(tool_calls)}"] if tool_calls else []),
                  f"推理内容 {reasoning_chars} 字",
                  f"输出 token {usage.get('output_tokens', '未知')} / 上限 {max_tokens}",
                  f"输入 token {usage.get('input_tokens', '未知')}",
@@ -2765,7 +2773,7 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
             "模型未返回正文（" + "，".join(facts) + "）",
             stop_reason=stop, finish_reason=finish, usage=usage,
             reasoning_chars=reasoning_chars, elapsed=elapsed,
-            max_tokens=max_tokens, timeout=timeout)
+            max_tokens=max_tokens, timeout=timeout, tool_calls=tool_calls)
     if not ends:
         raise ModelJSONOutputError(
             "模型流缺少结束事件，已保留部分正文",
@@ -3046,6 +3054,7 @@ def _model_error_context(exc):
         modelMaxTokens=getattr(exc, "max_tokens", None),
         modelFinishReason=_text(getattr(exc, "finish_reason", "")),
         modelReasoningChars=getattr(exc, "reasoning_chars", None),
+        modelToolCalls=list(getattr(exc, "tool_calls", None) or []),
         modelUsage=dict(getattr(exc, "usage", None) or {}),
         modelErrorType=type(exc).__name__,
     )
@@ -3093,6 +3102,12 @@ def classify_model_failure(model_status):
         return ("模型不存在或名称配置错误", "模型服务找不到配置的模型名称。",
                 "核对 TEAM_MODEL 或 COCKPIT_OPPORTUNITY_V2_MODEL_KEY 中的模型名。")
     if error_type == "ModelEmptyResponse" or "模型未返回正文" in message or "模型未返回完整文本" in message:
+        tool_calls = model_status.get("modelToolCalls") or []
+        if tool_calls or finish in {"tool_calls", "function_call"} or stop == "tool_use":
+            return ("模型没有作答，而是发起了工具调用",
+                    "模型返回的是工具调用" + (f"（{'、'.join(tool_calls)}）" if tool_calls else "")
+                    + "，没有输出分析正文；这一步不应向模型提供任何工具。",
+                    "这是程序问题而非模型故障：请升级到已修复的版本（分析请求不再附带工具）。")
         if reasoning:
             return ("模型只输出了推理过程，没有正文",
                     f"模型把输出预算用在了推理上（推理内容 {reasoning} 字），没有生成答案正文。",
