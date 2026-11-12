@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const source=fs.readFileSync(new URL('../bi_agent/web/static/cockpit/task-progress.js',import.meta.url),'utf8');
-const {taskProgressText,newStageFailures}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {taskProgressText,newStageFailures,failureText}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 test('each card uses its own stage status and frozen completed duration',()=>{
  const manual={running:true,stageProgress:{
    order:{status:'running',phase:'analysing',message:'模型分析第 2 轮',startedAt:100},
@@ -31,13 +31,20 @@ test('stage failures pop once and only for a round this page saw running',()=>{
  assert.deepEqual(newStageFailures({runId:'r1',status:'running',stageProgress:{
    'opportunity-risk':{status:'running',phase:'analysing'}}},watch),[]);
  const failed={runId:'r1',status:'partial',stageProgress:{
-   'opportunity-risk':{status:'failed',diagnosticId:'d1',
+   'opportunity-risk':{status:'failed',diagnosticId:'d1',errorDetails:[{title:'调用过程',lines:['第 1 次 · 生成分析']},{title:'空',lines:[]}],
      error:'模型调用中断：模型未返回完整文本。本轮未发布，卡片已清空，请稍后重试。'},
    order:{status:'failed'}}};
  assert.deepEqual(newStageFailures(failed,watch),[
    {key:'r1:opportunity-risk',stage:'商机获取 · 风险分析卡',diagnosticId:'d1',
-    message:'模型调用中断：模型未返回完整文本。本轮未发布，卡片已清空，请稍后重试。'},
-   {key:'r1:order',stage:'订单接收',diagnosticId:'',message:'分析失败，本轮未发布，卡片已清空，请稍后重试。'},
+    message:'模型调用中断：模型未返回完整文本。本轮未发布，卡片已清空，请稍后重试。',details:[{title:'调用过程',lines:['第 1 次 · 生成分析']}]},
+   {key:'r1:order',stage:'订单接收',diagnosticId:'',message:'分析失败，本轮未发布，卡片已清空，请稍后重试。',details:[]},
  ]);
  assert.deepEqual(newStageFailures(failed,watch),[]);
+});
+
+test('failure text for copying keeps the message, details and diagnostic id',()=>{
+ const text=failureText({stage:'商机获取 · 风险分析卡',message:'原因：模型请求超时',diagnosticId:'d9',
+   details:[{title:'调用过程',lines:['第 1 次 · 生成分析；耗时 180 秒']}]});
+ assert.equal(text,['【商机获取 · 风险分析卡】','原因：模型请求超时','','[调用过程]',
+   '- 第 1 次 · 生成分析；耗时 180 秒','','诊断ID：d9'].join('\n'));
 });

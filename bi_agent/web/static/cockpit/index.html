@@ -79,10 +79,21 @@
           <li v-for="item in failureDialog.items" :key="item.key" class="cockpit-dialog__item">
             <strong>{{item.stage}}</strong>
             <p>{{item.message}}</p>
+            <details v-if="item.details && item.details.length" class="cockpit-dialog__details">
+              <summary>详细信息</summary>
+              <div v-for="section in item.details" :key="section.title" class="cockpit-dialog__section">
+                <h3>{{section.title}}</h3>
+                <ul>
+                  <li v-for="(line, index) in section.lines" :key="index">{{line}}</li>
+                </ul>
+              </div>
+            </details>
             <small v-if="item.diagnosticId">诊断ID：{{item.diagnosticId}}</small>
           </li>
         </ul>
         <div class="cockpit-dialog__actions">
+          <span v-if="failureDialog.copied" class="cockpit-dialog__copied" role="status">{{failureDialog.copied}}</span>
+          <button type="button" class="cockpit-dialog__copy" @click="copyFailureDialog">复制全部</button>
           <button id="cockpit-failure-close" type="button" class="cockpit-dialog__close" @click="closeFailureDialog">知道了</button>
         </div>
       </section>

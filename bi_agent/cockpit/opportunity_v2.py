@@ -23,6 +23,7 @@ from collections import defaultdict
 from decimal import Decimal
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
+import contextvars
 from copy import deepcopy
 from datetime import date, datetime, time as datetime_time, timedelta, timezone
 import hashlib
@@ -115,8 +116,9 @@ class ModelAnalysisRejected(ValueError):
     """
 
     def __init__(self, message, *, rejected_risks=(), missing_risk_codes=(),
-                 rejected_causes=(), rejected_advice=()):
+                 rejected_causes=(), rejected_advice=(), reasons=None):
         super().__init__(message)
+        self.reasons = {key: list(items) for key, items in (reasons or {}).items() if items}
         self.rejected_risks = list(rejected_risks)
         self.missing_risk_codes = list(missing_risk_codes)
         self.rejected_causes = list(rejected_causes)
@@ -2701,6 +2703,10 @@ def _looks_truncated_json(text):
     return in_string or depth > 0
 
 
+# Per-analysis list of model calls; set by ``default_text_interpreter``.
+_CALL_TRACE = contextvars.ContextVar("opportunity_model_call_trace", default=None)
+
+
 class ModelEmptyResponse(RuntimeError):
     """The model stream ended without any answer text."""
 
@@ -2717,7 +2723,8 @@ class ModelEmptyResponse(RuntimeError):
         self.timeout = timeout
 
 
-def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, timeout):
+def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, timeout,
+                       step="生成分析"):
     from ..llm.runtime_config import request_config
 
     events = []
@@ -2740,6 +2747,25 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
     reasoning_chars = sum(len(event.get("text") or "") for event in events
                           if event.get("type") in {"thinking_block", "thinking_delta"})
     errors = [event.get("error", "") for event in events if event.get("type") == "error"]
+    trace = _CALL_TRACE.get()
+    if trace is not None:
+        last_end = next((event for event in reversed(events)
+                         if event.get("type") == "message_end"), {})
+        trace.append(dict(
+            step=step, route=_text(key), elapsedSeconds=round(elapsed, 1),
+            timeoutSeconds=timeout, maxTokens=max_tokens,
+            finishReason=_text(last_end.get("finish_reason")),
+            stopReason=_text(last_end.get("stop_reason")),
+            usage=dict(last_end.get("usage") or {}),
+            ended=bool(last_end), textChars=len(text), reasoningChars=reasoning_chars,
+            toolCalls=[dict(name=_text(event.get("name")),
+                            input=json.dumps(event.get("input") or {}, ensure_ascii=False,
+                                             default=str)[:200])
+                       for event in events if event.get("type") == "tool_use_end"],
+            error=(_text(errors[-1]) if errors else
+                   f"{type(stream_error).__name__}: {stream_error}" if stream_error else ""),
+            textHead=text[:600], textTail=text[-300:] if len(text) > 900 else "",
+        ))
     if errors:
         if text:
             raise ModelJSONOutputError(
@@ -2873,37 +2899,63 @@ def default_text_interpreter(payload):
     timeout = max(30, min(timeout, _MAX_MODEL_TIMEOUT_SECONDS))
     messages = [dict(role="user", content=json.dumps(payload, ensure_ascii=False))]
 
-    last_transport_error = None
-    remaining_budget = float(timeout)
-    for index, key in enumerate(candidate_keys):
-        if remaining_budget <= 0:
-            break
-        attempt_timeout = max(1, int(remaining_budget))
-        started = time.monotonic()
-        try:
-            return _analyse_with_model(
-                provider, key, messages, system_prompt,
-                max_tokens=max_tokens, timeout=attempt_timeout,
-            )
-        except Exception as exc:  # noqa: BLE001 - annotated, then re-raised
-            _annotate_model_error(exc, key, messages, started, attempt_timeout, max_tokens)
-            if isinstance(exc, ModelJSONOutputError):
-                raise
-            last_transport_error = exc
-            remaining_budget -= time.monotonic() - started
-            if index + 1 >= len(candidate_keys) or remaining_budget <= 0:
-                raise
-    raise last_transport_error or RuntimeError("模型未返回结果")
+    trace = []
+    request_info = dict(
+        routes=[_model_route_name(key) for key in candidate_keys],
+        systemPromptChars=len(system_prompt), inputChars=len(messages[0]["content"]),
+        maxTokens=max_tokens, timeoutSeconds=timeout, temperature=0, thinking=False,
+        toolsSent=0,
+        sections={name: len(payload.get(name) or []) for name in (
+            "ruleOutcomes", "causeCandidates", "adviceCandidates", "facts", "records",
+            "progressSamples") if isinstance(payload, dict)},
+        sectionChars={name: len(json.dumps(payload.get(name), ensure_ascii=False, default=str))
+                      for name in ("ruleOutcomes", "causeCandidates", "adviceCandidates",
+                                   "facts", "records", "progressSamples")
+                      if isinstance(payload, dict) and payload.get(name)},
+    )
+    token = _CALL_TRACE.set(trace)
+    try:
+        last_transport_error = None
+        remaining_budget = float(timeout)
+        for index, key in enumerate(candidate_keys):
+            if remaining_budget <= 0:
+                break
+            attempt_timeout = max(1, int(remaining_budget))
+            started = time.monotonic()
+            try:
+                result = _analyse_with_model(
+                    provider, key, messages, system_prompt,
+                    max_tokens=max_tokens, timeout=attempt_timeout,
+                )
+                result.call_trace = trace
+                result.request_info = request_info
+                return result
+            except Exception as exc:  # noqa: BLE001 - annotated, then re-raised
+                _annotate_model_error(exc, key, messages, started, attempt_timeout, max_tokens)
+                exc.call_trace = trace
+                exc.request_info = request_info
+                if isinstance(exc, ModelJSONOutputError):
+                    raise
+                last_transport_error = exc
+                remaining_budget -= time.monotonic() - started
+                if index + 1 >= len(candidate_keys) or remaining_budget <= 0:
+                    raise
+        raise last_transport_error or RuntimeError("模型未返回结果")
+    finally:
+        _CALL_TRACE.reset(token)
+
+
+def _model_route_name(key):
+    try:
+        from ..llm.registry import get_model
+        return _text((get_model(key) or {}).get("model_id")) or _text(key)
+    except Exception:  # noqa: BLE001 - context is best effort
+        return _text(key)
 
 
 def _annotate_model_error(exc, key, messages, started, timeout, max_tokens):
     """Attach the call context an operator needs to read a model failure."""
-    try:
-        from ..llm.registry import get_model
-        route = _text((get_model(key) or {}).get("model_id")) or _text(key)
-    except Exception:  # noqa: BLE001 - context is best effort
-        route = _text(key)
-    exc.model_route = route
+    exc.model_route = _model_route_name(key)
     exc.input_chars = sum(len(_text(message.get("content"))) for message in messages)
     exc.elapsed = round(time.monotonic() - started, 1)
     exc.timeout = timeout
@@ -2965,6 +3017,7 @@ def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, t
             retry_text, retry_stop, _ = _read_model_stream(
                 provider, retry_messages, retry_system, key,
                 max_tokens=max_tokens, timeout=retry_timeout,
+                step="截断后重新生成" if truncated else "修复 JSON 格式",
             )
             if retry_stop in {"max_tokens", "length"}:
                 raise ModelJSONOutputError(
@@ -3045,10 +3098,16 @@ def _model_summary_valid(text, limit, allowed_numbers):
             and not _SUMMARY_FORBIDDEN.search(text))
 
 
-def _model_error_context(exc):
+def _model_error_context(exc, answer=None):
+    """Facts about a failed model step; ``answer`` supplies them after a rejection."""
+    trace = list(getattr(exc, "call_trace", None) or getattr(answer, "call_trace", None) or [])
+    request = dict(getattr(exc, "request_info", None) or getattr(answer, "request_info", None) or {})
     return dict(
-        modelRoute=_text(getattr(exc, "model_route", "")),
-        modelInputChars=getattr(exc, "input_chars", None),
+        modelCallTrace=trace, modelRequest=request,
+        rejectionReasons=dict(getattr(exc, "reasons", None) or {}),
+        modelRoute=(_text(getattr(exc, "model_route", ""))
+                    or (_model_route_name(trace[-1]["route"]) if trace else "")),
+        modelInputChars=getattr(exc, "input_chars", None) or request.get("inputChars"),
         modelElapsedSeconds=getattr(exc, "elapsed", None),
         modelTimeoutSeconds=getattr(exc, "timeout", None),
         modelMaxTokens=getattr(exc, "max_tokens", None),
@@ -3149,6 +3208,87 @@ def classify_model_failure(model_status):
     return ("模型调用失败", "模型调用没有成功，未能识别具体类型。", "按诊断 ID 查看完整错误后处理。")
 
 
+_SECTION_LABELS = dict(ruleOutcomes="本体风险候选", causeCandidates="本体根因候选",
+                       adviceCandidates="本体建议候选", facts="事实", records="明细记录",
+                       progressSamples="项目进展样本")
+
+
+def _model_failure_details(model_status):
+    """Grouped facts for the failure dialog: request, calls, answer, rejections."""
+    from .diagnostics import redact
+
+    def clean(value, limit):
+        value = _text(value)
+        # ``redact`` substitutes a placeholder for an empty message.
+        return re.sub(r"\s+", " ", redact(value)).strip()[:limit] if value else ""
+
+    sections = []
+    request = model_status.get("modelRequest") or {}
+    if request:
+        counts = request.get("sections") or {}
+        chars = request.get("sectionChars") or {}
+        lines = [
+            "模型：" + ("、".join(request.get("routes") or []) or "未知"),
+            f"参数：max_tokens={request.get('maxTokens')}，temperature={request.get('temperature')}，"
+            f"thinking={'开' if request.get('thinking') else '关'}，"
+            f"超时预算 {request.get('timeoutSeconds')} 秒",
+            f"附带工具：{request.get('toolsSent', 0)} 个",
+            f"系统提示词：{request.get('systemPromptChars')} 字；输入数据：{request.get('inputChars')} 字",
+            "输入组成：" + "；".join(
+                f"{_SECTION_LABELS.get(name, name)} {counts.get(name, 0)} 条"
+                + (f"（{chars[name]} 字）" if chars.get(name) else "")
+                for name in _SECTION_LABELS if name in counts),
+        ]
+        sections.append(dict(title="请求内容", lines=lines))
+    trace = model_status.get("modelCallTrace") or []
+    if trace:
+        lines = []
+        for index, call in enumerate(trace, 1):
+            usage = call.get("usage") or {}
+            parts = [f"第 {index} 次 · {call.get('step')}",
+                     f"模型 {_model_route_name(call.get('route'))}",
+                     f"耗时 {call.get('elapsedSeconds')} 秒（本次上限 {call.get('timeoutSeconds')} 秒）",
+                     "结束原因 " + (call.get("finishReason") or call.get("stopReason")
+                                  or ("无" if call.get("ended") else "流未正常结束")),
+                     f"输入 {usage.get('input_tokens', '未知')} token",
+                     f"输出 {usage.get('output_tokens', '未知')} token（上限 {call.get('maxTokens')}）",
+                     f"正文 {call.get('textChars')} 字", f"推理 {call.get('reasoningChars')} 字"]
+            for tool in call.get("toolCalls") or []:
+                parts.append(f"工具调用 {tool.get('name')} 参数 {clean(tool.get('input'), 200)}")
+            if call.get("error"):
+                parts.append("错误 " + clean(call.get("error"), 400))
+            lines.append("；".join(parts))
+        sections.append(dict(title="调用过程", lines=lines))
+    raw_error = clean(model_status.get("modelErrorMessage"), 1000)
+    if raw_error:
+        lines = [raw_error]
+        status_code = re.search(r"(?i)error code:\s*(\d{3})|\b(4\d\d|5\d\d)\b", raw_error)
+        if status_code:
+            lines.append("HTTP 状态码：" + (status_code.group(1) or status_code.group(2)))
+        if model_status.get("modelErrorType"):
+            lines.append("异常类型：" + _text(model_status.get("modelErrorType")))
+        sections.append(dict(title="错误原文", lines=lines))
+    reasons = model_status.get("rejectionReasons") or {}
+    labels = dict(risks="风险", causes="根因", advice="建议", summary="摘要")
+    lines = [f"{labels[kind]} {clean(item, 200)}" for kind in ("risks", "causes", "advice", "summary")
+             for item in (reasons.get(kind) or [])[:12]]
+    if lines:
+        sections.append(dict(title="校验未通过明细", lines=lines))
+    answered = [call for call in trace if call.get("textChars")]
+    head = clean(answered[-1].get("textHead"), 600) if answered else ""
+    tail = clean(answered[-1].get("textTail"), 300) if answered else ""
+    if not head and model_status.get("modelRawResponseTail"):
+        tail = clean(model_status.get("modelRawResponseTail"), 600)
+    if head or tail:
+        lines = []
+        if head:
+            lines.append("开头：" + head)
+        if tail:
+            lines.append("结尾：" + tail)
+        sections.append(dict(title="模型原始返回（节选）", lines=lines))
+    return sections
+
+
 def _model_failure_message(model_status):
     """Multi-line, user-facing explanation; full responses stay in diagnostics."""
     from .diagnostics import redact
@@ -3175,6 +3315,25 @@ def _model_failure_message(model_status):
         lines.append("调用情况：" + " · ".join(context))
     lines.append(f"建议：{suggestion}")
     return "\n".join(lines)
+
+
+def _text_issue(label, text, limit, allowed_numbers):
+    """Why a model text is unusable, or '' when it is acceptable."""
+    if not text:
+        return f"缺少{label}"
+    if len(text) > limit:
+        return f"{label}超过 {limit} 字（实际 {len(text)} 字）"
+    if "逾期未完成" in text:
+        return f"{label}使用了禁用表述“逾期未完成”"
+    extra = sorted(_model_numbers(text) - allowed_numbers)
+    if extra:
+        return f"{label}含输入中不存在的数字 {'、'.join(extra[:5])}"
+    return ""
+
+
+def _evidence_issue(label, cited, allowed):
+    unknown = sorted(set(cited) - set(allowed))
+    return f"{label}引用了不允许的证据编号 {'、'.join(unknown[:3])}" if unknown else ""
 
 
 def apply_text_interpretation(evaluated, interpreter=None):
@@ -3265,6 +3424,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
         progressSamples=samples[:6],
     )
     allowed_numbers = _allowed_model_numbers(payload)
+    value = None
     try:
         value = interpreter(payload)
         if not isinstance(value, dict):
@@ -3290,11 +3450,16 @@ def apply_text_interpretation(evaluated, interpreter=None):
                             else sample_evidence | fact_evidence | record_evidence)
         rejected_risks, applied_risks = [], []
         risk_specs = {}
+        rejection_reasons = dict(risks=[], causes=[], advice=[], summary=[])
+
+        def reject(kind, bucket, code, reason):
+            bucket.append(code)
+            rejection_reasons[kind].append(f"{code}：{reason}")
         for item in _model_items(value.get("risks")):
             code = _text(item.get("code"))
             candidate = risk_by_code.get(code)
             if not candidate:
-                rejected_risks.append(code or "?")
+                reject("risks", rejected_risks, code or "?", "不是本体候选风险编码")
                 continue
             include = item.get("include")
             classification = _text(item.get("classification"))
@@ -3302,48 +3467,52 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 include = classification == "confirmed"
             if not classification:
                 classification = "confirmed" if include is True else "insufficient"
-            if (not isinstance(include, bool)
-                    or classification not in {"confirmed", "structural", "insufficient", "not_applicable"}):
-                rejected_risks.append(code)
+            if not isinstance(include, bool):
+                reject("risks", rejected_risks, code, "include 不是 true/false")
                 continue
-            if include and (candidate.get("ruleStatus") != "triggered" or classification != "confirmed"):
+            if classification not in {"confirmed", "structural", "insufficient", "not_applicable"}:
+                reject("risks", rejected_risks, code, f"classification 取值无效：{classification[:20]}")
+                continue
+            if include and candidate.get("ruleStatus") != "triggered":
                 # A model may explain a numeric miss or mark it insufficient,
                 # but it cannot overturn the program's deterministic threshold.
-                rejected_risks.append(code)
+                reject("risks", rejected_risks, code,
+                       f"程序规则状态为 {candidate.get('ruleStatus')}，模型不能改判为成立")
+                continue
+            if include and classification != "confirmed":
+                reject("risks", rejected_risks, code,
+                       f"include=true 但 classification={classification}")
                 continue
             if not include and classification == "confirmed":
-                rejected_risks.append(code)
+                reject("risks", rejected_risks, code, "include=false 但 classification=confirmed")
                 continue
             description = re.sub(r"\s+", " ", _text(item.get("description")))
             title = re.sub(r"\s+", " ", _text(item.get("title")))
             cited = item.get("evidenceIds") or []
             if not isinstance(cited, list):
                 cited = []
-            if include and (not title or len(title) > 24
-                            or not _model_text_valid(title, 24, allowed_numbers)):
-                rejected_risks.append(code)
-                continue
-            cited_ids = ([_text(entry) for entry in cited]
-                         if isinstance(cited, list) else [])
+            cited_ids = [_text(entry) for entry in cited]
             opposing = item.get("opposingEvidenceIds") or []
-            opposing_ids = ([_text(entry) for entry in opposing]
-                            if isinstance(opposing, list) else None)
-            if description and not _model_text_valid(description, 320, allowed_numbers):
-                rejected_risks.append(code)
-                continue
-            if (not isinstance(cited, list) or not isinstance(opposing, list)
-                    or set(cited_ids) - allowed_evidence
-                    or set(opposing_ids or []) - allowed_evidence):
-                rejected_risks.append(code)
-                continue
-            if include and (not description or not cited_ids
-                            or not (set(cited_ids) & risk_evidence.get(code, set()))):
-                rejected_risks.append(code)
+            opposing_ids = [_text(entry) for entry in opposing] if isinstance(opposing, list) else []
+            issue = _text_issue("风险标题", title, 24, allowed_numbers) if include else ""
+            if not issue and (description or include):
+                issue = _text_issue("风险说明", description, 320, allowed_numbers)
+            if not issue and not isinstance(opposing, list):
+                issue = "opposingEvidenceIds 不是数组"
+            if not issue:
+                issue = (_evidence_issue("支持证据", cited_ids, allowed_evidence)
+                         or _evidence_issue("反对证据", opposing_ids, allowed_evidence))
+            if not issue and include and not cited_ids:
+                issue = "成立的风险没有引用支持证据"
+            if not issue and include and not (set(cited_ids) & risk_evidence.get(code, set())):
+                issue = "引用的证据都不属于该风险自己的证据"
+            if issue:
+                reject("risks", rejected_risks, code, issue)
                 continue
             risk_specs[code] = dict(include=include, classification=classification,
                                     title=title, description=description,
                                     evidenceIds=list(dict.fromkeys(cited_ids)),
-                                    opposingEvidenceIds=list(dict.fromkeys(opposing_ids or [])))
+                                    opposingEvidenceIds=list(dict.fromkeys(opposing_ids)))
             applied_risks.append(code)
 
         applied_risks = list(dict.fromkeys(applied_risks))
@@ -3351,10 +3520,14 @@ def apply_text_interpretation(evaluated, interpreter=None):
                               if candidate["code"] not in risk_specs]
         risk_coverage_complete = not missing_risk_codes
         if missing_risk_codes or rejected_risks:
+            for code in missing_risk_codes:
+                if code not in rejected_risks:
+                    rejection_reasons["risks"].append(f"{code}：模型没有返回该风险的判断")
             raise ModelAnalysisRejected(
                 "模型未完成全部本体风险判断："
                 + "、".join(dict.fromkeys(missing_risk_codes + rejected_risks)),
-                rejected_risks=rejected_risks, missing_risk_codes=missing_risk_codes)
+                rejected_risks=rejected_risks, missing_risk_codes=missing_risk_codes,
+                reasons=rejection_reasons)
 
         excluded_codes = {code for code, spec in risk_specs.items() if not spec["include"]}
         included_risks = [risk for risk in triggered_risks if risk["code"] not in excluded_codes]
@@ -3399,7 +3572,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
             code = _text(item.get("code"))
             candidate = cause_by_code.get(code)
             if not candidate:
-                rejected_causes.append(code or "?")
+                reject("causes", rejected_causes, code or "?", "不是本体候选根因编码")
                 continue
             allowed_for_candidate = set(candidate.get("riskCodes") or []) & included_codes
             requested = item.get("riskCodes")
@@ -3410,20 +3583,27 @@ def apply_text_interpretation(evaluated, interpreter=None):
             cited = item.get("evidenceIds") or []
             if not isinstance(cited, list):
                 cited = []
-            if not title or not _model_text_valid(title, 24, allowed_numbers):
-                rejected_causes.append(code)
-                continue
+            cited_ids = [_text(entry) for entry in cited]
             allowed_for_evidence = (cause_evidence.get(code, set())
                                     | set().union(*(risk_evidence.get(value, set())
                                                     for value in selected_codes))
                                     | sample_evidence)
-            if (not selected_codes or not selected_codes <= allowed_for_candidate
-                    or not isinstance(cited, list) or not cited
-                    or not _model_text_valid(description, 160, allowed_numbers)
-                    or not {_text(entry) for entry in cited} <= allowed_for_evidence):
-                rejected_causes.append(code)
+            issue = _text_issue("根因标题", title, 24, allowed_numbers)
+            if not issue and not selected_codes:
+                issue = "没有可关联的本轮成立风险"
+            if not issue and not selected_codes <= allowed_for_candidate:
+                issue = ("关联了本体不允许或本轮未成立的风险 "
+                         + "、".join(sorted(selected_codes - allowed_for_candidate)[:4]))
+            if not issue:
+                issue = _text_issue("根因说明", description, 160, allowed_numbers)
+            if not issue and not cited_ids:
+                issue = "没有引用证据"
+            if not issue:
+                issue = _evidence_issue("根因证据", cited_ids, allowed_for_evidence)
+            if issue:
+                reject("causes", rejected_causes, code, issue)
                 continue
-            evidence_ids = list(dict.fromkeys(_text(entry) for entry in cited))[:20]
+            evidence_ids = list(dict.fromkeys(cited_ids))[:20]
             cause_items.append(dict(
                 id=f"opp-v2:cause:{code}", causeCode=code,
                 kind=candidate.get("kind") or "hypothesis",
@@ -3445,7 +3625,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
             code = _text(item.get("code"))
             candidate = advice_by_code.get(code)
             if not candidate:
-                rejected_advice.append(code or "?")
+                reject("advice", rejected_advice, code or "?", "不是本体候选建议编码")
                 continue
             action = re.sub(r"\s+", " ", _text(item.get("action")))
             requested_risks = item.get("riskCodes")
@@ -3461,29 +3641,42 @@ def apply_text_interpretation(evaluated, interpreter=None):
             cited = item.get("evidenceIds") or []
             if not isinstance(cited, list):
                 cited = []
+            cited_ids = [_text(entry) for entry in cited]
             owner_role = re.sub(r"\s+", " ", _text(item.get("ownerRole")))
             acceptance = re.sub(r"\s+", " ", _text(item.get("acceptance")))
             detail = re.sub(r"\s+", " ", _text(item.get("detail")))
             deadline_days = item.get("deadlineDays")
-            if (not owner_role or len(owner_role) > 20
-                    or isinstance(deadline_days, bool) or not isinstance(deadline_days, int)
-                    or not 1 <= deadline_days <= 365
-                    or not acceptance or not _model_text_valid(acceptance, 80, allowed_numbers)
-                    or (detail and not _model_text_valid(detail, 200, allowed_numbers))):
-                rejected_advice.append(code)
-                continue
             allowed_for_evidence = (advice_evidence.get(code, set())
                                     | set().union(*(risk_evidence.get(value, set())
                                                     for value in risk_codes))
                                     | set().union(*(cause_evidence.get(value, set())
                                                     for value in cause_codes)))
-            if (not action or len(action) > 64 or "逾期未完成" in action
-                    or not _model_numbers(action) <= allowed_numbers
-                    or not risk_codes or not risk_codes <= allowed_risk_codes
-                    or (cause_codes and not cause_codes <= allowed_cause_codes)
-                    or not isinstance(cited, list) or not cited
-                    or not {_text(entry) for entry in cited} <= allowed_for_evidence):
-                rejected_advice.append(code)
+            issue = _text_issue("建议动作", action, 64, allowed_numbers)
+            if not issue and not owner_role:
+                issue = "缺少责任角色 ownerRole"
+            if not issue and len(owner_role) > 20:
+                issue = f"责任角色超过 20 字（实际 {len(owner_role)} 字）"
+            if not issue and (isinstance(deadline_days, bool) or not isinstance(deadline_days, int)
+                              or not 1 <= deadline_days <= 365):
+                issue = f"deadlineDays 不是 1-365 的整数（实际 {str(deadline_days)[:20]}）"
+            if not issue:
+                issue = _text_issue("验收标准", acceptance, 80, allowed_numbers)
+            if not issue and detail:
+                issue = _text_issue("补充说明", detail, 200, allowed_numbers)
+            if not issue and not risk_codes:
+                issue = "没有可关联的本轮成立风险"
+            if not issue and not risk_codes <= allowed_risk_codes:
+                issue = ("关联了本体不允许或本轮未成立的风险 "
+                         + "、".join(sorted(risk_codes - allowed_risk_codes)[:4]))
+            if not issue and cause_codes and not cause_codes <= allowed_cause_codes:
+                issue = ("关联了本体不允许的根因 "
+                         + "、".join(sorted(cause_codes - allowed_cause_codes)[:4]))
+            if not issue and not cited_ids:
+                issue = "没有引用证据"
+            if not issue:
+                issue = _evidence_issue("建议证据", cited_ids, allowed_for_evidence)
+            if issue:
+                reject("advice", rejected_advice, code, issue)
                 continue
             linked_causes = [cause for cause in cause_items if cause["causeCode"] in cause_codes]
             recommendations.append(dict(
@@ -3492,7 +3685,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
                             or _advice_action_type(code, candidate, linked_causes)),
                 governance=bool(candidate.get("governance")) or code in _GOVERNANCE_ADVICE,
                 causeIds=[cause["id"] for cause in linked_causes],
-                evidenceIds=list(dict.fromkeys(_text(entry) for entry in cited))[:20],
+                evidenceIds=list(dict.fromkeys(cited_ids))[:20],
                 action=action, ownerRole=owner_role,
                 deadline=f"{deadline_days} 个工作日", deadlineType="days",
                 deadlineDays=deadline_days,
@@ -3506,11 +3699,18 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 "模型未给出可用的根因与建议："
                 + f"根因 {len(cause_items)} 条（拒绝 {'、'.join(rejected_causes) or '无'}），"
                 + f"建议 {len(recommendations)} 条（拒绝 {'、'.join(rejected_advice) or '无'}）",
-                rejected_causes=rejected_causes, rejected_advice=rejected_advice)
+                rejected_causes=rejected_causes, rejected_advice=rejected_advice,
+                reasons=rejection_reasons)
 
         summary = re.sub(r"\s+", " ", _text(value.get("summary")))
         if not _model_summary_valid(summary, 240, allowed_numbers):
-            raise ModelAnalysisRejected("模型摘要未通过校验（为空、过长、含实现说明或含输入之外的数字）")
+            forbidden = _SUMMARY_FORBIDDEN.search(summary)
+            rejection_reasons["summary"].append(
+                _text_issue("摘要", summary, 240, allowed_numbers)
+                or (f"摘要含实现说明用语“{forbidden.group(0)}”" if forbidden else "摘要未通过校验"))
+            raise ModelAnalysisRejected(
+                "模型摘要未通过校验：" + rejection_reasons["summary"][0],
+                reasons=rejection_reasons)
 
         model_status, model_error, analysis_mode = "completed", "", "model"
 
@@ -3590,7 +3790,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
             rejectedCauses=list(getattr(exc, "rejected_causes", []) or []),
             rejectedAdvice=list(getattr(exc, "rejected_advice", []) or []),
             missingRiskCodes=list(getattr(exc, "missing_risk_codes", []) or []),
-            **_model_error_context(exc),
+            **_model_error_context(exc, value),
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),
             modelRawResponseTail=raw_text[-800:],
@@ -3603,7 +3803,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
         return dict(
             status="failed", error=type(exc).__name__,
             modelCalls=int(getattr(exc, "attempts", 1) or 1),
-            **_model_error_context(exc),
+            **_model_error_context(exc, value),
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),
             modelRawResponseTail=raw_text[-800:],
@@ -3879,10 +4079,11 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
                  **{key: model_status.get(key) for key in (
                      "modelRoute", "modelInputChars", "modelElapsedSeconds", "modelTimeoutSeconds",
                      "modelMaxTokens", "modelFinishReason", "modelReasoningChars", "modelUsage",
-                     "modelErrorType")}),
+                     "modelErrorType", "modelToolCalls", "rejectionReasons")}),
             ensure_ascii=False, default=str,
         )
         failure.public_message = _model_failure_message(model_status)
+        failure.public_details = _model_failure_details(model_status)
         if diagnostic_reporter is not None:
             try:
                 diagnostic_reporter(dict(

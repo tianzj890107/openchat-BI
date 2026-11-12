@@ -628,7 +628,7 @@ def test_repair_call_uses_the_remaining_total_budget(monkeypatch):
     calls = []
     monkeypatch.setattr(module.time, 'monotonic', lambda: clock['now'])
 
-    def fake_read(provider, messages, system_prompt, key, *, max_tokens, timeout):
+    def fake_read(provider, messages, system_prompt, key, *, max_tokens, timeout, step=""):
         calls.append(timeout)
         if len(calls) == 1:
             clock['now'] += 120.0
@@ -653,7 +653,7 @@ def test_repair_is_skipped_when_the_total_budget_is_spent(monkeypatch):
     calls = []
     monkeypatch.setattr(module.time, 'monotonic', lambda: clock['now'])
 
-    def fake_read(provider, messages, system_prompt, key, *, max_tokens, timeout):
+    def fake_read(provider, messages, system_prompt, key, *, max_tokens, timeout, step=""):
         calls.append(timeout)
         clock['now'] += 179.0
         raise module.ModelJSONOutputError(
@@ -1547,3 +1547,52 @@ def test_model_request_exposes_no_tools_and_tool_call_answers_are_explained(monk
     message = module._model_failure_message(status)
     assert message.splitlines()[0] == '原因：模型没有作答，而是发起了工具调用'
     assert 'Ontology-MetricQuery' in message
+
+
+def test_failure_details_cover_request_calls_answer_and_rejections(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    def fake_stream(messages, system_prompt, allowed_tools, *args, **kwargs):
+        return iter([
+            dict(type='text_delta', text='{"summary":"商机存在缺口","risks":[{"code":"RK01",'
+                 '"include":true,"classification":"confirmed","title":"覆盖不足"}],'
+                 '"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn', finish_reason='stop',
+                 usage=dict(input_tokens=11809, output_tokens=96)),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a'])
+    status = apply_text_interpretation(_model_evaluated(), module.default_text_interpreter)
+    assert status['status'] == 'rejected'
+    assert status['rejectionReasons'] == {'risks': ['RK01：缺少风险说明']}
+    sections = {item['title']: item['lines'] for item in module._model_failure_details(status)}
+    assert list(sections) == ['请求内容', '调用过程', '错误原文', '校验未通过明细', '模型原始返回（节选）']
+    request = '\n'.join(sections['请求内容'])
+    assert '模型：route-a' in request and '附带工具：0 个' in request
+    assert '本体风险候选 1 条' in request and 'max_tokens=12000' in request
+    call = sections['调用过程'][0]
+    assert call.startswith('第 1 次 · 生成分析') and '结束原因 stop' in call
+    assert '输入 11809 token' in call and '输出 96 token' in call
+    assert sections['校验未通过明细'] == ['风险 RK01：缺少风险说明']
+    assert sections['模型原始返回（节选）'] == [
+        '开头：{"summary":"商机存在缺口","risks":[{"code":"RK01","include":true,'
+        '"classification":"confirmed","title":"覆盖不足"}],"causes":[],"advice":[]}']
+
+
+def test_rejection_reasons_name_the_exact_problem():
+    value = _strategic_value()
+    base, _ = _payload_answer(value)
+
+    def broken(payload):
+        answer = base(payload)
+        answer['causes'][0]['evidenceIds'] = ['model-invented-evidence']
+        for item in answer['advice']:
+            item['deadlineDays'] = 0
+        return answer
+    status = apply_text_interpretation(value, broken)
+    assert status['status'] == 'rejected'
+    reasons = status['rejectionReasons']
+    assert any('引用了不允许的证据编号 model-invented-evidence' in item for item in reasons['causes'])
+    assert all('deadlineDays 不是 1-365 的整数（实际 0）' in item for item in reasons['advice'])

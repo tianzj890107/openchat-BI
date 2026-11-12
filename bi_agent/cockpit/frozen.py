@@ -222,6 +222,41 @@ def stage_failure_message(exc):
     return reason.rstrip('。.；; ') + '\n结果：本轮未发布，卡片已清空，请稍后重试。'
 
 
+def stage_failure_details(exc, phase=''):
+    """Grouped facts for the dialog's expandable section.
+
+    A tailored explanation supplies its own sections; every failure also
+    reports where the exception was raised, so it can be located from the
+    page alone.  Text is redacted and bounded.
+    """
+    import traceback
+    from .diagnostics import redact
+    sections = [dict(title=str(item.get('title') or '')[:40],
+                     lines=[str(line)[:1200] for line in (item.get('lines') or [])[:20]])
+                for item in (getattr(exc, 'public_details', None) or [])[:8]
+                if isinstance(item, dict) and item.get('lines')]
+    lines = ['异常类型：' + type(exc).__name__]
+    code = str(getattr(exc, 'code', '') or '')
+    if code:
+        lines.append('错误代码：' + code)
+    step = str(getattr(exc, 'phase', '') or phase or '')
+    if step:
+        lines.append('失败阶段：' + step)
+    detail = ' '.join(redact(str(exc)).split())[:600] if str(exc) else ''
+    if detail:
+        lines.append('异常信息：' + detail)
+    frames = traceback.extract_tb(exc.__traceback__)[-3:]
+    if frames:
+        lines.append('出错位置：' + ' → '.join(
+            f'{Path(frame.filename).name}:{frame.lineno} {frame.name}' for frame in frames))
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None:
+        lines.append('上游异常：' + type(cause).__name__ + '：'
+                     + ' '.join(redact(str(cause)).split())[:300])
+    sections.append(dict(title='程序异常', lines=lines))
+    return sections
+
+
 class FrozenAnnualService:
     def __init__(self, store, recompute=None):
         self.store, self.recompute = store, recompute
@@ -368,11 +403,16 @@ class FrozenAnnualService:
                                 record_failure(Store(self.store.path.parent/'history.sqlite3'),clear_exc,
                                     phase='clear_stage',stage=stage,run_id=self.round_id)
                             message = stage_failure_message(exc)
+                            try:
+                                details = stage_failure_details(exc, phase)
+                            except Exception:  # noqa: BLE001 - details never mask the failure
+                                details = []
                             with self.queue_lock:
                                 self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId'],message=message))
                                 self.stage_progress[stage].update(
                                     status='failed', phase='failed', finishedAt=time.time(),
-                                    diagnosticId=diagnostic['diagnosticId'], error=message)
+                                    diagnosticId=diagnostic['diagnosticId'], error=message,
+                                    errorDetails=details)
                         with self.queue_lock:
                             self.active = ''
                             self._progress()

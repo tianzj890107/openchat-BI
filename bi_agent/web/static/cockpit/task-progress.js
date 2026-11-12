@@ -60,7 +60,20 @@ export function newStageFailures(manual, watch) {
       stage: FAILURE_STAGE_LABELS[stage] || stage,
       message: work.error || manual.error || '分析失败，本轮未发布，卡片已清空，请稍后重试。',
       diagnosticId: work.diagnosticId || '',
+      details: (Array.isArray(work.errorDetails) ? work.errorDetails : [])
+        .filter(section => section && Array.isArray(section.lines) && section.lines.length)
+        .map(section => ({title: String(section.title || '详细信息'), lines: section.lines.map(String)})),
     });
   }
   return fresh;
+}
+
+/* Plain text of one failure, for copying into a ticket or chat. */
+export function failureText(item) {
+  const parts = [`【${item.stage}】`, item.message];
+  for (const section of item.details || []) {
+    parts.push('', `[${section.title}]`, ...section.lines.map(line => `- ${line}`));
+  }
+  if (item.diagnosticId) parts.push('', `诊断ID：${item.diagnosticId}`);
+  return parts.join('\n');
 }

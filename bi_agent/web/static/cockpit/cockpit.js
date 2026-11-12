@@ -10,7 +10,7 @@
   const root = document.querySelector('meta[name="app-root"]').content.replace(/\/$/, '');
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '');
   const assetVersion = document.querySelector('meta[name="cockpit-version"]')?.content || '1';
-  const {taskProgressText,newStageFailures}=await import(`./task-progress.js?v=${assetVersion}`);
+  const {taskProgressText,newStageFailures,failureText}=await import(`./task-progress.js?v=${assetVersion}`);
   const assetBase = document.querySelector('meta[name="cockpit-assets"]')?.content || `${root}/static/cockpit`;
   const {selectSlotAnalysis}=await import(`./publication-selection.js?v=${assetVersion}`);
   const runtimeUrl = `${assetBase}/metadata/runtime.json?v=${encodeURIComponent(assetVersion)}`;
@@ -203,10 +203,20 @@
     }
   }
   // A stage that stops mid-analysis (for example the model call) is reported
-  // once in a dialog; the card itself keeps the last published result.
+  // once in a dialog with its cause and expandable details; the card is cleared.
   const failureWatch={runId:'',announced:new Set()};
-  const failureDialog=reactive({open:false,items:[]});
-  function closeFailureDialog(){failureDialog.open=false;failureDialog.items=[];}
+  const failureDialog=reactive({open:false,items:[],copied:''});
+  function closeFailureDialog(){failureDialog.open=false;failureDialog.items=[];failureDialog.copied='';}
+  async function copyFailureDialog(){
+    const text=failureDialog.items.map(failureText).join('\n\n----------------\n\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      failureDialog.copied='已复制';
+    } catch(_) {
+      // Clipboard access can be blocked (http pages, embedded frames).
+      failureDialog.copied='复制失败，请展开详细信息后手动选择复制';
+    }
+  }
   const visibleAiSlots = new Map();
   let priorityTimer=null;
   function frozenPriority(slotId) {
@@ -1726,7 +1736,7 @@
       onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(priorityTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        frozenAnnualMode, frozenAnnual, refreshFrozenAnnual, failureDialog, closeFailureDialog, page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release,
+        frozenAnnualMode, frozenAnnual, refreshFrozenAnnual, failureDialog, closeFailureDialog, copyFailureDialog, page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };

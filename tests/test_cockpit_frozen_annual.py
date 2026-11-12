@@ -519,3 +519,27 @@ def test_delivered_seed_must_still_cover_every_stage(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         FrozenAnnualStore(tmp_path/'other.db',partial)
+
+
+def test_failed_stage_publishes_expandable_details(tmp_path):
+    store,_,body=fixture(tmp_path);done=threading.Event()
+    class Runner:
+        def run_stage(self,period,stage):
+            if stage=='order':
+                failure=RuntimeError('order source password=hunter2 unavailable')
+                failure.public_message='原因：订单接收环节分析没有产出可发布的卡片'
+                failure.public_details=[dict(title='调用过程',lines=['第 1 次 · 生成分析'])]
+                raise failure
+            return deepcopy(body['items'][stage])
+    original=store.finish
+    def finished(*args):original(*args);done.set()
+    store.finish=finished
+    FrozenAnnualService(store,Runner()).refresh()
+    assert done.wait(5)
+    work=store.job()['stageProgress']['order']
+    titles=[section['title'] for section in work['errorDetails']]
+    assert titles==['调用过程','程序异常']
+    program='\n'.join(work['errorDetails'][-1]['lines'])
+    assert '异常类型：RuntimeError' in program and '失败阶段：stage_execution' in program
+    assert '出错位置：' in program and 'run_stage' in program
+    assert 'hunter2' not in program
