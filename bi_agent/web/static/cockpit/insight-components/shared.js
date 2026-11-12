@@ -112,6 +112,12 @@ export function useInsight(props, emit) {
   const recommendations = computed(() => result.value?.recommendations || [])
   const limitations = computed(() => result.value?.caliberNotes || result.value?.limitations || bundle.value.limitations || [])
   const summary = computed(() => result.value?.businessSummary ?? result.value?.summary ?? '')
+  // Each section opens with the model's summary of the items it displays.
+  // Without one, the risk section keeps the card's overall summary.
+  const sectionSummaries = computed(() => result.value?.sectionSummaries || {})
+  const riskSummary = computed(() => (findings.value.length && sectionSummaries.value.riskSummary) || summary.value)
+  const causeSummary = computed(() => sectionSummaries.value.causeSummary || '')
+  const adviceSummary = computed(() => sectionSummaries.value.adviceSummary || '')
   const hasResult = computed(() => Boolean(result.value))
   const stageName = computed(() => props.context?.stageName || props.analysis?.context?.stageName || '')
   const period = computed(() => props.analysis?.context?.engine==='main' ? '' : props.context?.period || props.analysis?.context?.period || '')
@@ -352,6 +358,9 @@ export function useInsight(props, emit) {
     openRecommendations,
     limitations,
     summary,
+    riskSummary,
+    causeSummary,
+    adviceSummary,
     hasResult,
     stageName,
     period,
@@ -425,7 +434,7 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【风险】</span>
               {{ displayStage }}当前风险判断
             </div>
-            <div class="stage-risk-analysis__summary" :title="summary"><number-text :text="summary" /></div>
+            <div class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——<number-text :text="finding.description" /></template>
@@ -490,6 +499,7 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
               按 {{ analysisDimensions.length }} 个业务环节展开原因分析
             </div>
+            <div v-if="causeSummary" class="stage-risk-analysis__summary" :title="causeSummary"><number-text :text="causeSummary" /></div>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——<number-text :text="dimension.description" />
@@ -562,6 +572,7 @@ export function createStageRiskComponent(options = {}) {
                         @click="openOrGenerate">{{ taskButtonLabel }}</button>
               </div>
             </div>
+            <div v-if="adviceSummary" class="stage-risk-analysis__summary" :title="adviceSummary"><number-text :text="adviceSummary" /></div>
             <div v-if="task" class="stage-risk-analysis__task-state" :class="{'stage-risk-analysis__task-state--warn': !taskMatchesSelection}">
               {{ taskStatus }} · {{ task.id }}<template v-if="!taskMatchesSelection"> · 对应上次选择的建议</template>
             </div>

@@ -17,7 +17,7 @@ test('risk card highlights numbers and their units as one blue token', () => {
 test('shared stage risk component highlights text and keeps the display owner role', async () => {
   const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
   const css = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.css', import.meta.url), 'utf8');
-  assert.match(shared, /<number-text :text="summary" \/>/);
+  assert.match(shared, /<number-text :text="riskSummary" \/>/);
   assert.match(shared, /<number-text :text="finding\.description" \/>/);
   assert.match(shared, /<number-text :text="item\.action" \/>/);
   assert.match(shared, /stage-risk-analysis__owner/);
@@ -48,4 +48,13 @@ test('shared stage risk component highlights text and keeps the display owner ro
   assert.match(shared, /返回数据/);
   assert.match(css, /\.stage-risk-analysis__trace-meta\{/);
   assert.match(css, /\.stage-risk-analysis__trace-table\{/);
+});
+
+test('each card section opens with the summary of its own displayed items', async () => {
+  const source = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
+  // The risk section falls back to the card summary only when no section summary exists.
+  assert.match(source, /riskSummary = computed\(\(\) => \(findings\.value\.length && sectionSummaries\.value\.riskSummary\) \|\| summary\.value\)/);
+  assert.match(source, /<number-text :text="riskSummary" \/>/);
+  assert.match(source, /<div v-if="causeSummary" class="stage-risk-analysis__summary"/);
+  assert.match(source, /<div v-if="adviceSummary" class="stage-risk-analysis__summary"/);
 });

@@ -30,6 +30,9 @@ from .risk import summarize_risk_counts
 from .targets import REGISTRY_VERSION, slot_registry
 
 STAGES = ('opportunity', 'order', 'shipment', 'quotation', 'bid', 'combined')
+# Publication keys behind the three 销售额口径明细 node cards (商机获取 risk
+# card, 订单接收, 发货): their sections get model summaries of displayed items.
+SECTION_SUMMARY_STAGES = ('opportunity-risk', 'order', 'shipment')
 INDEPENDENT_ITEMS = ('opportunity-risk',)
 PUBLICATION_KEYS = STAGES + INDEPENDENT_ITEMS
 
@@ -882,6 +885,16 @@ def recompute_from_router(app, cwd):
             manager.progress_callback=callback
 
         def run_slot(self, period, stage):
+            item = self._analyse_slot(period, stage)
+            if stage in SECTION_SUMMARY_STAGES:
+                # The 销售额口径明细 cards open each section with a model
+                # summary of the items that section displays.
+                from .section_summary import with_section_summaries
+                item = with_section_summaries(item, stage_name=STAGE_LABELS.get(stage, stage),
+                                              progress=self._progress_callback)
+            return item
+
+        def _analyse_slot(self, period, stage):
             if stage == 'opportunity-risk':
                 from .opportunity_v2 import build_card, default_ap_supplement, default_text_interpreter
                 from .store import Store

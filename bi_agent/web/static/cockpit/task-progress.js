@@ -6,6 +6,7 @@ export function taskProgressText(manual, stage, now = Date.now()) {
     ap: 'AP 补充',
     rules: '规则计算',
     analysing: '原因分析',
+    summarising: '分段总结',
     publishing: '发布中',
     published: '已发布',
   };
