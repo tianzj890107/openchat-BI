@@ -687,6 +687,9 @@ def test_minimal_model_decision_is_completed_by_program_assembly():
     assert value['result']['findings'][0]['id'] == 'risk-1'
     assert value['result']['findings'][0]['riskCode'] == 'RK01'
     assert value['result']['analysisDimensions'][0]['causeCode'] == 'RC01'
+    assert value['result']['modelAssessment']['textFallbackUsed'] is True
+    assert set(value['result']['textFallbackSections']) == {
+        'riskDescriptions', 'riskEvidence', 'causeDescriptions', 'adviceActions'}
 
 
 def test_invalid_model_json_is_a_format_fallback_not_a_transport_failure():
@@ -702,6 +705,7 @@ def test_invalid_model_json_is_a_format_fallback_not_a_transport_failure():
     assert generated['error'] == 'MODEL_OUTPUT_INVALID'
     assert generated['modelCalls'] == 2
     assert generated['modelRawResponseTail'] == '{"risks": ['
+    assert generated['textFallbackUsed'] is True
     # A failed model call never mutates the program-assembled fallback card.
     assert value['result'] == before
 
@@ -724,10 +728,14 @@ def test_first_format_failure_publishes_a_program_assembled_limited_card():
     card = build_card('2026', database=Database(), measurement_date='2026-11-11',
                       text_interpreter=broken)
     assert card['status'] == 'limited'
-    assert card['result']['analysisAssembly'] == dict(
-        cardWriter='program', modelContract='minimal-decision-v1',
-        modelStatus='fallback', ruleFallbackSections=[],
-    )
+    assembly = card['result']['analysisAssembly']
+    assert assembly['cardWriter'] == 'program'
+    assert assembly['modelContract'] == 'minimal-decision-v1'
+    assert assembly['modelStatus'] == 'fallback'
+    assert assembly['modelAnalysisUsed'] is False
+    assert assembly['ruleFallbackSections'] == []
+    assert assembly['textFallbackSections']
+    assert card['result']['modelAssessment']['analysisMode'] == 'rule_fallback'
     assert any('由程序按本体规则组装卡片' in item
                for item in card['result']['dataDiagnostics'])
 
@@ -836,6 +844,134 @@ def test_default_text_interpreter_regenerates_truncated_json_once(monkeypatch):
     assert value['summary'] == '重新生成的摘要'
     assert value.model_calls == 2
     assert '压缩文字' in calls[1][1]
+
+
+def test_stream_interruption_repairs_the_partial_body(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit.opportunity_v2 import default_text_interpreter
+
+    calls = []
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        calls.append((messages, system_prompt))
+        if len(calls) == 1:
+            def interrupted():
+                yield dict(type='text_delta', text='{"summary":"部分正文","risks":[],"causes":[],"advice":[]}')
+                raise RuntimeError('stream disconnected')
+            return interrupted()
+        return iter([
+            dict(type='text_delta', text='{"summary":"修复后的摘要","risks":[],"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    value = default_text_interpreter({'progressSamples': []})
+    assert value['summary'] == '修复后的摘要'
+    assert value.model_calls == 2
+    assert 'JSON 修复器' in calls[1][1]
+    assert '部分正文' in calls[1][0][0]['content']
+
+
+def test_stream_error_event_repairs_the_partial_body(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit.opportunity_v2 import default_text_interpreter
+
+    calls = []
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        calls.append((messages, system_prompt))
+        if len(calls) == 1:
+            return iter([
+                dict(type='text_delta', text='{"summary":"中断前的正文","risks":[]}'),
+                dict(type='error', error='upstream reset'),
+            ])
+        return iter([
+            dict(type='text_delta', text='{"summary":"错误恢复摘要","risks":[],"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    value = default_text_interpreter({'progressSamples': []})
+    assert value['summary'] == '错误恢复摘要'
+    assert value.model_calls == 2
+    assert 'JSON 修复器' in calls[1][1]
+
+
+def test_stream_without_message_end_repairs_the_partial_body(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit.opportunity_v2 import default_text_interpreter
+
+    calls = []
+
+    def fake_stream(messages, system_prompt, *args, **kwargs):
+        calls.append((messages, system_prompt))
+        if len(calls) == 1:
+            return iter([
+                dict(type='text_delta', text='{"summary":"缺少结束事件","risks":[],"causes":[],"advice":[]}'),
+            ])
+        return iter([
+            dict(type='text_delta', text='{"summary":"结束事件恢复摘要","risks":[],"causes":[],"advice":[]}'),
+            dict(type='message_end', stop_reason='end_turn'),
+        ])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    value = default_text_interpreter({'progressSamples': []})
+    assert value['summary'] == '结束事件恢复摘要'
+    assert value.model_calls == 2
+    assert 'JSON 修复器' in calls[1][1]
+
+
+def test_repair_call_uses_the_remaining_total_budget(monkeypatch):
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    clock = {'now': 100.0}
+    calls = []
+    monkeypatch.setattr(module.time, 'monotonic', lambda: clock['now'])
+
+    def fake_read(provider, messages, system_prompt, key, *, max_tokens, timeout):
+        calls.append(timeout)
+        if len(calls) == 1:
+            clock['now'] += 120.0
+            raise module.ModelJSONOutputError(
+                '模型输出不是合法 JSON', raw_text='{"summary":', stop_reason='end_turn',
+            )
+        return ('{"summary":"预算内修复","risks":[],"causes":[],"advice":[]}', 'end_turn', {})
+
+    monkeypatch.setattr(module, '_read_model_stream', fake_read)
+    value = module._analyse_with_model(
+        object(), 'route-a', [{'role': 'user', 'content': '分析'}], 'system',
+        max_tokens=1200, timeout=180,
+    )
+    assert value['summary'] == '预算内修复'
+    assert calls == [180, 60]
+
+
+def test_repair_is_skipped_when_the_total_budget_is_spent(monkeypatch):
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    clock = {'now': 100.0}
+    calls = []
+    monkeypatch.setattr(module.time, 'monotonic', lambda: clock['now'])
+
+    def fake_read(provider, messages, system_prompt, key, *, max_tokens, timeout):
+        calls.append(timeout)
+        clock['now'] += 179.0
+        raise module.ModelJSONOutputError(
+            '模型输出不是合法 JSON', raw_text='{"summary":', stop_reason='end_turn',
+        )
+
+    monkeypatch.setattr(module, '_read_model_stream', fake_read)
+    try:
+        module._analyse_with_model(
+            object(), 'route-a', [{'role': 'user', 'content': '分析'}], 'system',
+            max_tokens=1200, timeout=180,
+        )
+    except module.ModelJSONOutputError as exc:
+        assert '总预算已用尽' in str(exc)
+        assert exc.attempts == 1
+    else:
+        raise AssertionError('spent budget must not start another model call')
+    assert calls == [180]
 
 
 def test_model_json_failure_keeps_raw_tail_for_diagnostics(monkeypatch):

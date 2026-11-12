@@ -2673,19 +2673,40 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
     from ..llm.runtime_config import request_config
 
     events = []
-    with request_config(thinking=False, request_timeout=timeout):
-        for event in provider.stream_message(
-                messages, system_prompt, None, key,
-                max_tokens=max_tokens, temperature=0, thinking=False):
-            events.append(event)
-    errors = [event.get("error", "") for event in events if event.get("type") == "error"]
-    if errors:
-        raise RuntimeError(errors[-1])
-    ends = [event for event in events if event.get("type") == "message_end"]
+    stream_error = None
+    try:
+        with request_config(thinking=False, request_timeout=timeout):
+            for event in provider.stream_message(
+                    messages, system_prompt, None, key,
+                    max_tokens=max_tokens, temperature=0, thinking=False):
+                events.append(event)
+    except Exception as exc:  # noqa: BLE001 - keep a partially received answer
+        stream_error = exc
     text = "".join(event.get("text", "") for event in events
                    if event.get("type") == "text_delta").strip()
-    if not text or not ends:
+    errors = [event.get("error", "") for event in events if event.get("type") == "error"]
+    if errors:
+        if text:
+            raise ModelJSONOutputError(
+                f"模型流返回错误，已保留部分正文：{errors[-1]}",
+                raw_text=text, stop_reason="stream_error",
+            )
+        raise RuntimeError(errors[-1])
+    if stream_error is not None:
+        if text:
+            raise ModelJSONOutputError(
+                f"模型流中断，已保留部分正文：{type(stream_error).__name__}: {stream_error}",
+                raw_text=text, stop_reason="stream_error",
+            ) from stream_error
+        raise stream_error
+    ends = [event for event in events if event.get("type") == "message_end"]
+    if not text:
         raise RuntimeError("模型未返回完整文本")
+    if not ends:
+        raise ModelJSONOutputError(
+            "模型流缺少结束事件，已保留部分正文",
+            raw_text=text, stop_reason="stream_error",
+        )
     return text, str(ends[-1].get("stop_reason") or ""), ends[-1].get("usage") or {}
 
 
@@ -2800,6 +2821,7 @@ def default_text_interpreter(payload):
 
 def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, timeout):
     """Run one model route: generate JSON and repair a malformed answer once."""
+    deadline = time.monotonic() + max(1, int(timeout))
     first_text = ""
     first_stop = ""
     try:
@@ -2820,6 +2842,13 @@ def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, t
                      or _looks_truncated_json(first_text))
         retry_text = ""
         retry_stop = ""
+        remaining = deadline - time.monotonic()
+        if remaining < 2:
+            raise ModelJSONOutputError(
+                f"模型 JSON 输出无效，{int(timeout)} 秒总预算已用尽，未再发起修复调用",
+                raw_text=first_text, stop_reason=first_stop, attempts=1,
+            )
+        retry_timeout = max(1, int(remaining))
         try:
             if truncated:
                 retry_system = system_prompt + (
@@ -2844,7 +2873,7 @@ def _analyse_with_model(provider, key, messages, system_prompt, *, max_tokens, t
                 )]
             retry_text, retry_stop, _ = _read_model_stream(
                 provider, retry_messages, retry_system, key,
-                max_tokens=max_tokens, timeout=timeout,
+                max_tokens=max_tokens, timeout=retry_timeout,
             )
             if retry_stop in {"max_tokens", "length"}:
                 raise ModelJSONOutputError(
@@ -3352,12 +3381,28 @@ def apply_text_interpretation(evaluated, interpreter=None):
         result["includedRiskCount"] = len(included_risks)
         result["ruleTriggeredRiskCount"] = len(triggered_risks)
         result["missingRiskCodes"] = missing_risk_codes
+        text_fallback_sections = []
+        if summary_fallback_used:
+            text_fallback_sections.append("summary")
+        if any(spec.get("descriptionSource") == "ontology_fallback"
+               for spec in risk_specs.values() if spec.get("include")):
+            text_fallback_sections.append("riskDescriptions")
+        if any(spec.get("evidenceSource") == "ontology_fallback"
+               for spec in risk_specs.values() if spec.get("include")):
+            text_fallback_sections.append("riskEvidence")
+        if any(cause.get("descriptionSource") == "ontology_fallback" for cause in cause_items):
+            text_fallback_sections.append("causeDescriptions")
+        if any(item.get("actionSource") == "ontology_fallback" for item in recommendations):
+            text_fallback_sections.append("adviceActions")
+        result["textFallbackSections"] = text_fallback_sections
         result["modelAssessment"] = dict(
             status=model_status, analysisMode=analysis_mode,
             candidateCount=len(risk_candidates), assessedRiskCount=len(risk_specs),
             missingRiskCodes=missing_risk_codes, coverageComplete=risk_coverage_complete,
             summaryApplied=summary_applied, summaryFallbackUsed=summary_fallback_used,
             causeFallbackUsed=cause_fallback_used, adviceFallbackUsed=advice_fallback_used,
+            textFallbackUsed=bool(text_fallback_sections),
+            textFallbackSections=text_fallback_sections,
         )
         result["riskAssessments"] = deepcopy(risk_assessments)
         result["excludedRiskCodes"] = [item["code"] for item in risk_assessments
@@ -3381,6 +3426,8 @@ def apply_text_interpretation(evaluated, interpreter=None):
                     summaryFallbackUsed=summary_fallback_used,
                     causeFallbackUsed=cause_fallback_used,
                     adviceFallbackUsed=advice_fallback_used,
+                    textFallbackUsed=bool(text_fallback_sections),
+                    textFallbackSections=text_fallback_sections,
                     riskAssessments=deepcopy(risk_assessments),
                     rejectedRisks=rejected_risks, rejectedCauses=rejected_causes,
                     rejectedAdvice=rejected_advice,
@@ -3392,6 +3439,8 @@ def apply_text_interpretation(evaluated, interpreter=None):
         return dict(
             status="fallback", error="MODEL_OUTPUT_INVALID",
             modelCalls=int(getattr(exc, "attempts", 1) or 1),
+            textFallbackUsed=True,
+            textFallbackSections=["summary", "riskDescriptions", "causeDescriptions", "adviceActions"],
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),
             modelRawResponseTail=raw_text[-800:],
@@ -3404,6 +3453,8 @@ def apply_text_interpretation(evaluated, interpreter=None):
         return dict(
             status="failed", error=type(exc).__name__,
             modelCalls=int(getattr(exc, "attempts", 1) or 1),
+            textFallbackUsed=True,
+            textFallbackSections=["summary", "riskDescriptions", "causeDescriptions", "adviceActions"],
             modelErrorMessage=str(exc)[:800],
             modelRawResponseLength=len(raw_text),
             modelRawResponseTail=raw_text[-800:],
@@ -3833,6 +3884,8 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
         cardWriter="program",
         modelContract="minimal-decision-v1",
         modelStatus=model_status.get("status"),
+        modelAnalysisUsed=model_status.get("status") in {"completed", "partial"},
+        textFallbackSections=list(model_status.get("textFallbackSections") or []),
         ruleFallbackSections=[name for name, used in (
             ("summary", model_status.get("summaryFallbackUsed")),
             ("causes", model_status.get("causeFallbackUsed")),
@@ -3846,6 +3899,17 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
             "未覆盖或未通过校验的摘要、原因和建议由规则模板补充。"
         ]))[:12]
     if model_status.get("status") == "fallback":
+        result["modelAssessment"] = dict(
+            status="fallback", analysisMode="rule_fallback",
+            candidateCount=model_status.get("riskCandidateCount"),
+            assessedRiskCount=model_status.get("analysedRiskCount", 0),
+            missingRiskCodes=model_status.get("missingRiskCodes") or [],
+            coverageComplete=False,
+            summaryApplied=False, summaryFallbackUsed=True,
+            causeFallbackUsed=True, adviceFallbackUsed=True,
+            textFallbackUsed=True,
+            textFallbackSections=["summary", "riskDescriptions", "causeDescriptions", "adviceActions"],
+        )
         result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
             "模型输出未通过结构化校验，本轮由程序按本体规则组装卡片；模型分析未采用。"
         ]))[:12]
