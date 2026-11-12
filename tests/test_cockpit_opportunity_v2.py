@@ -718,7 +718,9 @@ def test_target_rows_are_summed_not_distincted_by_customer_or_product():
     data = collect('2026', database=database, config=config, measurement_date='2026-11-11')
     assert database.target_calls == 1
     assert data['targets']['amount'] == 3.0
-    assert data['targets']['energy'] == 30.0
+    # B01 energy now reads new_month*_power (MWh), so the same row values are
+    # converted with the MWh divisor.
+    assert data['targets']['energy'] == 30_000.0
 
 
 def test_all_null_target_is_missing_not_zero_and_truncation_is_preserved():

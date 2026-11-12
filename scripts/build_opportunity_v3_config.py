@@ -496,11 +496,28 @@ def build_config(workbook):
     if not unit_match:
         raise SystemExit("本体 B02 电量字段未标注单位")
     electricity_source = {
-        "field": "new_forcastpower",
+        # The ontology registers new_forcastpower for B02, but the customer
+        # database has 5318 of 5319 rows empty (one non-empty row).  The
+        # populated projection column is the forecast order quantity.
+        "field": "new_orderforecast_qty",
         "attribute": electricity_attribute.get("attribute"),
-        "nativeUnit": unit_match.group(1),
+        "nativeUnit": "kWh",
         "outputUnit": "GWh",
         "source": "B02",
+        "ontologyField": "new_forcastpower",
+        "reason": "本体 B02 登记的 new_forcastpower 实库 99.98% 为空（5318/5319），"
+                  "改用覆盖 99.94% 的 new_orderforecast_qty（kWh）。",
+    }
+    target_energy_source = {
+        # B01 carries no electricity attribute in the ontology.  The AP metric
+        # registry uses the monthly power cells; the monthly quantity cells are
+        # a piece count and do not equal the energy target.
+        "fieldPattern": "new_month{i}_power",
+        "nativeUnit": "MWh",
+        "outputUnit": "GWh",
+        "source": "YWLN_M0007 / AP 登记",
+        "reason": "本体 B01 未登记电量属性；new_month*_quantity 是数量口径，"
+                  "AP 登记的年度电量目标使用 new_month*_power（MWh）。",
     }
     bid_rule = build_rule_index(workbook).get("BR-Q07") or {}
     bid_blob = " ".join(clean(bid_rule.get(key)) for key in ("规则描述", "判断或结果"))
@@ -539,6 +556,7 @@ def build_config(workbook):
         "bidMatch": bid_match,
         "dynamicCycle": dynamic_cycle,
         "electricitySource": electricity_source,
+        "targetEnergy": target_energy_source,
         "recentActivity": {
             "description": "无商机战略客户在本体定义的近期窗口内存在线索、线索进展、客户拜访或最新销售活动时，不认定开拓不足。",
             "accountFields": {

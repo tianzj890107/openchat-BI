@@ -568,7 +568,15 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     target_table = _table(config, "LE06")
     target_cols = _columns(config, "LE06")
     months = [target_cols[f"new_month{i}"] for i in range(1, 13)]
-    quantities = [target_cols[f"new_month{i}_quantity"] for i in range(1, 13)]
+    target_energy_cfg = (config.get("overrides") or {}).get("targetEnergy") or {}
+    energy_pattern = _text(target_energy_cfg.get("fieldPattern")) or "new_month{i}_quantity"
+    quantities = [target_cols[energy_pattern.replace("{i}", str(i))]
+                  for i in range(1, 13)]
+    target_energy_unit = _text(target_energy_cfg.get("nativeUnit")) or "kWh"
+    target_energy_divisor = {"kWh": 1_000_000.0, "MWh": 1_000.0,
+                             "GWh": 1.0}.get(target_energy_unit)
+    if target_energy_divisor is None:
+        raise OpportunityV2Unavailable("本体 B01 电量单位无法换算：" + target_energy_unit)
     amount_count = "+".join(f"COUNT(t.{col})" for col in months)
     energy_count = "+".join(f"COUNT(t.{col})" for col in quantities)
     target_sql = (
@@ -840,7 +848,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     for row in target_rows:
         amount = _number(row.get("amount_yuan"))
         energy = _number(row.get("energy_kwh"))
-        energy = energy / 1_000_000.0 if energy is not None else None
+        energy = energy / target_energy_divisor if energy is not None else None
         rows_count = int(_number(row.get("rows")) or 0)
         targets["amountCells"] += int(_number(row.get("amount_cells")) or 0)
         targets["energyCells"] += int(_number(row.get("energy_cells")) or 0)
@@ -1040,6 +1048,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         measurementDate=measured.isoformat(),
         targets=targets,
         productTypes=product_types,
+        targetEnergyDivisor=target_energy_divisor,
         opportunities=opportunities,
         allOpportunities=all_opportunities,
         accounts=accounts,

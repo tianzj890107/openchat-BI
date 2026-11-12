@@ -3007,11 +3007,20 @@
       "source": "BR-Q06"
     },
     "electricitySource": {
-      "field": "new_forcastpower",
+      "field": "new_orderforecast_qty",
       "attribute": "LE02-A0072",
+      "nativeUnit": "kWh",
+      "outputUnit": "GWh",
+      "source": "B02",
+      "ontologyField": "new_forcastpower",
+      "reason": "本体 B02 登记的 new_forcastpower 实库 99.98% 为空（5318/5319），改用覆盖 99.94% 的 new_orderforecast_qty（kWh）。"
+    },
+    "targetEnergy": {
+      "fieldPattern": "new_month{i}_power",
       "nativeUnit": "MWh",
       "outputUnit": "GWh",
-      "source": "B02"
+      "source": "YWLN_M0007 / AP 登记",
+      "reason": "本体 B01 未登记电量属性；new_month*_quantity 是数量口径，AP 登记的年度电量目标使用 new_month*_power（MWh）。"
     },
     "recentActivity": {
       "description": "无商机战略客户在本体定义的近期窗口内存在线索、线索进展、客户拜访或最新销售活动时，不认定开拓不足。",
