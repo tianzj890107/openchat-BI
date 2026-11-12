@@ -3,7 +3,7 @@ from datetime import date
 from types import SimpleNamespace
 
 from bi_agent.cockpit.opportunity_v2 import (
-    _p0_cycle, _p2_cycle, apply_text_interpretation, build_card, collect,
+    _customer_tier, _p0_cycle, _p2_cycle, apply_text_interpretation, build_card, collect,
     config_digest, config_version, default_ap_supplement, evaluate, load_config,
 )
 
@@ -53,12 +53,17 @@ def _complete_risk_assessments(value):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-2'
+    assert config_version() == 'opportunity-v3-rules-3'
     assert len(config_digest()) == 64
-    assert len(config['metrics']) == 25
+    assert len(config['metrics']) == 55
     assert len(config['risks']) == 10
     assert len(config['causes']) == 9
     assert len(config['advice']) == 12
+    assert config['overrides']['customerTier']['strategic'] == ['1']
+    assert config['overrides']['customerTier']['priority'] == ['2']
+    assert config['overrides']['customerTier']['generalCatchAll'] is True
+    assert config['metrics']['B02']['sqlStatus']
+    assert 'new_whprice' in config['metrics']['B02']['sql']
     assert config['links']['RK07']['causes'] == ['RC09']
     assert config['links']['RK07']['advice'] == ['AC02', 'AC03']
 
@@ -67,13 +72,13 @@ def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
     assert trace['ontology'] == '商机获取节点 V3'
-    assert trace['version'] == 'opportunity-v3-rules-2'
+    assert trace['version'] == 'opportunity-v3-rules-3'
     assert len(trace['digest']) == 12
-    assert len(trace['metrics']) == 25
+    assert len(trace['metrics']) == 55
     assert len(trace['risks']) == 10
     assert len(trace['causes']) == 9
     assert len(trace['advice']) == 12
-    assert len(trace['rules']) == 31
+    assert len(trace['rules']) == 35
     assert trace['risks'][0]['code'] == 'RK01' and trace['risks'][0]['name']
     assert trace['links']['RK07'] == {'risk': 'RK07', 'causes': ['RC09'],
                                       'advice': ['AC02', 'AC03']}
@@ -111,11 +116,14 @@ def test_contract_confirmation_drives_signing_and_unknown_is_not_zero():
     assert evaluate(known_data)['metrics']['R02']['energy'] == 0.0
 
 
-def test_account_level_zero_is_strategic_and_uses_the_same_customer_scope():
-    account = dict(id='level-zero', name='战略客户零级', level='0', tier='strategic')
-    value = evaluate(_data(accounts=[account], allOpportunities=[]))
-    assert value['metrics']['R09']['count'] == 1
-    assert any(risk['code'] == 'RK07' for risk in value['risks'])
+def test_customer_levels_follow_v3_dr04_dr05_dr06():
+    config = load_config()
+    assert _customer_tier('1', config) == 'strategic'
+    assert _customer_tier('2', config) == 'priority'
+    assert _customer_tier('0', config) == 'general'
+    assert _customer_tier('3', config) == 'general'
+    assert _customer_tier('4', config) == 'general'
+    assert _customer_tier('', config) == 'unknown'
 
 
 def test_rk07_is_never_linked_to_the_contradictory_rc01_hypothesis():
@@ -1250,6 +1258,9 @@ def test_query_catalog_keeps_execution_record_and_result_snapshot():
     target = next(item for item in catalog if item['label'] == '销售目标')
     assert target['sampleRowCount'] == 1
     assert target['sampleTruncated'] is False
+    forecast = next(item for item in catalog if item['label'] == '商机预测')
+    assert 'new_whprice' in forecast['sql']
+    assert 'new_forecast_amt_rmb / NULLIF(m.new_whprice, 0)' in forecast['sql']
     assert target['sampleRows'][0]['account_id'] == 'A1'
     assert target['aggregation']
 

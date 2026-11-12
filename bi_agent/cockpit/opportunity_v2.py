@@ -37,7 +37,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-2"
+RULES_VERSION = "opportunity-v3-rules-3"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -196,6 +196,10 @@ def _customer_tier(level, config=None):
     for tier in ("strategic", "priority", "general"):
         if level in {_text(value) for value in mapping.get(tier) or []}:
             return "unknown" if tier == "strategic" and not strategic_ok else tier
+    # V3 DR06 is a catch-all ("其余等级").  An empty level stays unknown per
+    # BR-Q04 ("等级未知不当一般客户").
+    if level and mapping.get("generalCatchAll"):
+        return "general"
     return "unknown"
 
 
@@ -415,9 +419,9 @@ def _query_failure(exc, label, duration):
 _QUERY_AGGREGATION_NOTES = {
     "销售目标": "amount_yuan 按行求和 / 1e8 = 目标金额（亿元）；energy_kwh 按行求和 / 1e6 = 目标电量（GWh）。目标表按行求和，不按客户或产品去重。",
     "产品类型": "产品类型枚举映射：1=电芯，2=PACK，空或其他=其他；只用于维度归类，不参与金额汇总。",
-    "商机预测": "按 new_oppmonthid 去重后按商机汇总；过去月份取 new_amt_rmb，当月及以后取 new_forecast_amt_rmb；电量取 new_orderforecast_qty(kWh)/1e6。",
+    "商机预测": "按 new_oppmonthid 去重后按商机汇总；过去月份取 new_amt_rmb，当月及以后取 new_forecast_amt_rmb；电量按本体 BR-Q01 取 new_forecast_amt_rmb ÷ new_whprice（元/Wh）÷ 1e9。",
     "全部商机": "审核通过（new_approvalstatus=3）且创建时间不晚于观察时点的商机全集；用于客户覆盖与阶段周期，不直接求和。",
-    "客户": "客户等级 0/1 视为战略客户（本体映射），用于 R09/R10 客户覆盖判断。",
+    "客户": "客户等级 1 为战略客户、2 为重点客户；0/3/4 归一般客户（本体 DR04~DR06），用于 R09/R10 客户覆盖判断。",
     "投标": "投标项目按输入时间不晚于观察时点过滤；同名多版本不擅自取最新，按样本记录标记。",
     "项目进展": "按商机取进展记录，用于原因文本证据；不做数值汇总。",
     "订单关联": "订单 statecode=0 且非取消；按订单明细关联商机，只作签单佐证，不替代合同确认字段。",
@@ -702,15 +706,35 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     mc = _columns(config, "LE02")
     ac = _columns(config, "LE05")
     energy_cfg = (config.get("overrides") or {}).get("electricitySource") or {}
-    energy_field = _text(energy_cfg.get("field"))
+    energy_mode = _text(energy_cfg.get("mode")) or "field"
     energy_unit = _text(energy_cfg.get("nativeUnit"))
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", energy_field):
-        raise OpportunityV2Unavailable("本体 B02 未定义合法的电量字段")
-    if energy_field not in mc:
-        raise OpportunityV2Unavailable("本体 B02 电量字段未在运行时字段映射中：" + energy_field)
-    energy_divisor = {"kWh": 1_000_000.0, "MWh": 1_000.0, "GWh": 1.0}.get(energy_unit)
+    energy_divisor = {"Wh": 1_000_000_000.0, "kWh": 1_000_000.0,
+                      "MWh": 1_000.0, "GWh": 1.0}.get(energy_unit)
     if energy_divisor is None:
         raise OpportunityV2Unavailable("本体 B02 电量单位无法换算：" + (energy_unit or "未定义"))
+    if energy_mode == "amount_div_price":
+        amount_field = _text(energy_cfg.get("amountField")) or "new_forecast_amt_rmb"
+        price_field = _text(energy_cfg.get("priceField")) or "new_whprice"
+        for name, value in (("金额", amount_field), ("单价", price_field)):
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
+                raise OpportunityV2Unavailable(f"本体 B02 未定义合法的电量{name}字段")
+            if value not in mc:
+                raise OpportunityV2Unavailable(
+                    f"本体 B02 电量{name}字段未在运行时字段映射中：{value}")
+        energy_gwh_expr = (f"SUM(m.{mc[amount_field]} / NULLIF(m.{mc[price_field]}, 0)) "
+                           f"/ {energy_divisor}")
+        energy_rows_expr = (f"COUNT(CASE WHEN m.{mc[amount_field]} IS NOT NULL "
+                            f"AND m.{mc[price_field]} IS NOT NULL "
+                            f"AND m.{mc[price_field]} <> 0 THEN 1 END)")
+        energy_field = f"{amount_field}/{price_field}"
+    else:
+        energy_field = _text(energy_cfg.get("field"))
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", energy_field):
+            raise OpportunityV2Unavailable("本体 B02 未定义合法的电量字段")
+        if energy_field not in mc:
+            raise OpportunityV2Unavailable("本体 B02 电量字段未在运行时字段映射中：" + energy_field)
+        energy_gwh_expr = f"SUM(m.{mc[energy_field]}) / {energy_divisor}"
+        energy_rows_expr = f"COUNT(m.{mc[energy_field]})"
     past = measured.month
     opp_sql = (
         f"WITH agg AS ("
@@ -718,12 +742,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
         f" THEN m.{mc['new_amt_rmb']} ELSE m.{mc['new_forecast_amt_rmb']} END) AS amount_yuan, "
         f" SUM(m.{mc['new_forecast_amt_rmb']}) AS forecast_amount_full_yuan, "
-        f" SUM(m.{mc[energy_field]}) / {energy_divisor} AS energy_gwh, "
+        f" {energy_gwh_expr} AS energy_gwh, "
         f" COUNT(*) AS month_rows, "
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s THEN 1 ELSE 0 END) AS past_rows, "
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
         f" AND m.{mc['new_amt_rmb']} IS NOT NULL THEN 1 ELSE 0 END) AS past_amount_rows, "
-        f" SUM(CASE WHEN m.{mc[energy_field]} IS NOT NULL THEN 1 ELSE 0 END) AS energy_rows "
+        f" {energy_rows_expr} AS energy_rows "
         f" FROM {month_table} m "
         f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
         f" AND m.{mc['statecode']} = 0 AND m.{mc['new_approvalstatus']} = 3 "
@@ -771,12 +795,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
         f" THEN m.{mc['new_amt_rmb']} ELSE m.{mc['new_forecast_amt_rmb']} END) AS amount_yuan, "
         f" SUM(m.{mc['new_forecast_amt_rmb']}) AS forecast_amount_full_yuan, "
-        f" SUM(m.{mc[energy_field]}) / {energy_divisor} AS energy_gwh, "
+        f" {energy_gwh_expr} AS energy_gwh, "
         f" COUNT(*) AS month_rows, "
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s THEN 1 ELSE 0 END) AS past_rows, "
         f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
         f" AND m.{mc['new_amt_rmb']} IS NOT NULL THEN 1 ELSE 0 END) AS past_amount_rows, "
-        f" SUM(CASE WHEN m.{mc[energy_field]} IS NOT NULL THEN 1 ELSE 0 END) AS energy_rows "
+        f" {energy_rows_expr} AS energy_rows "
         f" FROM {month_table} m "
         f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
         f" AND m.{mc['statecode']} = 0 AND m.{mc['new_approvalstatus']} = 3 "
@@ -1278,7 +1302,11 @@ def evaluate(data, config=None, measured=None):
         raise OpportunityV2Unavailable("本体 BR-Q06 未定义动态周期倍数")
     clean_cycle_sample = _text(cycle_config.get("sample"))
     energy_cfg = (config.get("overrides") or {}).get("electricitySource") or {}
-    energy_field = _text(energy_cfg.get("field")) or "未定义"
+    if _text(energy_cfg.get("mode")) == "amount_div_price":
+        energy_field = (f"{_text(energy_cfg.get('amountField')) or 'new_forecast_amt_rmb'}"
+                        f" ÷ {_text(energy_cfg.get('priceField')) or 'new_whprice'}")
+    else:
+        energy_field = _text(energy_cfg.get("field")) or "未定义"
     energy_unit = _text(energy_cfg.get("nativeUnit")) or "未定义"
     measured = _day(measured or data.get("measurementDate")) or date.today()
     target = data.get("targets") or {}
@@ -1709,7 +1737,7 @@ def evaluate(data, config=None, measured=None):
     f_b02_a = fact("B02-AMOUNT", "商机总预测（金额）", total_amount, "亿元",
                    amount_basis_label + "；月度预测有效且审核通过", source=forecast_source)
     f_b02_e = fact("B02-ENERGY", "商机总预测（电量）", total_energy, "GWh",
-                   "预测订单数量（kWh 换算 GWh）；本方体 new_forcastpower 实库为空",
+                   "预测金额 ÷ new_whprice（元/Wh）÷ 10^9；本体 BR-Q01，new_forcastpower 实库为空",
                    source=forecast_source)
     full_forecast_amount = (aggregate_measure("amountFull") if aggregate_ready else
                             None if aggregate_mode else
@@ -2401,7 +2429,7 @@ def evaluate(data, config=None, measured=None):
         data_issues.append("本体 BR-C09 未定义“近期”窗口，战略客户开拓原因的近期活动判断未执行。")
     if total_energy is None and total_amount is not None:
         data_issues.append(
-            f"本体 B02 电量字段 {energy_field} 本次没有有效值；电量相关阈值和风险未判定。")
+            f"本体 B02 电量口径 {energy_field} 本次没有有效值；电量相关阈值和风险未判定。")
     if data.get("errors"):
         data_issues.append("部分可选查询未返回：" + "、".join(sorted({item.get('stage') or item.get('code') or '未知' for item in data["errors"]})))
     if aggregate_mode and not aggregate_ready:
@@ -2419,9 +2447,11 @@ def evaluate(data, config=None, measured=None):
         "合同签订按 new_contractconfirmation 判断；签订日期字段实库为空，不能用日期推断。",
         "签单进度按已确认签订覆盖率计算（合同已确认商机预测 ÷ 目标）；合同状态未知不计入已签或未签，也不单独触发进度滞后。",
         "目标表按行求和，未按客户或产品去重；目标表缺少经验证的业务唯一键。",
-        f"预测电量按本体 B02 使用 {energy_field}（{energy_unit}）换算 {energy_cfg.get('outputUnit') or 'GWh'}。",
+        f"预测电量按本体 B02 使用 {energy_field}"
+        + ("（预测金额 ÷ 瓦时单价）" if _text(energy_cfg.get("mode")) == "amount_div_price" else f"（{energy_unit}）")
+        + f"换算 {energy_cfg.get('outputUnit') or 'GWh'}。",
         "项目阶段、产品类型与客户等级按本体维度派生规则映射；其他枚举不推断。"
-        "投标关联按本体 BR-Q07 使用去首尾空格后的项目名称，同名歧义不判未投标。",
+        "投标关联按本体 BR-Q07 使用商机名称与投标项目名称原值精确匹配；同名歧义不判未投标。",
         "RC04 产品部销售缺口需跨发货环节实际销售，本次不把不可得数据推成原因。",
         "动态均值按本体 BR-Q06 执行：" + (clean_cycle_sample or "样本范围未提供") + "。",
         "建议中的责任角色与期限为模板草稿，须人工确认后才能下发任务令。",
@@ -3340,7 +3370,8 @@ def _ontology_trace(config):
         version=_text(config.get("version")),
         digest=config_digest()[:12],
         links=deepcopy(config.get("links") or {}),
-        metrics=entries("metrics"),
+        metrics=entries("metrics", ("definition", "node", "stage", "unit",
+                                    "resultColumns", "sqlStatus")),
         risks=entries("risks"),
         causes=entries("causes"),
         advice=entries("advice"),

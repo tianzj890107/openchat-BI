@@ -3,7 +3,7 @@
 The customer workbook is an authoring artifact.  The card never reads it at
 runtime: this script extracts only the reviewed entities, fields, indicators,
 rules and risk/cause/advice links into a versioned JSON config, together with
-the source hash for audit.  Re-run it when the V2 workbook changes.
+the source hash for audit.  Re-run it when the V3 workbook changes.
 
 Usage::
 
@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_含SQL.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -41,7 +41,7 @@ FIELD_NAMES = {
     "LE02": [
         "new_oppmonthid", "new_opportunity_id", "new_accountdate",
         "new_forecast_amt_rmb", "new_amt_rmb", "new_forcastpower",
-        "new_orderforecast_qty", "statecode", "new_approvalstatus",
+        "new_whprice", "new_orderforecast_qty", "statecode", "new_approvalstatus",
     ],
     "LE04": [
         "new_projectprocessid", "new_opportunity_id", "new_desc", "new_sdate",
@@ -127,7 +127,7 @@ def build_fields(workbook):
                 continue
             fields.setdefault(entity, {})[name] = item
     if missing:
-        raise SystemExit("V2 本体缺少运行时字段映射：" + "、".join(missing))
+        raise SystemExit("V3 本体缺少运行时字段映射：" + "、".join(missing))
     return entities, fields
 
 
@@ -330,13 +330,22 @@ def build_customer_tier_rules(workbook):
                for row in rows(workbook, "维度派生规则")
                if clean(row.get("维度编码")) == "D005"}
     tiers, tier_meta, rule_codes, pending = {}, {}, [], []
+    catch_all = False
     for label, key in TIER_LABELS.items():
         row = derived.get(label)
         if not row:
             raise SystemExit(f"V3 本体缺少客户等级派生规则：{label}")
         expression = clean(row.get("规则表达式"))
         levels = _rule_levels(expression)
-        if not levels:
+        # V3 writes 一般客户 as "其余等级（含 0 核心、4 BG、3 一般及空）".
+        # It is a catch-all, so enumerate the levels named in the text and let
+        # the runtime treat any other non-empty level as general.  An empty
+        # level stays "unknown" per BR-Q04.
+        if not levels and ("其余" in expression or "其余等级" in expression):
+            catch_all = key == "general"
+            levels = list(dict.fromkeys(re.findall(
+                r"(?<![0-9A-Za-z])([0-4])(?![0-9A-Za-z])", expression)))
+        if not levels and not (catch_all and key == "general"):
             raise SystemExit(f"V3 本体客户等级规则无法解析：{label} {expression}")
         code = clean(row.get("维度派生规则编码"))
         status = "pending" if ("待确认" in expression or "待业务确认" in expression) else "confirmed"
@@ -348,6 +357,7 @@ def build_customer_tier_rules(workbook):
     available = _has_strategic_customer_list(workbook)
     return {
         **tiers,
+        "generalCatchAll": catch_all,
         "status": "pending" if pending or not available else "confirmed",
         "statusReason": ("；".join(pending) if pending else "本体客户等级映射已确认") +
                         ("" if available else "；本体未提供战略客户名单工作表"),
@@ -373,18 +383,37 @@ def build_config(workbook):
     for row in rows(workbook, "指标"):
         code = clean(row.get("指标编码"))
         if code:
+            # The V3_含SQL workbook replaced 计算公式 / 统计口径 with a
+            # SQL-first layout.  Keep the historical keys for compatibility
+            # and add the new review metadata, including the executable SQL.
             metrics[code] = dict(
                 code=code,
                 name=clean(row.get("指标名称")),
                 definition=clean(row.get("指标定义")),
-                formula=clean(row.get("计算公式")),
-                caliber=clean(row.get("统计口径")),
+                formula=clean(row.get("业务规则")),
+                caliber=clean(row.get("当前看板SQL实际口径")),
                 type=clean(row.get("指标类型")),
                 entities=[value.strip() for value in clean(row.get("来源逻辑实体")).split("、") if value.strip()],
                 attributes=clean(row.get("来源业务属性")),
                 unit=clean(row.get("统计单位")),
                 dimension=clean(row.get("时间维度")),
-                sqlCodes=clean(row.get("当前 SQL 指标对照")),
+                sqlCodes=clean(row.get("当前看板对应编码")),
+                stage=clean(row.get("分类或阶段")),
+                node=clean(row.get("所属节点")),
+                resultColumns=clean(row.get("结果列")),
+                aggregate=clean(row.get("聚合类型")),
+                physicalFields=clean(row.get("物理字段或阶段参考")),
+                dashboardSql=clean(row.get("当前看板SQL实际口径")),
+                notes=clean(row.get("核对说明")),
+                sqlStatus=clean(row.get("SQL实现状态")),
+                v3Change=clean(row.get("V3变更")),
+                risks=[value.strip() for value in re.split(r"[、,，]", clean(row.get("触发风险"))) if value.strip()],
+                causes=[value.strip() for value in re.split(r"[、,，]", clean(row.get("判定根因"))) if value.strip()],
+                advice=[value.strip() for value in re.split(r"[、,，]", clean(row.get("跟踪行动建议"))) if value.strip()],
+                role=clean(row.get("链路角色")),
+                cteCount=clean(row.get("调用SQL依赖CTE数")),
+                ctes=clean(row.get("调用SQL依赖CTE")),
+                sql=clean(row.get("调用SQL")),
             )
     rules = {}
     for row in rows(workbook, "业务规则"):
@@ -488,36 +517,35 @@ def build_config(workbook):
     product_names = build_product_names(workbook)
     thresholds = build_thresholds(workbook)
     dynamic_cycle = build_dynamic_cycle(workbook)
-    electricity_attribute = (fields.get("LE02") or {}).get("new_forcastpower") or {}
+    electricity_attribute = (fields.get("LE02") or {}).get("new_whprice") or {}
     if not electricity_attribute:
-        raise SystemExit("本体 B02 未提供电量字段 new_forcastpower")
-    unit_match = re.search(r"\((kWh|MWh|GWh)\)",
-                           clean(electricity_attribute.get("name")))
-    if not unit_match:
-        raise SystemExit("本体 B02 电量字段未标注单位")
+        raise SystemExit("本体 B02 未提供瓦时单价字段 new_whprice")
     electricity_source = {
-        # The ontology registers new_forcastpower for B02, but the customer
-        # database has 5318 of 5319 rows empty (one non-empty row).  The
-        # populated projection column is the forecast order quantity.
-        "field": "new_orderforecast_qty",
+        # BR-Q01 defines forecast energy as forecast amount ÷ unit price.
+        # new_forcastpower is effectively empty in the customer database and
+        # new_orderforecast_qty is an order quantity, not energy.
+        "mode": "amount_div_price",
+        "amountField": "new_forecast_amt_rmb",
+        "priceField": "new_whprice",
         "attribute": electricity_attribute.get("attribute"),
-        "nativeUnit": "kWh",
+        "nativeUnit": "Wh",
         "outputUnit": "GWh",
-        "source": "B02",
-        "ontologyField": "new_forcastpower",
-        "reason": "本体 B02 登记的 new_forcastpower 实库 99.98% 为空（5318/5319），"
-                  "改用覆盖 99.94% 的 new_orderforecast_qty（kWh）。",
+        "source": "BR-Q01 / B02",
+        "inputFields": ["new_forecast_amt_rmb", "new_whprice"],
+        "reason": "本体 BR-Q01：预测电量 = 预测金额 new_forecast_amt_rmb ÷ "
+                  "new_whprice（元/Wh）÷ 10^9（GWh）；new_forcastpower 实库为空，"
+                  "new_orderforecast_qty 是预测订单出货数，不能作为电量。",
     }
     target_energy_source = {
-        # B01 carries no electricity attribute in the ontology.  The AP metric
-        # registry uses the monthly power cells; the monthly quantity cells are
-        # a piece count and do not equal the energy target.
+        # BR-Q11 writes "kWh ÷ 10^6", but the customer column is MWh: the 2026
+        # target sums to 91,000.15 and 91.0 GWh is the confirmed business
+        # target.  Treating it as kWh would produce 0.09 GWh.
         "fieldPattern": "new_month{i}_power",
         "nativeUnit": "MWh",
         "outputUnit": "GWh",
-        "source": "YWLN_M0007 / AP 登记",
-        "reason": "本体 B01 未登记电量属性；new_month*_quantity 是数量口径，"
-                  "AP 登记的年度电量目标使用 new_month*_power（MWh）。",
+        "source": "B01 / BR-Q11（单位按实库修正）",
+        "reason": "new_month*_power 实库为 MWh：2026 年合计 91,000.15，对应 91.0 GWh。"
+                  "BR-Q11 标注 kWh 会得到 0.09 GWh，与业务目标不符，故按 MWh ÷ 1,000 换算。",
     }
     bid_rule = build_rule_index(workbook).get("BR-Q07") or {}
     bid_blob = " ".join(clean(bid_rule.get(key)) for key in ("规则描述", "判断或结果"))
@@ -532,11 +560,14 @@ def build_config(workbook):
     business_corrections = {
         "BR-Q02": {
             "decision": "签单按合同签订判断，订单数不构成签单",
+            "conflictsWith": "V3_含SQL 的 BR-Q02 改为订单明细关联判定",
             "field": "new_contractconfirmation",
             "confirmed": ["1"],
             "notConfirmed": ["0"],
             "unknown": "空值或非 0/1",
-            "note": "new_contractconfirmation_date 实库 0% 覆盖，不能用于测量日判断。",
+            "note": "保留此前用户确认的合同签订口径；new_contractconfirmation_date "
+                    "实库 0% 覆盖，不能用于测量日判断。若改为 V3 的订单明细口径，"
+                    "需同时调整 R02/R03/C01/C06~C09 的待签集合。",
         },
         "RK07": {
             "decision": "RK07 只关联 RC09，解除 RK07 与 RC01 的矛盾关联",
@@ -581,7 +612,7 @@ def build_config(workbook):
     # overrides; the UI and task drafting never re-interpret the workbook.
     links["RK07"] = {"risk": "RK07", "causes": ["RC09"], "advice": ["AC02", "AC03"]}
     config = dict(
-        version="opportunity-v3-rules-2",
+        version="opportunity-v3-rules-3",
         ontology="商机获取节点 V3",
         source=dict(path=str(SOURCE.relative_to(ROOT)), sha256=digest(SOURCE)),
         dictionary=dict(path=str(DICTIONARY.relative_to(ROOT)), sha256=digest(DICTIONARY)),
