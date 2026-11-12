@@ -6,12 +6,35 @@ const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } =
 
 loadInsightStyle(import.meta.url)
 
+// Numbers keep the prototype emphasis: value plus its unit stays one blue token.
+const NUMBER_TOKEN = /\d[\d,]*(?:\.\d+)?(?:\/\d+)?(?:\s*(?:亿元|个百分点|GWh|个|%|天))?/g
+
+function highlightNumbers(value) {
+  const text = String(value ?? '')
+  const parts = []
+  let last = 0
+  for (const match of text.matchAll(NUMBER_TOKEN)) {
+    if (match.index > last) parts.push({text: text.slice(last, match.index), num: false})
+    parts.push({text: match[0], num: true})
+    last = match.index + match[0].length
+  }
+  if (last < text.length) parts.push({text: text.slice(last), num: false})
+  return parts
+}
+
+const NumberText = Vue.defineComponent({
+  name: 'NumberText',
+  props: {text: {type: String, default: ''}},
+  computed: {parts() { return highlightNumbers(this.text) }},
+  template: `<template v-for="(part, index) in parts" :key="index"><span v-if="part.num" class="sales-shipment-issues__num">{{ part.text }}</span><template v-else>{{ part.text }}</template></template>`,
+})
+
 registerInsightComponent(
   'sales-shipment-issues',
   Vue.defineComponent({
     name: 'SalesShipmentIssues',
     props: insightProps,
-    components: {InsightLoading: window.InsightRuntime.InsightLoading},
+    components: {InsightLoading: window.InsightRuntime.InsightLoading, NumberText},
     emits: ['retry'],
     setup(props, { emit }) {
       return useInsight(props, emit)
@@ -34,9 +57,9 @@ registerInsightComponent(
         </div>
         <template v-if="hasResult">
           <div class="sales-shipment-issues__title">销售额／出货量共同问题分析：</div>
-          <div v-if="summary" class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">{{ summary }}</div>
+          <div v-if="summary" class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary"><number-text :text="summary" /></div>
           <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="sales-shipment-issues__line">
-            {{ index+1 }}）<span class="sales-shipment-issues__num">【{{ dimension.stageLabel }}】</span>{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}<template v-if="dimension.description">——{{ dimension.description }}</template>
+            <span class="sales-shipment-issues__num">{{ index+1 }}</span>）<span class="sales-shipment-issues__num">【{{ dimension.stageLabel }}】</span><number-text v-if="dimension.title !== dimension.stageLabel" :text="dimension.title" /><template v-if="dimension.description">——<number-text :text="dimension.description" /></template>
           </div>
         </template>
       </section>

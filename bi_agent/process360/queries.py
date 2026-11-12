@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date
 from dataclasses import replace
 from contextlib import nullcontext
+import re
 from typing import Any
 
 from .catalog import Process360Catalog
@@ -17,8 +18,46 @@ from .db import DatabaseQueryError, QueryResult, schema_table
 from .models import Scope, envelope, evidence, gap, metric
 
 
-def _table(schema: str, name: str) -> str:
+_ATTRIBUTE_TOKEN = re.compile(r'"AT\d+"')
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _physical_table(value: str, *, code: str) -> str:
+    parts = [part.strip() for part in value.split(".")]
+    if len(parts) != 2 or not all(_IDENTIFIER.fullmatch(part) for part in parts):
+        raise DatabaseQueryError(f"客户物理表映射不合法：{code}")
+    return f'"{parts[0]}"."{parts[1]}"'
+
+
+def _table(catalog: Process360Catalog, db: Any, name: str) -> str:
+    if catalog.uses_customer_physical_tables:
+        physical = catalog.physical_table(name)
+        if not physical:
+            raise DatabaseQueryError(f"客户物理目录缺少逻辑实体 {name} 的可读物理表")
+        return _physical_table(physical, code=name)
+    schema = getattr(getattr(db, "config", None), "schema", "ywln_crm")
     return schema_table(schema, name)
+
+
+def _render_sql(catalog: Process360Catalog, sql: str) -> str:
+    """Map ontology attribute tokens to customer physical columns once per SQL."""
+    if not catalog.uses_customer_physical_tables:
+        return sql
+
+    def replace_attribute(match: re.Match[str]) -> str:
+        code = match.group(0)[1:-1]
+        field = catalog.physical_field(code)
+        if not field:
+            raise DatabaseQueryError(f"客户物理目录缺少业务属性 {code} 的可读字段")
+        if not _IDENTIFIER.fullmatch(field):
+            raise DatabaseQueryError(f"客户物理字段映射不合法：{code}")
+        return f'"{field}"'
+
+    rendered = _ATTRIBUTE_TOKEN.sub(replace_attribute, sql)
+    remaining = _ATTRIBUTE_TOKEN.search(rendered)
+    if remaining:
+        raise DatabaseQueryError(f"客户物理字段映射未完成：{remaining.group(0)[1:-1]}")
+    return rendered
 
 
 def _filters(
@@ -82,6 +121,14 @@ def _blocked_metric(
 
 def _empty(columns: list[str]) -> QueryResult:
     return QueryResult(columns, [], 0, False)
+
+
+def _missing_physical_attributes(
+    catalog: Process360Catalog, codes: tuple[str, ...]
+) -> list[str]:
+    if not catalog.uses_customer_physical_tables:
+        return []
+    return [code for code in codes if not catalog.physical_field(code)]
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +251,6 @@ WHERE p.rn = 1 AND p.remaining_qty > 0
 
 
 def query_sc01(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, Any]:
-    schema = getattr(getattr(db, "config", None), "schema", "ywln_crm")
     today = date.today()
     cutoff = scope.observation_cutoff(today)
     if cutoff < today and not scope.include_current_snapshot:
@@ -242,37 +288,46 @@ def query_sc01(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, A
     )
     params.update({"cutoff": cutoff, "limit": scope.limit})
     aggregate = db.run(
-        SC01_AGGREGATE.format(
-            plan=_table(schema, "LE000013"),
-            month=_table(schema, "LE000014"),
-            line=_table(schema, "LE000011"),
-            order=_table(schema, "LE000010"),
-            product=_table(schema, "LE000029"),
-            account=_table(schema, "LE000027"),
-            filters=agg_filters,
+        _render_sql(
+            catalog,
+            SC01_AGGREGATE.format(
+                plan=_table(catalog, db, "LE000013"),
+                month=_table(catalog, db, "LE000014"),
+                line=_table(catalog, db, "LE000011"),
+                order=_table(catalog, db, "LE000010"),
+                product=_table(catalog, db, "LE000029"),
+                account=_table(catalog, db, "LE000027"),
+                filters=agg_filters,
+            ),
         ),
         params,
     )
     detail = db.run(
-        SC01_ROWS.format(
-            plan=_table(schema, "LE000013"),
-            month=_table(schema, "LE000014"),
-            line=_table(schema, "LE000011"),
-            order=_table(schema, "LE000010"),
-            product=_table(schema, "LE000029"),
-            account=_table(schema, "LE000027"),
-            filters=row_filters,
+        _render_sql(
+            catalog,
+            SC01_ROWS.format(
+                plan=_table(catalog, db, "LE000013"),
+                month=_table(catalog, db, "LE000014"),
+                line=_table(catalog, db, "LE000011"),
+                order=_table(catalog, db, "LE000010"),
+                product=_table(catalog, db, "LE000029"),
+                account=_table(catalog, db, "LE000027"),
+                filters=row_filters,
+            ),
         ),
         params,
     )
     missing = db.run(
-        SC01_MISSING.format(
-            plan=_table(schema, "LE000013"),
-            month=_table(schema, "LE000014"),
-            line=_table(schema, "LE000011"),
-            order=_table(schema, "LE000010"),
-            product=_table(schema, "LE000029"),
-            filters=row_filters,
+        _render_sql(
+            catalog,
+            SC01_MISSING.format(
+                plan=_table(catalog, db, "LE000013"),
+                month=_table(catalog, db, "LE000014"),
+                line=_table(catalog, db, "LE000011"),
+                order=_table(catalog, db, "LE000010"),
+                product=_table(catalog, db, "LE000029"),
+                filters=row_filters,
+            ),
         ),
         params,
     )
@@ -439,13 +494,24 @@ LIMIT %(limit)s
 
 
 def query_sc02(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, Any]:
-    schema = getattr(getattr(db, "config", None), "schema", "ywln_crm")
     filters, params = _filters(scope, customer_column='"AT0000820"', owner_column='"AT0000821"')
     params.update(start=scope.period_start, end=scope.period_end, limit=scope.limit)
     aggregate = db.run(
-        SC02_AGGREGATE.format(quote=_table(schema, "LE000007"), filters=filters), params
+        _render_sql(
+            catalog,
+            SC02_AGGREGATE.format(
+                quote=_table(catalog, db, "LE000007"), filters=filters
+            ),
+        ),
+        params,
     )
-    detail = db.run(SC02_ROWS.format(quote=_table(schema, "LE000007"), filters=filters), params)
+    detail = db.run(
+        _render_sql(
+            catalog,
+            SC02_ROWS.format(quote=_table(catalog, db, "LE000007"), filters=filters),
+        ),
+        params,
+    )
     row = (aggregate.rows or [{}])[0]
     approved = int(row.get("approved_count") or 0)
     gaps = [
@@ -559,22 +625,27 @@ LIMIT %(limit)s
 
 
 def query_sc03(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, Any]:
-    schema = getattr(getattr(db, "config", None), "schema", "ywln_crm")
     filters, params = _filters(scope, customer_column='a."AT9200384"')
     params["limit"] = scope.limit
     rows = db.run(
-        SC03_ROWS.format(
-            account=_table(schema, "LE000027"),
-            opportunity=_table(schema, "LE000006"),
-            filters=filters,
+        _render_sql(
+            catalog,
+            SC03_ROWS.format(
+                account=_table(catalog, db, "LE000027"),
+                opportunity=_table(catalog, db, "LE000006"),
+                filters=filters,
+            ),
         ),
         params,
     )
     aggregate = db.run(
-        SC03_AGGREGATE.format(
-            account=_table(schema, "LE000027"),
-            opportunity=_table(schema, "LE000006"),
-            filters=filters,
+        _render_sql(
+            catalog,
+            SC03_AGGREGATE.format(
+                account=_table(catalog, db, "LE000027"),
+                opportunity=_table(catalog, db, "LE000006"),
+                filters=filters,
+            ),
         ),
         params,
     )
@@ -729,24 +800,67 @@ LIMIT %(limit)s
 
 
 def query_sc04(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, Any]:
-    schema = getattr(getattr(db, "config", None), "schema", "ywln_crm")
+    missing_mappings = _missing_physical_attributes(
+        catalog, ("AT9200041", "AT9200042", "AT9200102")
+    )
+    if missing_mappings:
+        reason = (
+            "客户物理库缺少投标关联商机、投标记录主键或投标金额字段："
+            + "、".join(missing_mappings)
+            + "；不猜测替代字段、不以其他金额或项目名回填。"
+        )
+        return envelope(
+            "S03",
+            "blocked",
+            catalog_id=catalog.catalog_id,
+            catalog_version=catalog.version,
+            scenario="SC04",
+            scope=scope,
+            metrics=[
+                _blocked_metric(
+                    catalog,
+                    code,
+                    reason=reason,
+                    gap_code="CUSTOMER_PHYSICAL_MAPPING",
+                )
+                for code in ("M0179", "M0142", "M36004")
+            ],
+            gaps=[
+                gap(
+                    "CUSTOMER_PHYSICAL_MAPPING",
+                    "客户物理表缺少中标未签取数字段",
+                    needed="补齐关联商机ID、投标记录主键、投标金额（未税）的客户物理映射",
+                    impact="中标未签金额、电量和等待天数均无法计算",
+                    severity="blocking",
+                    source="catalog",
+                )
+            ],
+            limitations=[reason, "该场景未执行 SQL，未补 0，也未用项目名称或订单金额替代。"],
+            next_steps=["补齐客户物理字段映射后再启用 SC04"],
+        )
     filters, params = _filters(scope, customer_column='o."AT0000733"')
     params.update({"cutoff": scope.observation_cutoff(), "limit": scope.limit})
     aggregate = db.run(
-        SC04_AGGREGATE.format(
-            bid=_table(schema, "LE000022"),
-            opportunity=_table(schema, "LE000006"),
-            order=_table(schema, "LE000010"),
-            filters=filters,
+        _render_sql(
+            catalog,
+            SC04_AGGREGATE.format(
+                bid=_table(catalog, db, "LE000022"),
+                opportunity=_table(catalog, db, "LE000006"),
+                order=_table(catalog, db, "LE000010"),
+                filters=filters,
+            ),
         ),
         params,
     )
     detail = db.run(
-        SC04_ROWS.format(
-            bid=_table(schema, "LE000022"),
-            opportunity=_table(schema, "LE000006"),
-            order=_table(schema, "LE000010"),
-            filters=filters,
+        _render_sql(
+            catalog,
+            SC04_ROWS.format(
+                bid=_table(catalog, db, "LE000022"),
+                opportunity=_table(catalog, db, "LE000006"),
+                order=_table(catalog, db, "LE000010"),
+                filters=filters,
+            ),
         ),
         params,
     )
@@ -911,32 +1025,37 @@ LIMIT %(limit)s
 
 
 def query_sc05(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, Any]:
-    schema = getattr(getattr(db, "config", None), "schema", "ywln_crm")
     filters, params = _filters(
         scope, customer_column='s."AT9200156"', product_column='i."AT9200213"'
     )
     params.update({"start": scope.period_start, "end": scope.period_end, "limit": scope.limit})
     aggregate = db.run(
-        SC05_AGGREGATE.format(
-            plan=_table(schema, "LE000013"),
-            month=_table(schema, "LE000014"),
-            line=_table(schema, "LE000011"),
-            shipment=_table(schema, "LE000028"),
-            item=_table(schema, "LE000031"),
-            product=_table(schema, "LE000029"),
-            filters=filters,
+        _render_sql(
+            catalog,
+            SC05_AGGREGATE.format(
+                plan=_table(catalog, db, "LE000013"),
+                month=_table(catalog, db, "LE000014"),
+                line=_table(catalog, db, "LE000011"),
+                shipment=_table(catalog, db, "LE000028"),
+                item=_table(catalog, db, "LE000031"),
+                product=_table(catalog, db, "LE000029"),
+                filters=filters,
+            ),
         ),
         params,
     )
     detail = db.run(
-        SC05_ROWS.format(
-            plan=_table(schema, "LE000013"),
-            month=_table(schema, "LE000014"),
-            line=_table(schema, "LE000011"),
-            shipment=_table(schema, "LE000028"),
-            item=_table(schema, "LE000031"),
-            product=_table(schema, "LE000029"),
-            filters=filters,
+        _render_sql(
+            catalog,
+            SC05_ROWS.format(
+                plan=_table(catalog, db, "LE000013"),
+                month=_table(catalog, db, "LE000014"),
+                line=_table(catalog, db, "LE000011"),
+                shipment=_table(catalog, db, "LE000028"),
+                item=_table(catalog, db, "LE000031"),
+                product=_table(catalog, db, "LE000029"),
+                filters=filters,
+            ),
         ),
         params,
     )

@@ -73,6 +73,7 @@ class CardRecommendation(Recommendation):
     actionType:Literal["investigation","remediation"]=Field(default="investigation",description="无证实原因时只用investigation核查动作")
     acceptance:str=Field(min_length=1,max_length=180,description="必须是可检查的核查清单、对账记录或确认记录，不承诺经营结果")
     action:str=Field(min_length=1,max_length=64)
+    findingIds:list[str]=Field(default_factory=list,max_length=8,description='可选：该建议直接对应的本卡风险ID')
 
 class AnalysisDimension(StrictModel):
     stage:Literal['overview','opportunity','quotation','bid','contract','order','shipment']=Field(description='分析维度指业务环节：经营概况/商机获取/报价/投标/合同签订/订单接收/发货')
@@ -89,7 +90,7 @@ class Cards(Result):
     recommendations:list[CardRecommendation]=Field(default_factory=list,max_length=4)
     findings:list[Finding]=Field(default_factory=list,max_length=4,description="按重要性列出最多4个独立经营风险；有多个重要问题时逐项交付，不能合成一句摘要，不以数据缺口凑数")
 
-SCHEMA=dict(name=TOOL,description='提交现有AI插槽的经营摘要、结构化风险、analysisDimensions原因分析、建议与限制。分析维度必须以findingIds关联本卡风险，以真实数值展开分布、趋势和流程表现；缺数和无法评估放limitations。summary必须是纯文本单段结论，禁止Markdown标题、加粗、列表、表格和行动建议清单，行动建议只能写入recommendations。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。根因未确认时可交付空原因，但商机、订单、发货和共同分析有可定位业务事实时必须给出有证据的核查建议；不得编造原因或改善措施。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
+SCHEMA=dict(name=TOOL,description='提交现有AI插槽的经营摘要、结构化风险、analysisDimensions原因分析、建议与限制。分析维度必须以findingIds关联本卡风险，以真实数值展开分布、趋势和流程表现；缺数和无法评估放limitations。summary必须是纯文本单段结论，不超过200字（最多240字符），禁止Markdown标题、加粗、列表、表格和行动建议清单，行动建议只能写入recommendations。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。根因未确认时可交付空原因，但商机、订单、发货和共同分析有可定位业务事实时必须给出有证据的核查建议；不得编造原因或改善措施。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
 
 
 REPAIR_TOOL='CockpitRepairCards'
@@ -146,6 +147,18 @@ def summary_structure_issue(summary) -> str:
     return ''
 
 
+def recommendation_finding_issue(value) -> str:
+    """A suggestion may point only at risks that survived this card."""
+    ids={str(f.get('id')) for f in value.get('findings') or [] if isinstance(f,dict) and f.get('id')}
+    issues=[]
+    for index,action in enumerate(value.get('recommendations') or []):
+        if not isinstance(action,dict):continue
+        unknown=[str(fid) for fid in action.get('findingIds') or [] if str(fid) not in ids]
+        if unknown:
+            issues.append(f'recommendations[{index}].findingIds 引用未知风险：'+','.join(dict.fromkeys(unknown)))
+    return '；'.join(issues)
+
+
 def install_delivery(session,context):
     from .main_service import session_evidence
     def deliver(params,cwd):
@@ -153,12 +166,19 @@ def install_delivery(session,context):
         try:
             if not session.query_results:raise ValueError('请先读取本轮看板数据')
             value=validate_result(params,evidence,{e['id'] for e in evidence['evidence']},result_model=Cards)
+            finding_issue=recommendation_finding_issue(value)
+            if finding_issue:raise ValueError(finding_issue)
             if context.get('businessDimensions'):
                 from .business_presentation import validate_dimensions,business_finding,present_business_result
                 if any(not business_finding(f) for f in value.get('findings') or []):raise ValueError('风险发现不能是字段为空、口径冲突或无法评估；这些内容应移入limitations')
                 presentation=present_business_result(value)
+                value['findings']=presentation['findings']
+                value['analysisDimensions']=presentation['analysisDimensions']
+                value['recommendations']=presentation['recommendations']
                 value['summary']=presentation['businessSummary'][:240] or '本轮暂无新增经营结论。'
                 value['limitations']=presentation['limitations']
+                finding_issue=recommendation_finding_issue(value)
+                if finding_issue:raise ValueError(finding_issue)
                 validate_dimensions(value,{e['id'] for e in evidence['evidence']})
             validate_reasoning(value,evidence,stage=str(context.get('stage') or ''),business_only=bool(context.get('businessDimensions')))
             summary_issue=summary_structure_issue(value.get('summary'))

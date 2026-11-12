@@ -257,31 +257,6 @@ export function createStageRiskComponent(options = {}) {
           </div>
         </div>
         <template v-if="hasResult">
-          <article class="stage-risk-analysis__card stage-risk-analysis__overview">
-            <div class="stage-risk-analysis__head">
-              <strong class="stage-risk-analysis__title">{{ displayStage }}风险概况</strong>
-              <span class="stage-risk-analysis__aside">{{ contextLine }}</span>
-            </div>
-            <div v-if="facts.length && facts.length <= 4" class="stage-risk-analysis__facts">
-              <div v-for="item in facts" :key="item.id" class="stage-risk-analysis__fact" :title="item.definition || item.label">
-                <span>{{ item.label }}</span>
-                <b>{{ metricValue(item) }}</b>
-              </div>
-            </div>
-            <details v-else-if="facts.length" class="stage-risk-analysis__facts-fold">
-              <summary>查看 {{ facts.length }} 项指标明细</summary>
-              <div class="stage-risk-analysis__facts">
-                <div v-for="item in facts" :key="item.id" class="stage-risk-analysis__fact" :title="item.definition || item.label">
-                  <span>{{ item.label }}</span>
-                  <b>{{ metricValue(item) }}</b>
-                </div>
-              </div>
-            </details>
-            <div class="stage-risk-analysis__note">
-              {{ records.length }} 条记录 · {{ evidenceCount }} 条证据<span v-if="updatedAt"> · {{ updatedAt }}</span>
-            </div>
-          </article>
-
           <article v-if="summary || findings.length" class="stage-risk-analysis__card stage-risk-analysis__card--risk stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【风险】</span>

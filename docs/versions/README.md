@@ -4,9 +4,10 @@
 [changelog](../../changelog/) 下的当前周文件（如 `changelog_9_7_11.md`），
 不再创建日报。
 
-- 当前版本：`ontology-v0.1.10`
-- 当前 tag 与 Release：`ontology-v0.1.10`（指向 `179a0cf`，2026-11-03 历史补发）；0.1.6–0.1.9 见下方补发清单。
-- 此前 tag 与 Release：`ontology-v0.1.5`（v0.1.5 收口提交，2026-10-27）、
+- 当前版本：`ontology-v0.1.14`
+- 当前 tag 与 Release：`ontology-v0.1.14`（指向 `7c586b2`，2026-11-10）；0.1.11–0.1.13 见下方补发清单。
+- 此前 tag 与 Release：`ontology-v0.1.10`（指向 `179a0cf`，2026-11-03 补发）、
+  `ontology-v0.1.5`（v0.1.5 收口提交，2026-10-27）、
   `ontology-v0.1.4`（指向 `3287c91`，2026-10-27 补发）、
   `ontology-v0.1.3`（指向定版 commit `a805a66`）、`ontology-v0.1.2`（指向定版 commit `3c4de1e`）、`ontology-v0.1.1`
   （指向定版 commit `c82221f`，2026-10-15 事后补建）、`ontology-v0.1.0`（指向定版 commit
@@ -25,6 +26,10 @@
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
+| [./ontology-v0.1.14.md](./ontology-v0.1.14.md) | 2026-11-10 | 正式版（当前版本） | Cockpit AI 卡片交付与 AP/DeepSeek 契约：有界取数、reasoning 回传、业务维度与风险—原因编号、证据 canvas、原型排版 |
+| [./ontology-v0.1.13.md](./ontology-v0.1.13.md) | 2026-11-09（2026-11-10 补发 tag/Release） | 正式版（历史版本） | 卡片优先刷新与分析诊断：按可见性分析、阶段独立发布、手动刷新重新排队、失败诊断脱敏持久化 |
+| [./ontology-v0.1.12.md](./ontology-v0.1.12.md) | 2026-11-09（2026-11-10 补发 tag/Release） | 正式版（历史版本） | 客户离线部署、冻结年度发布与默认排序：客户 DDL 本体工作簿、env-only 配置、冻结年度 AI 发布与静默控件 |
+| [./ontology-v0.1.11.md](./ontology-v0.1.11.md) | 2026-11-06（2026-11-10 补发 tag/Release） | 正式版（历史版本） | Workbench Pro UI 与 Cockpit 期间缓存：整页 Pro UI 迁移、会话轮次导航、本体命中图谱、按期间缓存与合并刷新 |
 | [./ontology-v0.1.5.md](./ontology-v0.1.5.md) | 2026-10-27 | 正式版（历史版本） | Cockpit 加载性能 PATCH：整页缓存与后台更新、AP 短时复用与 individual 拆批、生产版 Vue、gzip/内容哈希静态资源、AI 插槽按页加载与初始化并行化 |
 | [./ontology-v0.1.4.md](./ontology-v0.1.4.md) | 2026-10-23（2026-10-27 补发 tag/Release） | 正式版（历史版本） | V3 经营驾驶舱 POC：三个独立看板路由、交付 ProUI 元数据、三节点穿透式分析、真实模型分析插槽与 mock 对齐的风险卡片，`ontology-v0.1.3` → `ontology-v0.1.4` PATCH 收口 |
 | [./ontology-v0.1.3.md](./ontology-v0.1.3.md) | 2026-10-20 | 正式版（历史版本） | 主服务内置远程 MCP、Fuxi 零本地凭据接入、16 个受控分析工具、`CanvasGenerate` Artifact URL 交付、demo2 代理与语义检索快路径修复，`ontology-v0.1.2` → `ontology-v0.1.3` PATCH 收口 |
@@ -54,4 +59,17 @@
 | [0.1.9](./ontology-v0.1.9.md) | 2026-11-02 | `c5ce139` | 驾驶舱展示与任务下发收口 |
 | [0.1.10](./ontology-v0.1.10.md) | 2026-11-03 | `179a0cf` | Workbench 本地 Excel 与只读 PostgreSQL |
 
-当前正式版本：ontology-v0.1.10（正式版 / 当前版本）；合计 21 个正式 tag 与 Release。
+该批次完成后合计 21 个正式 tag 与 Release。
+
+## 2026-11-10 版本补发
+
+按 master 已合入的四个定版点补发 0.1.11–0.1.14，tag 指向对应 master 合并提交；不改写历史提交。
+
+| 版本 | 历史合入日期 | 定版提交 | 主题 |
+| --- | --- | --- | --- |
+| [0.1.11](./ontology-v0.1.11.md) | 2026-11-06 | `5f2a615` | Workbench Pro UI 与 Cockpit 期间缓存 |
+| [0.1.12](./ontology-v0.1.12.md) | 2026-11-09 | `6f05193` | 客户离线部署、冻结年度发布与默认排序 |
+| [0.1.13](./ontology-v0.1.13.md) | 2026-11-09 | `f887aad` | 卡片优先刷新与分析诊断 |
+| [0.1.14](./ontology-v0.1.14.md) | 2026-11-10 | `7c586b2` | AI 卡片交付与 AP/DeepSeek 契约 |
+
+当前正式版本：ontology-v0.1.14（正式版 / 当前版本）；合计 25 个正式 tag 与 Release。
