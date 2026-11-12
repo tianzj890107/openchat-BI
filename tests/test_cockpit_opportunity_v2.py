@@ -763,6 +763,7 @@ def test_format_failure_with_previous_card_is_not_published():
     except OpportunityV2ModelUnavailable as exc:
         assert exc.model_status == 'fallback'
         assert exc.model_error == 'MODEL_OUTPUT_INVALID'
+        assert exc.public_message == '模型输出未通过结构化校验：模型未返回合法 JSON'
     else:
         raise AssertionError('format failure must keep the previous published card')
 
@@ -1449,6 +1450,7 @@ def test_model_failure_does_not_replace_the_published_card():
         assert exc.phase == 'model'
         assert exc.code == 'MODEL_ANALYSIS_INCOMPLETE'
         assert exc.model_status == 'failed'
+        assert exc.public_message == '模型调用中断：model connection failed'
     else:
         raise AssertionError('model failure must not publish template output')
     assert captured and captured[0]['phase'] == 'model'

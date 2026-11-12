@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const source=fs.readFileSync(new URL('../bi_agent/web/static/cockpit/task-progress.js',import.meta.url),'utf8');
-const {taskProgressText}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {taskProgressText,newStageFailures}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 test('each card uses its own stage status and frozen completed duration',()=>{
  const manual={running:true,stageProgress:{
    order:{status:'running',phase:'analysing',message:'模型分析第 2 轮',startedAt:100},
@@ -22,4 +22,22 @@ test('opportunity V2 shows database counts plus current step and total duration'
  }};
  assert.equal(taskProgressText(manual,'opportunity-risk',165000),
    '查询数据库 6/10 · 本步 45秒 · 总耗时 1分5秒');
+});
+
+test('stage failures pop once and only for a round this page saw running',()=>{
+ const watch={runId:'',announced:new Set()};
+ const stale={runId:'old',status:'partial',stageProgress:{order:{status:'failed',error:'旧失败'}}};
+ assert.deepEqual(newStageFailures(stale,watch),[]);
+ assert.deepEqual(newStageFailures({runId:'r1',status:'running',stageProgress:{
+   'opportunity-risk':{status:'running',phase:'analysing'}}},watch),[]);
+ const failed={runId:'r1',status:'partial',stageProgress:{
+   'opportunity-risk':{status:'failed',diagnosticId:'d1',hadPrevious:true,
+     error:'模型调用中断：模型未返回完整文本。本轮未发布，已保留上一版结果。'},
+   order:{status:'failed',hadPrevious:false}}};
+ assert.deepEqual(newStageFailures(failed,watch),[
+   {key:'r1:opportunity-risk',stage:'商机获取',diagnosticId:'d1',
+    message:'模型调用中断：模型未返回完整文本。本轮未发布，已保留上一版结果。'},
+   {key:'r1:order',stage:'订单接收',diagnosticId:'',message:'分析未完成，请稍后重试。'},
+ ]);
+ assert.deepEqual(newStageFailures(failed,watch),[]);
 });

@@ -37,3 +37,30 @@ export function taskProgressText(manual, stage, now = Date.now()) {
   if (work.status === 'running' && stepStarted) return `${label}${step} · 总耗时 ${time}`;
   return `${label} · ${work.status === 'queued' ? '已等待' : '耗时'} ${time}`;
 }
+
+const FAILURE_STAGE_LABELS = {
+  'opportunity-risk': '商机获取', opportunity: '商机获取', quotation: '报价', bid: '投标',
+  order: '订单接收', shipment: '发货', combined: '销售额与出货量跨环节共同问题分析',
+};
+
+/* Failures of a round this page saw running; each stage is announced once. */
+export function newStageFailures(manual, watch) {
+  const runId = String(manual?.runId || '');
+  if (!runId) return [];
+  if (manual.status === 'running') watch.runId = runId;
+  if (watch.runId !== runId) return [];
+  const fresh = [];
+  for (const [stage, work] of Object.entries(manual.stageProgress || {})) {
+    const key = `${runId}:${stage}`;
+    if (work?.status !== 'failed' || watch.announced.has(key)) continue;
+    watch.announced.add(key);
+    fresh.push({
+      key,
+      stage: FAILURE_STAGE_LABELS[stage] || stage,
+      message: work.error || manual.error
+        || (work.hadPrevious === false ? '分析未完成，请稍后重试。' : '更新未完成，已保留上一版结果。'),
+      diagnosticId: work.diagnosticId || '',
+    });
+  }
+  return fresh;
+}

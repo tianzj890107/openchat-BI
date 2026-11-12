@@ -70,6 +70,23 @@
       </div>
 
     </main>
+    <div v-if="failureDialog.open" class="cockpit-dialog-backdrop" @click.self="closeFailureDialog">
+      <section class="cockpit-dialog" role="alertdialog" aria-modal="true"
+               aria-labelledby="cockpit-failure-title" aria-describedby="cockpit-failure-body"
+               @keydown.esc="closeFailureDialog">
+        <h2 id="cockpit-failure-title" class="cockpit-dialog__title">AI 分析未完成</h2>
+        <ul id="cockpit-failure-body" class="cockpit-dialog__list">
+          <li v-for="item in failureDialog.items" :key="item.key" class="cockpit-dialog__item">
+            <strong>{{item.stage}}</strong>
+            <p>{{item.message}}</p>
+            <small v-if="item.diagnosticId">诊断ID：{{item.diagnosticId}}</small>
+          </li>
+        </ul>
+        <div class="cockpit-dialog__actions">
+          <button id="cockpit-failure-close" type="button" class="cockpit-dialog__close" @click="closeFailureDialog">知道了</button>
+        </div>
+      </section>
+    </div>
   </div>
   <noscript>驾驶舱需要启用 JavaScript。</noscript>
   <script src="@@APP_ROOT_PATH@@/static/cockpit/vendor/vue.global.prod.js?v=3.5.25"></script>

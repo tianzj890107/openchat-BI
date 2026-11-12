@@ -2954,6 +2954,17 @@ def _model_summary_valid(text, limit, allowed_numbers):
             and not _SUMMARY_FORBIDDEN.search(text))
 
 
+def _model_failure_message(model_status):
+    """User-facing reason for a stopped model step; raw responses stay in diagnostics."""
+    from .diagnostics import redact
+
+    status = model_status.get("status")
+    detail = re.sub(r"\s+", " ", redact(model_status.get("modelErrorMessage")
+                                        or model_status.get("error") or "")).strip()[:200]
+    head = "模型调用中断" if status == "failed" else "模型输出未通过结构化校验"
+    return f"{head}：{detail}" if detail else head
+
+
 def _should_abort_for_model(status, previous):
     """Transport failures always keep the old card; format failures do too.
 
@@ -3864,6 +3875,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
                  riskCandidateCount=model_status.get("riskCandidateCount")),
             ensure_ascii=False,
         )
+        failure.public_message = _model_failure_message(model_status)
         if diagnostic_reporter is not None:
             try:
                 diagnostic_reporter(dict(

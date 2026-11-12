@@ -172,6 +172,13 @@ class FrozenAnnualStore:
             db.execute('UPDATE annual_job SET status=?,error=?,updated=? WHERE id=1', (status, error, time.time()))
 
 
+def stage_failure_message(exc, had_previous):
+    """Explain a failed stage without exposing raw driver or upstream text."""
+    reason = getattr(exc, 'public_message', '') or '后台分析未完成，详细原因已记录到诊断'
+    outcome = '本轮未发布，已保留上一版结果。' if had_previous else '本轮未发布，请稍后重试。'
+    return f"{reason.rstrip('。.；; ')}。{outcome}"
+
+
 class FrozenAnnualService:
     def __init__(self, store, recompute=None):
         self.store, self.recompute = store, recompute
@@ -313,11 +320,13 @@ class FrozenAnnualService:
                             diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
                                 phase=phase,stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
                             had_previous = bool((self.store.read().get('items') or {}).get(stage))
+                            message = stage_failure_message(exc, had_previous)
                             with self.queue_lock:
-                                self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId']))
+                                self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId'],message=message))
                                 self.stage_progress[stage].update(
                                     status='failed', phase='failed', finishedAt=time.time(),
-                                    diagnosticId=diagnostic['diagnosticId'], hadPrevious=had_previous)
+                                    diagnosticId=diagnostic['diagnosticId'], hadPrevious=had_previous,
+                                    error=message)
                         with self.queue_lock:
                             self.active = ''
                             self._progress()
