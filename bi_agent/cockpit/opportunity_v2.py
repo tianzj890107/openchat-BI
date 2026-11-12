@@ -2562,24 +2562,16 @@ _MODEL_KEY_ENV = "COCKPIT_OPPORTUNITY_V2_MODEL_KEY"
 
 def _model_candidate_keys():
     """Model routes for this card, preferred non-thinking route first."""
-    from ..llm.registry import MODELS, get_default_model_key, get_model
+    from ..llm.registry import ensure_team_model, get_default_model_key, get_model
 
     default_key = get_default_model_key()
     explicit = os.environ.get(_MODEL_KEY_ENV, "").strip()
     if explicit:
-        if get_model(explicit):
-            return [explicit]
-        for model in MODELS:
-            if str(model.get("model_id") or "") == explicit:
-                return [model["key"]]
-        return [default_key]
+        return [explicit] if get_model(explicit) else [ensure_team_model(explicit)]
     default = get_model(default_key) or {}
     if str(default.get("provider") or "") != "team":
         return [default_key]
-    keys = [model["key"] for model in MODELS
-            if str(model.get("provider") or "") == "team"
-            and str(model.get("model_id") or "") in _NON_THINKING_PREFERENCE
-            and not model.get("supports_thinking")]
+    keys = [ensure_team_model(model_id) for model_id in _NON_THINKING_PREFERENCE]
     keys.append(default_key)
     return list(dict.fromkeys(keys))
 

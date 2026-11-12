@@ -278,6 +278,33 @@ def _load_team_catalog_from_env() -> None:
         existing_ids.add(model_id)
 
 
+def ensure_team_model(model_id: str) -> str:
+    """Return the registry key for a Team route, registering it on demand.
+
+    ``TEAM_MODELS`` is the deployment allowlist, but a caller that has a
+    verified route name (for example a non-thinking variant) must not be
+    silently downgraded when the allowlist omits it.
+    """
+    model_id = str(model_id or "").strip()
+    if not model_id:
+        return ""
+    for model in MODELS:
+        if model.get("provider") == "team" and str(model.get("model_id") or "") == model_id:
+            return model["key"]
+    key = _team_model_key(model_id)
+    MODELS.append({
+        "key": key,
+        "label": f"团队 API · {model_id}",
+        "provider": "team",
+        "model_id": model_id,
+        "default_max_tokens": 8192,
+        "default_temperature": 0.7,
+        "max_output_tokens": 16384,
+        "supports_thinking": team_model_supports_thinking(model_id),
+    })
+    return key
+
+
 _load_qwen_catalog_from_env()
 _load_team_catalog_from_env()
 

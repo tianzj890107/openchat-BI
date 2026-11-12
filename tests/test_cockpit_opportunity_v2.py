@@ -729,6 +729,22 @@ def test_opportunity_card_prefers_the_non_thinking_deepseek_route(monkeypatch):
     ]
 
 
+def test_non_thinking_route_is_registered_when_the_allowlist_omits_it(monkeypatch):
+    from bi_agent.llm import registry
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    models = [dict(key='team-configured', provider='team',
+                   model_id='direct-deepseek-v4-flash', supports_thinking=True)]
+    monkeypatch.setattr(registry, 'MODELS', models)
+    monkeypatch.setattr(registry, 'get_default_model_key', lambda: 'team-configured')
+    monkeypatch.delenv(module._MODEL_KEY_ENV, raising=False)
+    assert module._model_candidate_keys() == [
+        'team-deepseek-v4-flash-0731', 'team-configured',
+    ]
+    assert registry.get_model('team-deepseek-v4-flash-0731')['model_id'] == 'deepseek-v4-flash-0731'
+    assert registry.get_model('team-deepseek-v4-flash-0731')['supports_thinking'] is False
+
+
 def test_target_rows_are_summed_not_distincted_by_customer_or_product():
     config = load_config()
 
