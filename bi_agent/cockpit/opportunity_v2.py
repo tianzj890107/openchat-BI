@@ -2214,6 +2214,7 @@ def evaluate(data, config=None, measured=None):
         excludedRiskCodes=[item["code"] for item in risk_assessments if not item.get("include")],
         modelExcludedRiskCodes=[],
         ontologyVersion=config.get("version"),
+        ontologyTrace=_ontology_trace(config),
         sourceConfigDigest=config_digest(),
         measurementDate=data.get("measurementDate"),
     )
@@ -2870,6 +2871,26 @@ def _advice_action_type(code, template, linked_causes):
             if any(cause.get("kind") == "verified" and cause.get("status") == "supported"
                    for cause in linked_causes or [])
             else "investigation")
+
+
+def _ontology_trace(config):
+    """Expose the full ontology set used by this card for display and audit."""
+    def entries(section):
+        values = []
+        for code, item in (config.get(section) or {}).items():
+            name = _text((item or {}).get("name")) or _text((item or {}).get("title")) or code
+            values.append(dict(code=code, name=name))
+        return values
+
+    return dict(
+        ontology=_text(config.get("ontology")),
+        version=_text(config.get("version")),
+        digest=config_digest()[:12],
+        metrics=entries("metrics"),
+        risks=entries("risks"),
+        causes=entries("causes"),
+        advice=entries("advice"),
+    )
 
 
 def _acceptance(code, template=None):

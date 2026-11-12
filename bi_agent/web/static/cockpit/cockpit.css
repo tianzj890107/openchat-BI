@@ -58,6 +58,7 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .stage-risk-analysis__foot summary{width:max-content;max-width:100%;color:var(--cockpit-primary);cursor:pointer}
 .stage-risk-analysis__foot[open] summary{margin-bottom:4px}
 .stage-risk-analysis__acceptance,.stage-risk-analysis__detail,.stage-risk-analysis__evidence{overflow-wrap:anywhere}
+.stage-risk-analysis__ontology{margin-top:4px;line-height:20px;overflow-wrap:anywhere}
 .stage-risk-analysis__detail{margin-top:2px;color:var(--cockpit-text-help)}
 
 .cockpit-insight{margin:0;padding:14px 16px 12px;border:1px solid var(--pro-border-color-light,var(--cockpit-divider));border-radius:8px;background:var(--cockpit-surface);color:var(--pro-text-color-primary,var(--cockpit-text-secondary));box-sizing:border-box}

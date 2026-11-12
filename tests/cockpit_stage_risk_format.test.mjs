@@ -25,7 +25,10 @@ test('shared stage risk component highlights text and keeps the display owner ro
   assert.match(shared, /建议角色/);
   assert.match(shared, /\(\?:牵头\|协同\|配合\|支持\|执行\|负责\)/);
   assert.match(shared, /String\(item\?\.deadline/);
+  assert.match(shared, /stage-risk-analysis__ontology/);
+  assert.match(shared, /ontologyTrace/);
   assert.match(css, /\.stage-risk-analysis__owner\{/);
   assert.match(css, /\.stage-risk-analysis__owner\{[^}]*color:var\(--cockpit-primary\)/);
+  assert.match(css, /\.stage-risk-analysis__ontology\{/);
   assert.match(css, /\.stage-risk-analysis__num\{color:var\(--cockpit-primary\);font-weight:600\}/);
 });

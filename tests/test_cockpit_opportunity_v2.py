@@ -63,6 +63,19 @@ def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     assert config['links']['RK07']['advice'] == ['AC02', 'AC03']
 
 
+def test_result_exposes_the_full_ontology_trace():
+    value = evaluate(_data())
+    trace = value['result']['ontologyTrace']
+    assert trace['ontology'] == '商机获取节点 V3'
+    assert trace['version'] == 'opportunity-v3-rules-1'
+    assert len(trace['digest']) == 12
+    assert len(trace['metrics']) == 25
+    assert len(trace['risks']) == 10
+    assert len(trace['causes']) == 9
+    assert len(trace['advice']) == 12
+    assert trace['risks'][0]['code'] == 'RK01' and trace['risks'][0]['name']
+
+
 def test_contract_confirmation_drives_signing_and_unknown_is_not_zero():
     opportunity = _opportunity()
     data = _data(opportunities=[opportunity], allOpportunities=[deepcopy(opportunity)],

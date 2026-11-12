@@ -100,6 +100,7 @@ export function useInsight(props, emit) {
   const findings = computed(() => (result.value?.findings || []).slice(0,4))
   const causes = computed(() => (result.value?.causes || []).map(cause=>({...cause,title:String(cause.title||'').replace(/^\[(待验证假设|结构定位|异常表现|数据缺口|记录支持)\]\s*/, '')})))
   const analysisDimensions = computed(() => riskDimensionLinks(result.value?.analysisDimensions || [],findings.value))
+  const ontologyTrace = computed(() => result.value?.ontologyTrace || null)
   const recommendations = computed(() => result.value?.recommendations || [])
   const limitations = computed(() => result.value?.caliberNotes || result.value?.limitations || bundle.value.limitations || [])
   const summary = computed(() => result.value?.businessSummary ?? result.value?.summary ?? '')
@@ -126,6 +127,10 @@ export function useInsight(props, emit) {
   function fact(label) {
     const query = String(label || '').toLowerCase()
     return facts.value.find(item => String(item.label || '').toLowerCase().includes(query)) || null
+  }
+
+  function ontologyText(items) {
+    return (items || []).map(item => [item.code, item.name].filter(Boolean).join(' ')).join('、')
   }
 
   function factText(label) {
@@ -226,6 +231,7 @@ export function useInsight(props, emit) {
     evidenceLink,
     findings,
     analysisDimensions,
+    ontologyTrace,
     causes,
     recommendations,
     openRecommendations,
@@ -241,6 +247,7 @@ export function useInsight(props, emit) {
     updatedAt,
     stateText,
     fact,
+    ontologyText,
     factText,
     sumFacts,
     factSum,
@@ -358,6 +365,13 @@ export function createStageRiskComponent(options = {}) {
               </div>
               <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
               <div class="stage-risk-analysis__evidence">证据范围：{{ contextLine }}；{{ evidenceCounts.facts }} 项数值事实、{{ evidenceCounts.records }} 条明细记录、{{ evidenceCounts.referenced }} 条引用证据，去重 {{ evidenceCounts.distinct }} 条。</div>
+              <div v-if="ontologyTrace" class="stage-risk-analysis__ontology">
+                <div>调用本体：{{ ontologyTrace.ontology }}（{{ ontologyTrace.version }}，配置 {{ ontologyTrace.digest }}）</div>
+                <div>指标 {{ ontologyTrace.metrics.length }} 项：{{ ontologyText(ontologyTrace.metrics) }}</div>
+                <div>风险规则 {{ ontologyTrace.risks.length }} 条：{{ ontologyText(ontologyTrace.risks) }}</div>
+                <div>原因库 {{ ontologyTrace.causes.length }} 类：{{ ontologyText(ontologyTrace.causes) }}</div>
+                <div>建议库 {{ ontologyTrace.advice.length }} 条：{{ ontologyText(ontologyTrace.advice) }}</div>
+              </div>
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>
           <task-order-dialog v-if="dialogOpen" :task="task" :busy="busy" :error="taskError"

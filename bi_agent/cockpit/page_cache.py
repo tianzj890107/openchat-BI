@@ -64,7 +64,7 @@ def compact_analysis(item):
     result = item.get('result')
     value['result'] = ({k: deepcopy(result[k]) for k in
                        ('summary', 'businessSummary', 'analysisDimensions', 'causes', 'recommendations', 'limitations', 'findings',
-                        'riskFindingCount', 'cardContract', 'customerCoverage') if k in result}
+                        'riskFindingCount', 'cardContract', 'customerCoverage', 'ontologyTrace') if k in result}
                       if result else None)
     execution = item.get('execution')
     if isinstance(execution, dict):

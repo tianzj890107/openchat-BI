@@ -130,9 +130,11 @@ def test_late_page_cannot_move_pointer_backwards_and_history_is_preserved(tmp_pa
 def test_compact_cards_keep_ui_evidence_without_narrative_or_query_provenance(tmp_path):
     store,_,req,_=fixture(tmp_path);item=store.get_analysis(req.analysisIds['shipment'])
     item['result']['narrative']='full report'*100
+    item['result']['ontologyTrace']={'version':'opportunity-v3-rules-1','metrics':[]}
     item['evidence']['evidence']=[{'id':'E1','record':{'id':'R1'},'provenance':{'sql':'large query'}}]
     slim=compact_analysis(item)
     assert slim['evidence']['evidence']==[{'id':'E1','record':{'id':'R1'}}]
+    assert slim['result']['ontologyTrace']=={'version':'opportunity-v3-rules-1','metrics':[]}
     assert 'narrative' not in slim['result'] and 'narrative' in item['result']
 
 
