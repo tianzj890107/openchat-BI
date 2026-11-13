@@ -93,7 +93,9 @@ def _call_model(payload, *, timeout, max_tokens):
     key = _model_candidate_keys()[0]
     messages = [dict(role="user", content=json.dumps(payload, ensure_ascii=False))]
     events = []
-    with request_config(thinking=False, request_timeout=timeout):
+    from ..llm.context_budget import cockpit_context_limit
+    with request_config(thinking=False, request_timeout=timeout,
+                        context_limit=cockpit_context_limit(), min_output_tokens=min(max_tokens, 600)):
         # An empty allowlist: this step never offers the model any tool.
         for event in provider.stream_message(messages, SYSTEM_PROMPT, [], key,
                                              max_tokens=max_tokens, temperature=0, thinking=False):

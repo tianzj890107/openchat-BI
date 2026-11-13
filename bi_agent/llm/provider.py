@@ -53,6 +53,23 @@ def stream_message(
     # The wait is cooperative: if the turn's cancel event fires (reset /
     # restore / client disconnect), the wait raises ResourceCancelled instead
     # of blocking the worker for up to the full limiter timeout.
+    from .runtime_config import scoped_context_budget
+    budget = scoped_context_budget()
+    if budget is not None:
+        # A capped gateway counts input and output together: fit the request
+        # (compressing tool results if needed) before taking a slot.
+        from .context_budget import ContextBudgetExceeded, fit_request, tool_schemas_for
+        limit, min_output = budget
+        try:
+            messages, max_tokens, report = fit_request(
+                messages, system_prompt, tool_schemas_for(allowed_tools),
+                limit=limit, max_tokens=max_tokens, min_output=min_output)
+        except ContextBudgetExceeded as exc:
+            yield {"type": "error", "error": str(exc), "error_code": "CONTEXT_BUDGET_EXCEEDED"}
+            return
+        if report.get("compressed") or report["maxTokens"] < report["requestedMaxTokens"]:
+            import logging
+            logging.getLogger(__name__).info("llm_context_budget %s", report)
     token = get_llm_limiter().acquire(cancel_event=cancel_event)
     try:
         yield from _stream_message_unbounded(

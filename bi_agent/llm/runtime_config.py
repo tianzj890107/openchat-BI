@@ -136,8 +136,12 @@ def request_config(**overrides):
     """Task-local parameters; never persist or mutate another session's config."""
     config = copy(get_config())
     for key, value in overrides.items():
-        if key not in {'max_tokens', 'temperature', 'thinking', 'reasoning_effort', 'request_timeout'}:
+        if key not in {'max_tokens', 'temperature', 'thinking', 'reasoning_effort', 'request_timeout',
+                       'context_limit', 'min_output_tokens'}:
             raise ValueError('Unsupported scoped model parameter')
+        if key in {'context_limit', 'min_output_tokens'} and value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 2_000_000):
+            raise ValueError('Unsupported context budget')
         if key=='request_timeout' and (not isinstance(value,(int,float)) or not 0 < value <= 180):
             raise ValueError('Unsupported request timeout')
         if key=='reasoning_effort' and value not in {'low','medium','high','max'}:
@@ -152,6 +156,15 @@ def request_config(**overrides):
 def scoped_request_timeout():
     config = _scoped_config.get()
     return getattr(config, 'request_timeout', None) if config is not None else None
+
+
+def scoped_context_budget():
+    """``(limit, min_output)`` when the task caps input + output tokens, else ``None``."""
+    config = _scoped_config.get()
+    limit = getattr(config, 'context_limit', None) if config is not None else None
+    if not limit:
+        return None
+    return limit, getattr(config, 'min_output_tokens', None) or min(2000, max(256, limit // 6))
 
 
 def scoped_reasoning_effort():

@@ -4361,7 +4361,14 @@ def _cockpit_main_turn(context,cancel):
         session.model_tools_override = [DELIVERY_TOOL]
         session.allow_interaction = False
         session.require_validated_delivery = True
-        session.system_prompt += (
+        # A card task needs the data-source note and the card rules only.  The
+        # general agent prompt (about 21k characters) would leave no room in a
+        # gateway that caps input + output tokens, and is irrelevant here.
+        session.system_prompt = '\n\n'.join(part for part in (
+            '你是储能经营驾驶舱的只读数据分析助手。只依据本轮提供的看板证据分析，'
+            '通过卡片交付工具提交结果，不连接其他数据源，不编造数据。',
+            (getattr(session, '_context_header', '') or '').strip(),
+        ) if part) + (
             '\n\n本次为主服务固定卡片任务：服务端已通过正常工具预读证据。'
             '本轮交付形式覆盖通用对话的表格、图表和行动文案要求：'
             '不再查询，不用TableGenerate或ChartGenerate，不输出普通Markdown。'
@@ -4382,7 +4389,12 @@ def _cockpit_main_turn(context,cancel):
             STATE.sessions[key]=session
         slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
         from ..llm.runtime_config import request_config
-        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel), request_config(thinking=False, max_tokens=16384, temperature=0.2, reasoning_effort='low'):
+        from ..llm.context_budget import cockpit_context_limit
+        # max_tokens is an upper bound: under the gateway's input + output cap
+        # the dispatcher lowers it to what the input leaves.
+        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel), request_config(
+                thinking=False, max_tokens=16384, temperature=0.2, reasoning_effort='low',
+                context_limit=cockpit_context_limit(), min_output_tokens=2500):
             yield session,session.generate_turn(analysis_question({**context,'preparedEvidence':True,'businessDimensions':True})+f'\n本轮已通过工具预读 {len(prepared_ids)} 条查询，证据引用见工具结果。优先直接交付，不重复取数。'+(f'另有 {len(selected)-len(prepared_ids)} 条查询未预读；未读范围必须说明，不得编造或额外读取。' if len(selected)>len(prepared_ids) else ''))
     finally:
         # Release ephemeral in-memory objects only. Never reset/delete chat history.

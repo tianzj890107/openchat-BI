@@ -2877,7 +2877,10 @@ def _read_model_stream(provider, messages, system_prompt, key, *, max_tokens, ti
     stream_error = None
     started = time.monotonic()
     try:
-        with request_config(thinking=False, request_timeout=timeout):
+        from ..llm.context_budget import cockpit_context_limit
+        with request_config(thinking=False, request_timeout=timeout,
+                            context_limit=cockpit_context_limit(),
+                            min_output_tokens=min(max_tokens, 400)):
             # An empty allowlist means "no tools".  ``None`` would expose every
             # registered tool and let the model answer with a tool call
             # instead of the JSON analysis this step expects.
