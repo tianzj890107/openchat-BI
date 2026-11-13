@@ -363,6 +363,15 @@
         "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
         "column": "new_forecasttime",
         "mapping": "直接映射"
+      },
+      "modifiedon": {
+        "entity": "LE01",
+        "attribute": "LE01-A0492",
+        "name": "修改时间",
+        "english": "modifiedon",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "modifiedon",
+        "mapping": "直接映射"
       }
     },
     "LE02": {
@@ -454,6 +463,24 @@
         "english": "new_approvalstatus",
         "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
         "column": "new_approvalstatus",
+        "mapping": "直接映射"
+      },
+      "createdon": {
+        "entity": "LE02",
+        "attribute": "LE02-A0020",
+        "name": "创建时间",
+        "english": "createdon",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "createdon",
+        "mapping": "直接映射"
+      },
+      "modifiedon": {
+        "entity": "LE02",
+        "attribute": "LE02-A0022",
+        "name": "修改时间",
+        "english": "modifiedon",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb",
+        "column": "modifiedon",
         "mapping": "直接映射"
       }
     },
@@ -603,6 +630,15 @@
         "table": "ded_public.p_fm_edw_v_ods_crm_account_esb",
         "column": "originatingleadid",
         "mapping": "直接映射"
+      },
+      "modifiedon": {
+        "entity": "LE05",
+        "attribute": "LE05-A0297",
+        "name": "修改时间",
+        "english": "modifiedon",
+        "table": "ded_public.p_fm_edw_v_ods_crm_account_esb",
+        "column": "modifiedon",
+        "mapping": "直接映射"
       }
     },
     "LE06": {
@@ -676,6 +712,15 @@
         "english": "statecode",
         "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
         "column": "statecode",
+        "mapping": "直接映射"
+      },
+      "createdon": {
+        "entity": "LE06",
+        "attribute": "LE06-A0023",
+        "name": "创建时间",
+        "english": "createdon",
+        "table": "ded_public.p_fm_edw_v_ods_crm_new_target_esb",
+        "column": "createdon",
         "mapping": "直接映射"
       },
       "new_month1": {

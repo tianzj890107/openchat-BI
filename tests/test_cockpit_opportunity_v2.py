@@ -1,6 +1,7 @@
 from copy import deepcopy
 from datetime import date
 from types import SimpleNamespace
+from pathlib import Path
 
 from bi_agent.cockpit.opportunity_v2 import (
     _customer_tier, _p0_cycle, _p2_cycle,
@@ -33,9 +34,9 @@ def _data(**updates):
 
 
 def _strategic_value(**updates):
+    updates.setdefault('accounts', [dict(id='account-1', name='战略客户A', level='1', tier='strategic')])
     return evaluate(_data(
         opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
         **updates,
     ))
 
@@ -147,7 +148,11 @@ def test_dynamic_period_is_strict_and_excludes_invalid_times(monkeypatch):
     assert _p0_cycle(valid, measured) > 0
     assert _p0_cycle(_opportunity(createdAt='2026-10-01', stage='11', stage1End=None), measured) == 41
     assert _p0_cycle(_opportunity(createdAt='2026-12-01', stage='11', stage1End=None), measured) is None
-    assert _p0_cycle(_opportunity(createdAt='2026-01-01', stage='12', stage1End=None), measured) is None
+    # Ontology stage_facts: an unfinished stage runs to the cutoff whatever the
+    # current stage enum; a finish after the cutoff is cut at the cutoff.
+    assert _p0_cycle(_opportunity(createdAt='2026-01-01', stage='12', stage1End=None), measured) == 314
+    assert _p0_cycle(_opportunity(createdAt='2026-01-01', stage='11', stage1End='2026-01-11'), measured) == 10
+    assert _p0_cycle(_opportunity(createdAt='2026-10-01', stage='12', stage1End='2026-12-01'), measured) == 41
     assert _p2_cycle(_opportunity(stage2End='2026-05-01', stage3End='2026-04-01'), measured) is None
 
     base = _data(targets=dict(amount=1000.0, energy=1000.0, byProduct={}, byAccount={}))
@@ -449,7 +454,7 @@ def test_opportunity_queries_do_not_filter_on_approval_status_like_the_ontology(
     class Reader:
         def run(self, sql, params, timeout_ms=0):
             seen.append(sql)
-            if 'agg.month_rows, agg.past_rows' in sql:
+            if 'agg.month_rows, agg.energy_rows' in sql:
                 return Result([detail_row], truncated=True)
             return Result()
 
@@ -706,7 +711,7 @@ def test_partial_query_failure_keeps_available_evidence_and_skips_dependent_rule
         def run(self, sql, params, timeout_ms=0):
             if 'new_target_esb' in sql:
                 raise RuntimeError('target timeout')
-            if 'WITH agg AS' in sql:
+            if 'agg.month_rows, agg.energy_rows' in sql:
                 return Result([dict(
                     opportunity_id='opp-1', name='测试商机', account_id='account-1',
                     account_name='客户A', account_level='1', product_type='1',
@@ -780,7 +785,7 @@ def test_collect_parses_and_marks_complete_full_aggregate_when_detail_is_truncat
 
     class Reader:
         def run(self, sql, params, timeout_ms=0):
-            if 'agg.month_rows, agg.past_rows' in sql:
+            if 'agg.month_rows, agg.energy_rows' in sql:
                 return Result([dict(
                     opportunity_id='partial', name='截断明细', account_id='account-1',
                     account_name='客户A', account_level='1', product_type='1',
@@ -821,7 +826,8 @@ def test_collect_parses_and_marks_complete_full_aggregate_when_detail_is_truncat
     assert data['opportunityAggregates'][0]['count'] == 10
     assert data['opportunityAggregates'][0]['amount'] == 30.0
     assert data['opportunityAggregates'][0]['energy'] == 20.0
-    assert data['opportunityAggregates'][0]['pastAmountRows'] == 20
+    # BR-Q01: forecast amount only, so no past-month actuals are carried.
+    assert 'pastAmountRows' not in data['opportunityAggregates'][0]
 
 
 def test_truncated_detail_without_aggregate_never_uses_partial_sums():
@@ -1044,7 +1050,8 @@ def _judged(value, judge):
 
 
 def test_rules_decide_first_and_only_undecided_items_reach_the_model_one_by_one():
-    value = _strategic_value()
+    value = _strategic_value(accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic'),
+                                     dict(id='account-9', name='战略客户B', level='1', tier='strategic')])
     status = {item['code']: item['ruleStatus'] for item in value['riskCandidates']}
     undecided = [code for code, state in status.items() if state == 'insufficient']
     assert undecided
@@ -1293,7 +1300,8 @@ def test_rule_first_card_is_delivered_to_the_page_as_judged():
     from bi_agent.cockpit.delivery import project_card, publication_payload
     from bi_agent.cockpit.opportunity_judgement import judge_card
     from bi_agent.cockpit.page_cache import compact_analysis
-    value = _strategic_value()
+    value = _strategic_value(accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic'),
+                                     dict(id='account-9', name='战略客户B', level='1', tier='strategic')])
     judged = judge_card(value, load_config(), judge=lambda request: dict(
         established=True, level='中', reason='模型判定成立'))
     item = dict(id='x', status='completed',
@@ -1331,3 +1339,127 @@ def test_risk_trace_resolves_rule_ontology_and_metrics():
         assert item['metricCodes'] and set(item['metricCodes']) <= metric_codes
     rk01 = next(item for item in judged['riskAssessments'] if item['code'] == 'RK01')
     assert rk01['metricCodes'] == ['R01', 'B01', 'B02']
+
+
+def _captured_sql():
+    """Run collect against a fake reader and return every SQL with its params.
+
+    The detail is returned truncated so the full aggregate query runs too.
+    """
+    seen = {}
+
+    class Result:
+        def __init__(self, rows=(), truncated=False):
+            self.rows = list(rows)
+            self.truncated = truncated
+
+    detail_row = dict(
+        opportunity_id='o1', name='商机', account_id='a1', account_name='客户A', account_level='1',
+        product_type='1', process_stage='11', acneed_status='', demand_input='', opportunity_status='0',
+        contract_confirmation='0', created_at='2026-01-01', owner_id='u1', amount_yuan=1e8,
+        forecast_amount_full_yuan=1e8, energy_gwh=1.0, month_rows=1, energy_rows=1)
+
+    class Reader:
+        def run(self, sql, params, timeout_ms=0):
+            seen[sql] = list(params)
+            if 'agg.month_rows, agg.energy_rows' in sql:
+                return Result([detail_row], truncated=True)
+            return Result()
+
+    class Snapshot:
+        def __enter__(self):
+            return Reader()
+
+        def __exit__(self, *args):
+            return False
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def snapshot(self, **kwargs):
+            return Snapshot()
+
+    collect('2025', database=Database(), config=load_config(), measurement_date='2025-12-31')
+    return seen
+
+
+def test_forecast_follows_br_q01_latest_version_forecast_amount_only():
+    seen = _captured_sql()
+    forecast = [sql for sql in seen if 'fr AS (' in sql]
+    assert len(forecast) == 2  # detail and full aggregate
+    for sql in forecast:
+        # Latest version per opportunity-month, kept with rn = 1.
+        assert "PARTITION BY x.new_opportunity_id, date_trunc('month', x.new_accountdate::timestamp)" in sql
+        assert 'ORDER BY x.createdon DESC NULLS LAST, x.modifiedon DESC NULLS LAST' in sql
+        assert 'WHERE m.rn = 1' in sql
+        # Forecast amount only, no actuals, no state filter.
+        assert 'new_amt_rmb' not in sql
+        assert 'statecode' not in sql.split(') SELECT', 1)[0]
+        # Year for the forecast window, then the measurement day for the cutoff.
+        assert seen[sql] == [2025, date(2025, 12, 31)]
+
+
+def test_targets_keep_the_latest_row_per_opportunity_and_year():
+    sql = next(sql for sql in _captured_sql() if 'new_target_esb' in sql)
+    assert ("PARTITION BY COALESCE(NULLIF(BTRIM(x.new_opportunity_id::text), ''), x.new_targetid::text), "
+            "x.new_year ORDER BY x.createdon DESC NULLS LAST, x.new_targetid DESC NULLS LAST") in sql
+    assert 'WHERE t.rn = 1' in sql and 'x.new_targetid IS NOT NULL' in sql
+
+
+def test_opportunity_and_customer_rows_follow_the_ontology_base_tables():
+    seen = _captured_sql()
+    opportunity = [sql for sql in seen if 'AS contract_confirmation' in sql or 'AS contract_raw' in sql]
+    assert len(opportunity) == 3
+    for sql in opportunity:
+        # One row per id, latest first; account level only from the customer.
+        assert 'SELECT DISTINCT ON (x.opportunityid) x.*' in sql
+        assert 'SELECT DISTINCT ON (y.accountid) y.*' in sql
+        assert "COALESCE(a.new_accountlevel::text, '') AS account_level" in sql
+        assert 'o.new_accountlevel' not in sql
+        # The cutoff is the end of the measurement day; unknown creation kept.
+        assert '(o.createdon IS NULL OR o.createdon < (%s::date + 1))' in sql
+    customers = next(sql for sql in seen if 'AS opportunity_count' in sql and 'cov' in sql)
+    coverage = customers.split('LEFT JOIN (SELECT z.', 1)[1].split(') cov', 1)[0]
+    # R09 counts every linked opportunity: no creation, state or approval filter.
+    assert 'createdon' not in coverage and 'statecode' not in coverage and 'approval' not in coverage
+
+
+def test_r09_counts_strategic_customers_with_no_linked_opportunity_at_all():
+    accounts = [
+        dict(id='a-new', name='今年新建无商机', level='1', tier='strategic', createdAt='2026-03-01', opportunityCount=0),
+        dict(id='a-old', name='往年创建无商机', level='1', tier='strategic', createdAt='2019-03-01', opportunityCount=0),
+        dict(id='a-closed', name='只有已关闭商机', level='1', tier='strategic', createdAt='2019-03-01', opportunityCount=2),
+    ]
+    value = evaluate(_data(accounts=accounts))
+    # Creation year does not matter; a customer with any linked opportunity is not counted.
+    assert value['metrics']['R09'] == dict(count=2)
+    rk07 = next(risk for risk in value['risks'] if risk['code'] == 'RK07')
+    assert '2 家没有任何关联商机' in rk07['description']
+
+
+def test_r08_pairs_customer_and_product_and_never_reads_a_missing_side_as_zero():
+    opportunities = [
+        _opportunity(id='o1', accountId='c1', productType='1', forecastAmount=3.0, forecastEnergy=1.0, monthRows=1),
+        _opportunity(id='o2', accountId='c1', productType='2', forecastAmount=9.0, forecastEnergy=9.0, monthRows=1),
+        _opportunity(id='o3', accountId='c2', productType='1', forecastAmount=1.0, forecastEnergy=1.0, monthRows=1),
+    ]
+    targets = dict(amount=30.0, energy=30.0, byProduct={}, byAccount={}, byAccountProduct={
+        # c1 电芯: gap 2 / 1; c1 PACK: target below forecast, no gap.
+        'c1|1': dict(accountId='c1', productType='1', amount=5.0, energy=2.0),
+        'c1|2': dict(accountId='c1', productType='2', amount=4.0, energy=4.0),
+        # c2 has no 电芯 target: the pair's gap stays empty, not 0 − 1.
+        'c2|2': dict(accountId='c2', productType='2', amount=8.0, energy=8.0),
+        # c3 has a target but no forecast: no opportunity, so BR-A06 does not apply.
+        'c3|1': dict(accountId='c3', productType='1', amount=6.0, energy=6.0),
+    })
+    value = evaluate(_data(targets=targets, opportunities=opportunities,
+                           allOpportunities=deepcopy(opportunities)))
+    assert value['metrics']['R08'] == dict(count=1, pairs=1)
+    rk06 = next(risk for risk in value['risks'] if risk['code'] == 'RK06')
+    assert rk06['impact'] == dict(amount=2.0, energy=1.0, count=1)
+
+
+def test_ap_supplement_is_off_unless_explicitly_enabled():
+    source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/frozen.py').read_text(encoding='utf-8')
+    assert "os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '0').strip().lower() in {'1', 'true', 'yes', 'on'}" in source

@@ -935,7 +935,7 @@ def recompute_from_router(app, cwd):
                 from .opportunity_judgement import default_item_judge
                 from .store import Store
                 enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
-                supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+                supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '0').strip().lower() in {'1', 'true', 'yes', 'on'}
                 diagnostic_store = Store(store.path.parent / 'history.sqlite3')
 
                 def report_diagnostic(entry):

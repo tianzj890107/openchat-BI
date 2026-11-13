@@ -37,12 +37,13 @@ FIELD_NAMES = {
         "new_contractconfirmation_date", "createdon", "new_stage1enddate",
         "new_stage2enddate", "new_stage3enddate", "new_stage4enddate",
         "new_stage5enddate", "ownerid", "statecode", "estimatedvalue",
-        "new_projectpower", "new_forecasttime",
+        "new_projectpower", "new_forecasttime", "modifiedon",
     ],
     "LE02": [
         "new_oppmonthid", "new_opportunity_id", "new_accountdate",
         "new_forecast_amt_rmb", "new_amt_rmb", "new_forcastpower",
         "new_whprice", "new_orderforecast_qty", "statecode", "new_approvalstatus",
+        "createdon", "modifiedon",
     ],
     "LE04": [
         "new_projectprocessid", "new_opportunity_id", "new_desc", "new_sdate",
@@ -51,11 +52,11 @@ FIELD_NAMES = {
     "LE05": [
         "accountid", "name", "new_accountlevel", "createdon", "statecode",
         "new_lastapptime", "new_lastjgtime", "new_thelastest_updatetime",
-        "originatingleadid",
+        "originatingleadid", "modifiedon",
     ],
     "LE06": [
         "new_targetid", "new_year", "new_account_id", "new_producttype_id",
-        "new_dept_id", "new_opportunity_id", "new_project_name", "statecode",
+        "new_dept_id", "new_opportunity_id", "new_project_name", "statecode", "createdon",
         *[f"new_month{i}" for i in range(1, 13)],
         *[f"new_month{i}_quantity" for i in range(1, 13)],
         *[f"new_month{i}_power" for i in range(1, 13)],

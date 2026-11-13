@@ -416,11 +416,11 @@ def _query_failure(exc, label, duration):
 
 
 _QUERY_AGGREGATION_NOTES = {
-    "销售目标": "amount_yuan 按行求和 / 1e8 = 目标金额（亿元）；energy_kwh 按行求和 / 1e6 = 目标电量（GWh）。目标表按行求和，不按客户或产品去重。",
+    "销售目标": "B01：同一商机（商机为空时按目标 ID）同一年度只取最新一条目标后汇总；amount_yuan / 1e8 = 目标金额（亿元），电量按配置单位换算为 GWh。",
     "产品类型": "产品类型枚举映射：1=电芯，2=PACK，空或其他=其他；只用于维度归类，不参与金额汇总。",
-    "商机预测": "按 new_oppmonthid 去重后按商机汇总；过去月份取 new_amt_rmb，当月及以后取 new_forecast_amt_rmb；电量按本体 BR-Q01 取 new_forecast_amt_rmb ÷ new_whprice（元/Wh）÷ 1e9。",
-    "全部商机": "创建时间不晚于观察时点的商机全集（按本体，不限定审核状态）；用于客户覆盖与阶段周期，不直接求和。",
-    "客户": "客户等级 1 为战略客户、2 为重点客户；0/3/4 归一般客户（本体 DR04~DR06），用于 R09/R10 客户覆盖判断。",
+    "商机预测": "BR-Q01：所选年度内同商机同月取最新一版月度预测后按商机汇总；金额只用 new_forecast_amt_rmb，不混入已历月份实绩；电量 = new_forecast_amt_rmb ÷ new_whprice（元/Wh）÷ 1e9；不限定审核或业务状态。",
+    "全部商机": "每个商机 ID 取最新一行，创建时间不晚于观察日结束（创建时间为空也保留）；不限定审核或业务状态；用于阶段周期，不直接求和。",
+    "客户": "每个客户 ID 取最新一行；客户等级 1 为战略客户（本体 DR04）；opportunity_count 为该客户全部关联商机数（R09 不按年份或状态筛选）。",
     "投标": "投标项目按输入时间不晚于观察时点过滤；同名多版本不擅自取最新，按样本记录标记。",
     "项目进展": "按商机取进展记录，用于原因文本证据；不做数值汇总。",
     "订单关联": "BR-Q02：按订单明细关联商机，去重订单数 ≥ 1 为已签单；不限定审批、取消状态或订单日期。",
@@ -730,7 +730,15 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         raise OpportunityV2Unavailable("本体 B01 电量单位无法换算：" + target_energy_unit)
     amount_count = "+".join(f"COUNT(t.{col})" for col in months)
     energy_count = "+".join(f"COUNT(t.{col})" for col in quantities)
+    # B01 (ontology target_rows): keep the latest target per opportunity
+    # (an empty opportunity id keeps its own target id) and year.
     target_sql = (
+        f"WITH tr AS (SELECT x.*, ROW_NUMBER() OVER (PARTITION BY "
+        f"COALESCE(NULLIF(BTRIM(x.{target_cols['new_opportunity_id']}::text), ''), x.{target_cols['new_targetid']}::text), "
+        f"x.{target_cols['new_year']} ORDER BY x.{target_cols['createdon']} DESC NULLS LAST, "
+        f"x.{target_cols['new_targetid']} DESC NULLS LAST) AS rn "
+        f"FROM {target_table} x WHERE x.{target_cols['new_year']} = %s "
+        f"AND x.{target_cols['new_targetid']} IS NOT NULL) "
         f"SELECT COALESCE(t.{target_cols['new_producttype_id']}, '') AS product_type_id, "
         f"COALESCE(t.{target_cols['new_account_id']}, '') AS account_id, "
         f"CASE WHEN ({amount_count}) = 0 THEN NULL ELSE "
@@ -738,7 +746,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"CASE WHEN ({energy_count}) = 0 THEN NULL ELSE "
         f"SUM({'+'.join('COALESCE(t.' + col + ',0)' for col in quantities)}) END AS energy_kwh, "
         f"({amount_count}) AS amount_cells, ({energy_count}) AS energy_cells, COUNT(*) AS rows "
-        f"FROM {target_table} t WHERE t.{target_cols['new_year']} = %s "
+        f"FROM tr t WHERE t.rn = 1 "
         f"GROUP BY 1,2"
     )
 
@@ -781,7 +789,33 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             raise OpportunityV2Unavailable("本体 B02 电量字段未在运行时字段映射中：" + energy_field)
         energy_gwh_expr = f"SUM(m.{mc[energy_field]}) / {energy_divisor}"
         energy_rows_expr = f"COUNT(m.{mc[energy_field]})"
-    past = measured.month
+    # Ontology opportunity_rows / account_rows: one row per id, latest first.
+    opp_src = (f"(SELECT DISTINCT ON (x.{oc['opportunityid']}) x.* FROM {opp_table} x "
+               f"WHERE NULLIF(BTRIM(x.{oc['opportunityid']}::text), '') IS NOT NULL "
+               f"ORDER BY x.{oc['opportunityid']}, x.{oc['modifiedon']} DESC NULLS LAST, "
+               f"x.{oc['createdon']} DESC NULLS LAST)")
+    account_src = (f"(SELECT DISTINCT ON (y.{ac['accountid']}) y.* FROM {account_table} y "
+                   f"WHERE NULLIF(BTRIM(y.{ac['accountid']}::text), '') IS NOT NULL "
+                   f"ORDER BY y.{ac['accountid']}, y.{ac['modifiedon']} DESC NULLS LAST, "
+                   f"y.{ac['createdon']} DESC NULLS LAST)")
+    # BR-Q01 / B02 forecast_rows: within the year, the latest version of each
+    # opportunity-month, forecast amount only (no actuals), no state filter.
+    forecast_cte = (
+        f"fr AS (SELECT x.*, ROW_NUMBER() OVER (PARTITION BY x.{mc['new_opportunity_id']}, "
+        f"date_trunc('month', x.{mc['new_accountdate']}::timestamp) ORDER BY x.{mc['createdon']} DESC NULLS LAST, "
+        f"x.{mc['modifiedon']} DESC NULLS LAST, x.{mc['new_oppmonthid']} DESC NULLS LAST) AS rn "
+        f"FROM {month_table} x WHERE NULLIF(BTRIM(x.{mc['new_oppmonthid']}::text), '') IS NOT NULL "
+        f"AND NULLIF(BTRIM(x.{mc['new_opportunity_id']}::text), '') IS NOT NULL "
+        f"AND EXTRACT(YEAR FROM x.{mc['new_accountdate']})::int = %s), "
+        f"agg AS (SELECT m.{mc['new_opportunity_id']} AS opportunity_id, "
+        f"SUM(m.{mc['new_forecast_amt_rmb']}) AS amount_yuan, "
+        f"SUM(m.{mc['new_forecast_amt_rmb']}) AS forecast_amount_full_yuan, "
+        f"{energy_gwh_expr} AS energy_gwh, COUNT(*) AS month_rows, {energy_rows_expr} AS energy_rows "
+        f"FROM fr m WHERE m.rn = 1 GROUP BY 1)"
+    )
+    # Ontology cutoff is the end of the measurement day (created_at <= cutoff,
+    # an unknown creation time is kept).
+    created_ok = f"(o.{oc['createdon']} IS NULL OR o.{oc['createdon']} < (%s::date + 1))"
     # BR-Q02: an opportunity is signed when at least one order is linked to it
     # through order detail (明细.new_opportunity_id → 明细.salesorderid →
     # 订单.salesorderid).  No approval, cancel-state or date filter, and the
@@ -797,25 +831,10 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"THEN '1' ELSE '0' END)"
     )
     opp_sql = (
-        f"WITH agg AS ("
-        f" SELECT m.{mc['new_opportunity_id']} AS opportunity_id, "
-        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
-        f" THEN m.{mc['new_amt_rmb']} ELSE m.{mc['new_forecast_amt_rmb']} END) AS amount_yuan, "
-        f" SUM(m.{mc['new_forecast_amt_rmb']}) AS forecast_amount_full_yuan, "
-        f" {energy_gwh_expr} AS energy_gwh, "
-        f" COUNT(*) AS month_rows, "
-        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s THEN 1 ELSE 0 END) AS past_rows, "
-        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
-        f" AND m.{mc['new_amt_rmb']} IS NOT NULL THEN 1 ELSE 0 END) AS past_amount_rows, "
-        f" {energy_rows_expr} AS energy_rows "
-        f" FROM {month_table} m "
-        f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
-        f" AND m.{mc['statecode']} = 0 "
-        f" GROUP BY 1"
-        f") SELECT o.{oc['opportunityid']} AS opportunity_id, o.{oc['name']} AS name, "
+        f"WITH {forecast_cte} SELECT o.{oc['opportunityid']} AS opportunity_id, o.{oc['name']} AS name, "
         f" COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
         f" COALESCE(a.{ac['name']}, '') AS account_name, "
-        f" COALESCE(NULLIF(a.{ac['new_accountlevel']}::text, ''), o.{oc['new_accountlevel']}, '') AS account_level, "
+        f" COALESCE(a.{ac['new_accountlevel']}::text, '') AS account_level, "
         f" COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
         f" COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
         f" COALESCE(o.{oc['new_approvalstatus_acneed']}, '') AS acneed_status, "
@@ -827,16 +846,16 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" o.{oc['new_stage4enddate']} AS stage4_end, o.{oc['new_stage5enddate']} AS stage5_end, "
         f" COALESCE(o.{oc['ownerid']}, '') AS owner_id, agg.amount_yuan, "
         f" agg.forecast_amount_full_yuan, agg.energy_gwh, "
-        f" agg.month_rows, agg.past_rows, agg.past_amount_rows, agg.energy_rows "
-        f" FROM {opp_table} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
-        f" LEFT JOIN {account_table} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
-        f" WHERE o.{oc['createdon']} <= %s"
+        f" agg.month_rows, agg.energy_rows "
+        f" FROM {opp_src} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
+        f" LEFT JOIN {account_src} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
+        f" WHERE {created_ok}"
     )
 
     all_opp_sql = (
         f"SELECT o.{oc['opportunityid']} AS opportunity_id, o.{oc['name']} AS name, "
         f"COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
-        f"COALESCE(NULLIF(a.{ac['new_accountlevel']}::text, ''), o.{oc['new_accountlevel']}, '') AS account_level, "
+        f"COALESCE(a.{ac['new_accountlevel']}::text, '') AS account_level, "
         f"COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
         f"COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
         f"COALESCE(o.{oc['new_opportunitystatus']}, '') AS opportunity_status, "
@@ -844,30 +863,15 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"o.{oc['createdon']} AS created_at, o.{oc['new_stage1enddate']} AS stage1_end, "
         f"o.{oc['new_stage2enddate']} AS stage2_end, o.{oc['new_stage3enddate']} AS stage3_end, "
         f"o.{oc['new_stage4enddate']} AS stage4_end, o.{oc['new_stage5enddate']} AS stage5_end "
-        f"FROM {opp_table} o LEFT JOIN {account_table} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
-        f"WHERE o.{oc['createdon']} <= %s"
+        f"FROM {opp_src} o LEFT JOIN {account_src} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
+        f"WHERE {created_ok}"
     )
 
     # Full aggregate fallback for truncated detail rows.  A truncated list can
     # still be displayed, but its partial sums must never drive risk rules.
     aggregate_sql = (
-        f"WITH agg AS ("
-        f" SELECT m.{mc['new_opportunity_id']} AS opportunity_id, "
-        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
-        f" THEN m.{mc['new_amt_rmb']} ELSE m.{mc['new_forecast_amt_rmb']} END) AS amount_yuan, "
-        f" SUM(m.{mc['new_forecast_amt_rmb']}) AS forecast_amount_full_yuan, "
-        f" {energy_gwh_expr} AS energy_gwh, "
-        f" COUNT(*) AS month_rows, "
-        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s THEN 1 ELSE 0 END) AS past_rows, "
-        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
-        f" AND m.{mc['new_amt_rmb']} IS NOT NULL THEN 1 ELSE 0 END) AS past_amount_rows, "
-        f" {energy_rows_expr} AS energy_rows "
-        f" FROM {month_table} m "
-        f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
-        f" AND m.{mc['statecode']} = 0 "
-        f" GROUP BY 1"
-        f") SELECT {signed_expr} AS contract_raw, "
-        f" COALESCE(NULLIF(a.{ac['new_accountlevel']}::text, ''), o.{oc['new_accountlevel']}, '') AS account_level, "
+        f"WITH {forecast_cte} SELECT {signed_expr} AS contract_raw, "
+        f" COALESCE(a.{ac['new_accountlevel']}::text, '') AS account_level, "
         f" COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
         f" COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
         f" COALESCE(a.{ac['name']}, '') AS account_name, "
@@ -875,11 +879,10 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" COUNT(*) AS opportunity_count, "
         f" SUM(agg.amount_yuan) AS amount_yuan, SUM(agg.forecast_amount_full_yuan) AS forecast_amount_full_yuan, "
         f" SUM(agg.energy_gwh) AS energy_gwh, SUM(agg.month_rows) AS month_rows, "
-        f" SUM(agg.past_rows) AS past_rows, SUM(agg.past_amount_rows) AS past_amount_rows, "
         f" SUM(agg.energy_rows) AS energy_rows "
-        f" FROM {opp_table} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
-        f" LEFT JOIN {account_table} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
-        f" WHERE o.{oc['createdon']} <= %s "
+        f" FROM {opp_src} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
+        f" LEFT JOIN {account_src} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
+        f" WHERE {created_ok} "
         f" GROUP BY 1,2,3,4,5,6"
     )
 
@@ -909,8 +912,13 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"a.{ac[activity_fields['lastVisitDays']]} AS last_visit_days, "
         f"a.{ac[activity_fields['latestActivityAt']]} AS latest_activity_at, "
         f"a.{ac[activity_fields['originatingLeadId']]} AS originating_lead_id, "
-        f"la.latest_lead_at, lp.latest_lead_progress_at "
-        f"FROM {account_table} a "
+        f"la.latest_lead_at, lp.latest_lead_progress_at, "
+        f"COALESCE(cov.opportunity_count, 0) AS opportunity_count "
+        f"FROM {account_src} a "
+        f"LEFT JOIN (SELECT z.{oc['parentaccountid']} AS account_id, "
+        f"           COUNT(DISTINCT z.{oc['opportunityid']}) AS opportunity_count FROM {opp_table} z "
+        f"           WHERE z.{oc['parentaccountid']} IS NOT NULL GROUP BY 1) cov "
+        f"       ON cov.account_id = a.{ac['accountid']} "
         f"LEFT JOIN (SELECT l.{lead_account} AS account_id, MAX(l.{lead_created}) AS latest_lead_at "
         f"           FROM {lead_table} l WHERE l.{lead_created} <= %s AND l.{lead_account} IS NOT NULL "
         f"           GROUP BY 1) la ON la.account_id = a.{ac['accountid']} "
@@ -946,8 +954,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"OR (p.{pc['new_sdate']} IS NULL AND p.{pc['new_edate']} <= %s)"
     )
 
-    # Order counts are supporting evidence only.  Contract confirmation remains
-    # the signing decision; an order existing never proves a contract is signed.
+    # Order counts per opportunity (BR-Q02 evidence; signing itself is signed_expr).
     order_sql = (
         f"SELECT d.{detail_cols['new_opportunity_id']} AS opportunity_id, "
         f"COUNT(DISTINCT o.{order_cols['salesorderid']}) AS order_count, "
@@ -979,7 +986,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     specs = [
         ("销售目标", target_sql, [year]),
         ("产品类型", product_sql, []),
-        ("商机预测", opp_sql, [past, past, past, year, measured]),
+        ("商机预测", opp_sql, [year, measured]),
         ("全部商机", all_opp_sql, [measured]),
         ("项目进展", progress_sql, [measured, measured]),
         ("订单关联", order_sql, []),
@@ -1011,7 +1018,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         ))
     total_queries = len(specs)
     query_specs.update({label: (sql, params) for label, sql, params in specs})
-    query_specs["商机聚合"] = (aggregate_sql, [past, past, past, year, measured])
+    query_specs["商机聚合"] = (aggregate_sql, [year, measured])
     deadline = started + budget
     results = {}
     with _reader_group(database, workers=3) as (readers, parallel):
@@ -1020,8 +1027,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         if (query_status.get("商机预测") == "truncated"
                 or query_status.get("全部商机") == "truncated"):
             total_queries = max(total_queries, completed_queries + 1)
-            run_batch(readers[:1], [("商机聚合", aggregate_sql,
-                                     [past, past, past, year, measured])],
+            run_batch(readers[:1], [("商机聚合", aggregate_sql, [year, measured])],
                       False, deadline, results)
             aggregate_rows = results.get("商机聚合", [])
 
@@ -1043,7 +1049,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
 
     targets = dict(amount=None, energy=None, rows=0, amountCells=0, energyCells=0,
                    byProduct=defaultdict(lambda: dict(amount=0.0, energy=0.0, rows=0)),
-                   byAccount={})
+                   byAccount={}, byAccountProduct={})
     for row in target_rows:
         amount = _number(row.get("amount_yuan"))
         energy = _number(row.get("energy_kwh"))
@@ -1053,7 +1059,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         targets["energyCells"] += int(_number(row.get("energy_cells")) or 0)
         product_id = _text(row.get("product_type_id"))
         product = product_types.get(product_id, product_id)
-        key = product if product in {"1", "2"} else "unknown"
+        key = _product_key(product)
         if amount is not None:
             targets["amount"] = (targets["amount"] or 0.0) + amount
         if energy is not None:
@@ -1069,12 +1075,23 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             current["amount"] += amount or 0.0
             current["energy"] += energy or 0.0
             current["rows"] += rows_count
+            pair = targets["byAccountProduct"].setdefault(
+                f"{account_id}|{key}", dict(accountId=account_id, productType=key,
+                                            amount=None, energy=None))
+            if amount is not None:
+                pair["amount"] = (pair["amount"] or 0.0) + amount
+            if energy is not None:
+                pair["energy"] = (pair["energy"] or 0.0) + energy
     targets["amount"] = (round(targets["amount"] / 100_000_000.0, 6)
                          if targets["amount"] is not None else None)
     targets["energy"] = round(targets["energy"], 6) if targets["energy"] is not None else None
     for bucket in list(targets["byProduct"].values()) + list(targets["byAccount"].values()):
         bucket["amount"] = round((bucket.get("amount") or 0.0) / 100_000_000.0, 6)
         bucket["energy"] = round(bucket.get("energy") or 0.0, 6)
+    for pair in targets["byAccountProduct"].values():
+        pair["amount"] = (round(pair["amount"] / 100_000_000.0, 6)
+                          if pair["amount"] is not None else None)
+        pair["energy"] = round(pair["energy"], 6) if pair["energy"] is not None else None
 
     orders = {_text(row.get("opportunity_id")): dict(
         count=int(_number(row.get("order_count")) or 0),
@@ -1092,7 +1109,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
                       "not_confirmed" if contract_raw == "0" else "unknown"),
             tier=_customer_tier(level, config),
             accountLevel=level,
-            productType=product if product in {"1", "2"} else "unknown",
+            productType=_product_key(product),
             accountId=_text(row.get("account_id")),
             accountName=_text(row.get("account_name")),
             stage=_text(row.get("process_stage")),
@@ -1103,8 +1120,6 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
                         if row.get("forecast_amount_full_yuan") is not None else None),
             energy=_round(row.get("energy_gwh"), 6),
             monthRows=int(_number(row.get("month_rows")) or 0),
-            pastRows=int(_number(row.get("past_rows")) or 0),
-            pastAmountRows=int(_number(row.get("past_amount_rows")) or 0),
             energyRows=int(_number(row.get("energy_rows")) or 0),
         ))
 
@@ -1120,8 +1135,6 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         product = _text(row.get("product_type"))
         stage = _text(row.get("process_stage"))
         month_rows = int(_number(row.get("month_rows")) or 0)
-        past_rows = int(_number(row.get("past_rows")) or 0)
-        past_amount_rows = int(_number(row.get("past_amount_rows")) or 0)
         energy_rows = int(_number(row.get("energy_rows")) or 0)
         opportunities.append(dict(
             id=opp_id,
@@ -1130,8 +1143,8 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             accountName=_text(row.get("account_name")),
             accountLevel=level,
             tier=tier,
-            productType=product if product in {"1", "2"} else "unknown",
-            productName=_product_name(product, config),
+            productType=_product_key(product),
+            productName=_product_name(_product_key(product), config),
             stage=stage,
             stageName=_stage_name(stage, config),
             acneed=_text(row.get("acneed_status")),
@@ -1148,10 +1161,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             forecastAmount=_round((_number(row.get("amount_yuan")) or 0.0) / 100_000_000.0, 6) if row.get("amount_yuan") is not None else None,
             forecastAmountFull=_round((_number(row.get("forecast_amount_full_yuan")) or 0.0) / 100_000_000.0, 6) if row.get("forecast_amount_full_yuan") is not None else None,
             forecastEnergy=_round(row.get("energy_gwh"), 6),
-            amountCoverage=_div(past_amount_rows, past_rows) if past_rows else None,
             energyCoverage=_div(energy_rows, month_rows) if month_rows else None,
-            pastRows=past_rows,
-            pastAmountRows=past_amount_rows,
             monthRows=month_rows,
             energyRows=energy_rows,
             orderCount=orders.get(opp_id, {}).get("count", 0),
@@ -1205,6 +1215,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         originatingLeadId=_text(row.get("originating_lead_id")),
         latestLeadAt=_iso(_day(row.get("latest_lead_at"))),
         latestLeadProgressAt=_iso(_day(row.get("latest_lead_progress_at"))),
+        opportunityCount=int(_number(row.get("opportunity_count")) or 0),
     ) for row in account_rows if _text(row.get("account_id"))]
 
     all_opportunities = []
@@ -1220,7 +1231,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             accountId=_text(row.get("account_id")),
             accountLevel=level,
             tier=_customer_tier(level, config),
-            productType=_text(row.get("product_type")) if _text(row.get("product_type")) in {"1", "2"} else "unknown",
+            productType=_product_key(row.get("product_type")),
             stage=_text(row.get("process_stage")),
             status=_text(row.get("opportunity_status")),
             contract=("confirmed" if contract_raw == "1" else
@@ -1284,28 +1295,31 @@ def _avg(values):
     return sum(found) / len(found) if found else None
 
 
+def _product_key(value):
+    """Ontology product mapping: '1'/'电芯' → 1, '2'/'PACK' → 2, else unknown."""
+    text = _text(value)
+    return "1" if text in {"1", "电芯"} else "2" if text in {"2", "PACK"} else "unknown"
+
+
+def _stage_elapsed(start, finish, measured):
+    """Ontology stage_facts: an unfinished stage, or one finishing after the
+    cutoff, runs to the cutoff; inverted dates are invalid (None)."""
+    if not start or start > measured:
+        return None
+    end = finish if finish and finish <= measured else measured
+    if finish and finish < start:
+        return None
+    return (end - start).days
+
+
 def _p0_cycle(opp, measured):
-    created = _day(opp.get("createdAt"))
-    if not created or created > measured:
-        return None
-    end = _day(opp.get("stage1End"))
-    if opp.get("stage") == "11":
-        end = measured
-    if not end or end < created:
-        return None
-    return (end - created).days
+    # P0 = createdon → new_stage1enddate (ontology P0-01).
+    return _stage_elapsed(_day(opp.get("createdAt")), _day(opp.get("stage1End")), measured)
 
 
 def _p2_cycle(opp, measured):
-    start = _day(opp.get("stage2End"))
-    if not start:
-        return None
-    end = _day(opp.get("stage3End"))
-    if not end and opp.get("stage") == "13":
-        end = measured
-    if not end or end < start:
-        return None
-    return (end - start).days
+    # P2 = new_stage2enddate → new_stage3enddate (ontology P2-01).
+    return _stage_elapsed(_day(opp.get("stage2End")), _day(opp.get("stage3End")), measured)
 
 
 def _tier_label(tier):
@@ -1548,23 +1562,6 @@ def evaluate(data, config=None, measured=None):
         evidence_refs.append(dict(id=record_id))
         return record_id
 
-    # Formal-order amount is empty for most elapsed months.  Missing formal
-    # amounts stay missing: the full-period forecast is disclosed separately
-    # and never silently replaces the B02 rule input.
-    if aggregate_ready:
-        past_rows = int(sum(int(row.get("pastRows") or 0) for row in aggregates))
-        past_amount_rows = int(sum(int(row.get("pastAmountRows") or 0) for row in aggregates))
-    elif aggregate_mode:
-        past_rows = past_amount_rows = 0
-    else:
-        past_rows = sum(int(opp.get("pastRows") or 0) for opp in opps)
-        past_amount_rows = sum(int(opp.get("pastAmountRows") or 0) for opp in opps)
-    amount_coverage = (_div(past_amount_rows, past_rows) if past_rows else
-                       None if aggregate_mode and not aggregate_ready else 1.0)
-    amount_basis = ("formal_order_actualized_incomplete"
-                    if amount_coverage is not None and past_rows and amount_coverage < 0.80
-                    else "formal_order_actualized")
-
     target_amount = _number(target.get("amount"))
     target_energy = _number(target.get("energy"))
     target_source = "customer PostgreSQL · ded_public"
@@ -1739,47 +1736,55 @@ def evaluate(data, config=None, measured=None):
                         if product_sign_progress_energy is not None else None),
         )
 
-    # Customer-level targets and forecasts.  Target rows stay row-level sums;
-    # no unverified customer/product DISTINCT is applied.
-    by_account = defaultdict(lambda: dict(target_amount=0.0, target_energy=0.0, forecast_amount=0.0,
-                                          forecast_energy=0.0, opps=[], account_name="",
-                                          tier="unknown", opportunity_count=0))
-    for account_id, bucket in (target.get("byAccount") or {}).items():
-        by_account[account_id]["target_amount"] += _number(bucket.get("amount")) or 0.0
-        by_account[account_id]["target_energy"] += _number(bucket.get("energy")) or 0.0
+    # R08 (ontology customer_gaps): target and forecast are paired per customer
+    # and product type (电芯 / PACK / 其他).  A side that is missing leaves that
+    # pair's gap empty; it is never read as zero.  BR-A06 needs an opportunity
+    # forecast for the pair and a gap > 0.
+    forecast_pairs = {}
     if aggregate_ready:
-        for row in aggregates:
-            bucket = by_account[row.get("accountId") or ""]
-            bucket["forecast_amount"] += _number(row.get("amount")) or 0.0
-            bucket["forecast_energy"] += _number(row.get("energy")) or 0.0
-            bucket["opportunity_count"] += int(row.get("count") or 0)
-            if not bucket["account_name"]:
-                bucket["account_name"] = row.get("accountName") or ""
-            if bucket["tier"] == "unknown":
-                bucket["tier"] = row.get("tier") or "unknown"
+        forecast_source_rows = [dict(accountId=row.get("accountId"), productType=row.get("productType"),
+                                     amount=row.get("amount"), energy=row.get("energy"),
+                                     accountName=row.get("accountName"), tier=row.get("tier"),
+                                     count=int(row.get("count") or 0)) for row in aggregates]
     elif aggregate_mode:
-        pass
+        forecast_source_rows = []
     else:
-        for opp in opps:
-            bucket = by_account[opp.get("accountId") or ""]
-            bucket["forecast_amount"] += _number(opp.get("forecastAmount")) or 0.0
-            bucket["forecast_energy"] += _number(opp.get("forecastEnergy")) or 0.0
-            bucket["opps"].append(opp)
-            if not bucket["account_name"]:
-                bucket["account_name"] = opp.get("accountName") or ""
-            if bucket["tier"] == "unknown":
-                bucket["tier"] = opp.get("tier") or "unknown"
+        forecast_source_rows = [dict(accountId=opp.get("accountId"), productType=opp.get("productType"),
+                                     amount=opp.get("forecastAmount"), energy=opp.get("forecastEnergy"),
+                                     accountName=opp.get("accountName"), tier=opp.get("tier"), count=1)
+                                for opp in opps if (opp.get("monthRows") or opp.get("forecastAmount") is not None
+                                                    or opp.get("forecastEnergy") is not None)]
+    for row in forecast_source_rows:
+        account_id = row.get("accountId") or ""
+        if not account_id:
+            continue
+        pair = forecast_pairs.setdefault((account_id, row.get("productType") or "unknown"), dict(
+            amount=None, energy=None, count=0, accountName="", tier="unknown"))
+        if _number(row.get("amount")) is not None:
+            pair["amount"] = (pair["amount"] or 0.0) + _number(row.get("amount"))
+        if _number(row.get("energy")) is not None:
+            pair["energy"] = (pair["energy"] or 0.0) + _number(row.get("energy"))
+        pair["count"] += row.get("count") or 0
+        pair["accountName"] = pair["accountName"] or row.get("accountName") or ""
+        if pair["tier"] == "unknown":
+            pair["tier"] = row.get("tier") or "unknown"
+    target_pairs = {(item.get("accountId"), item.get("productType") or "unknown"): item
+                    for item in (target.get("byAccountProduct") or {}).values()
+                    if isinstance(item, dict) and item.get("accountId")}
     customer_gaps = []
-    for account_id, bucket in by_account.items() if not (aggregate_mode and not aggregate_ready) else ():
-        amount_gap = bucket["target_amount"] - bucket["forecast_amount"]
-        energy_gap = bucket["target_energy"] - bucket["forecast_energy"]
-        if amount_gap > 0 or energy_gap > 0:
-            sample = bucket["opps"][0] if bucket["opps"] else {}
-            customer_gaps.append(dict(accountId=account_id,
-                                      accountName=bucket["account_name"] or sample.get("accountName", ""),
-                                      tier=bucket["tier"] or sample.get("tier", "unknown"), amount=amount_gap,
-                                      energy=energy_gap,
-                                      count=bucket["opportunity_count"] or len(bucket["opps"])))
+    for key in sorted(set(target_pairs) & set(forecast_pairs)):
+        goal, forecast = target_pairs[key], forecast_pairs[key]
+        amount_gap = (_number(goal.get("amount")) - forecast["amount"]
+                      if _number(goal.get("amount")) is not None and forecast["amount"] is not None else None)
+        energy_gap = (_number(goal.get("energy")) - forecast["energy"]
+                      if _number(goal.get("energy")) is not None and forecast["energy"] is not None else None)
+        if (amount_gap or 0) > 0 or (energy_gap or 0) > 0:
+            account_id, product = key
+            customer_gaps.append(dict(accountId=account_id, productType=product,
+                                      productName=_product_name(product, config),
+                                      accountName=forecast["accountName"], tier=forecast["tier"],
+                                      amount=amount_gap, energy=energy_gap, count=forecast["count"]))
+    gap_accounts = {gap["accountId"] for gap in customer_gaps}
 
     # Bid names are matched exactly after trimming.  Duplicate names are
     # ambiguous and never become "not bidding".
@@ -1806,18 +1811,6 @@ def evaluate(data, config=None, measured=None):
             opp["bidId"] = ""
 
     strategic_accounts = {account["id"]: account for account in accounts if account.get("tier") == "strategic"}
-    # R09/M0257 scopes the customer fact by its own creation timestamp inside
-    # the analysis period.  Do not use the whole customer master: that turns a
-    # period metric into "all strategic accounts ever created".
-    period_start = date(measured.year, 1, 1)
-    period_end = date(measured.year + 1, 1, 1)
-    scoped_strategic = {}
-    for account_id, account in strategic_accounts.items():
-        created = _day(account.get("createdAt"))
-        # Missing creation time is unknown, not evidence that the customer is
-        # outside this period; keep it and let the limitation show coverage.
-        if not created or period_start <= created < period_end:
-            scoped_strategic[account_id] = account
     active_by_account = defaultdict(list)
     all_by_account = defaultdict(list)
     for opp in all_opps:
@@ -1826,12 +1819,19 @@ def evaluate(data, config=None, measured=None):
         if opp.get("status") == "0":
             active_by_account[account_id].append(opp)
     complete_opportunity_scope = all_opps_complete and accounts_complete
-    never_opportunity = [account for account_id, account in scoped_strategic.items()
-                         if complete_opportunity_scope and not all_by_account.get(account_id)]
-    inactive_opportunity = [account for account_id, account in scoped_strategic.items()
-                            if complete_opportunity_scope and all_by_account.get(account_id)
-                            and not active_by_account.get(account_id)]
-    no_opportunity = never_opportunity + inactive_opportunity
+
+    # R09 (ontology customer_coverage): a strategic customer counts when no
+    # opportunity at all is linked to it, whatever the customer's or the
+    # opportunities' creation year, state or approval.  The customer query
+    # carries that count; older inputs without it fall back to the fetched
+    # opportunity list.
+    def linked_count(account_id, account):
+        if "opportunityCount" in account:
+            return int(account.get("opportunityCount") or 0)
+        return len(all_by_account.get(account_id) or [])
+
+    no_opportunity = [account for account_id, account in strategic_accounts.items()
+                      if accounts_complete and linked_count(account_id, account) == 0]
     no_bidding = []
     for account_id, account in strategic_accounts.items():
         if not complete_opportunity_scope:
@@ -1915,21 +1915,12 @@ def evaluate(data, config=None, measured=None):
                    "同年度、组织和产品范围的销售额目标", source=target_source)
     f_b01_e = fact("B01-ENERGY", "年度销售目标（电量）", target_energy, "GWh",
                    "同年度、组织和产品范围的电量目标", source=target_source)
-    amount_basis_label = (
-        "已历月份正式订单金额+当月及以后预测金额"
-        if amount_basis == "formal_order_actualized"
-        else "已历月份正式订单金额（覆盖不足，缺失部分不补预测）；全期间预测仅作参考"
-    )
     f_b02_a = fact("B02-AMOUNT", "商机总预测（金额）", total_amount, "亿元",
-                   amount_basis_label + "；月度预测有效（不限定审核状态）", source=forecast_source)
+                   "BR-Q01：所选年度同商机同月取最新一版，只用预测金额 new_forecast_amt_rmb，"
+                   "不混入已历月份实绩；不限定审核或业务状态", source=forecast_source)
     f_b02_e = fact("B02-ENERGY", "商机总预测（电量）", total_energy, "GWh",
                    "预测金额 ÷ new_whprice（元/Wh）÷ 10^9；本体 BR-Q01，new_forcastpower 实库为空",
                    source=forecast_source)
-    full_forecast_amount = (aggregate_measure("amountFull") if aggregate_ready else
-                            None if aggregate_mode else
-                            _sum(opp.get("forecastAmountFull") for opp in opps))
-    f_b02_full = fact("B02-AMOUNT-FULL", "商机全期间预测（金额，仅参考）", full_forecast_amount, "亿元",
-                      "同口径全期间预测金额；不替代正式金额口径，不参与风险规则")
     gap_source = target_source if target_source == forecast_source else f"derived（{target_source} / {forecast_source}）"
     f_r01_a = fact("R01-AMOUNT", "商机预测缺口（金额）", gap_amount, "亿元", "B01 − B02，金额单独计算", source=gap_source)
     f_r01_e = fact("R01-ENERGY", "商机预测缺口（电量）", gap_energy, "GWh", "B01 − B02，电量单独计算", source=gap_source)
@@ -1952,7 +1943,8 @@ def evaluate(data, config=None, measured=None):
     f_r05_e = fact("R05-ENERGY", "电芯类未签单预测（电量）", products["1"]["pending_energy"], "GWh")
     f_r06_a = fact("R06-AMOUNT", "PACK 类未签单预测（金额）", products["2"]["pending_amount"], "亿元")
     f_r06_e = fact("R06-ENERGY", "PACK 类未签单预测（电量）", products["2"]["pending_energy"], "GWh")
-    f_r08 = fact("R08", "客户预测缺口客户数", len(customer_gaps), "家", "客户目标 − 客户商机预测；金额或电量缺口大于 0")
+    f_r08 = fact("R08", "客户预测缺口客户数", len(gap_accounts), "家",
+                 "按客户＋产品类型分别计算目标 − 商机预测；任一侧缺值不计缺口；金额或电量缺口大于 0")
     supplement_r09 = (_number((supplement.get("R09") or {}).get("count"))
                       if strategic_ok and isinstance(supplement.get("R09"), dict) else None)
     if strategic_ok:
@@ -1965,7 +1957,8 @@ def evaluate(data, config=None, measured=None):
         no_opportunity_count = None
         r09_source = "本体未提供战略客户名单"
     f_r09 = fact("R09", "无商机战略客户数", no_opportunity_count, "家",
-                 "战略客户名单内无任何商机；区分从未建立与历史有但当前无在推", source=r09_source)
+                 "战略客户中关联商机数为 0 的客户（客户.accountid = 商机.parentaccountid）；"
+                 "不按创建年份、审批或业务状态筛选", source=r09_source)
     f_r10 = fact("R10", "有商机未投标战略客户数",
                  len(no_bidding) if strategic_ok else None, "家",
                  "全部商机均未进入投标；同名歧义不判未投标" if strategic_ok
@@ -1978,8 +1971,6 @@ def evaluate(data, config=None, measured=None):
     f_p2 = fact("P2-01", "方案推动阶段平均周期", overall_p2, "天", "阶段三结束或测量日 − 阶段二结束；按电芯/PACK 分别计算")
     f_rk10 = fact("P0-02", "商机获取阶段超期商机数", len(late_p0), "条", "单笔周期严格大于同阶段同产品动态均值 × 1.5")
     f_bid_amb = fact("BID-AMBIGUOUS", "投标同名歧义项目数", len(ambiguous_bid_names), "个", "同名多条投标记录；不据此判断未投标")
-    f_cov = fact("COVERAGE-AMOUNT", "正式订单金额覆盖率", amount_coverage * 100 if amount_coverage is not None else None, "%", "已历月份正式订单金额非空的月度预测行占比")
-    fact("B02-AMOUNT-BASIS", "金额预测口径", 0, "", f"amountBasis={amount_basis}")
 
     risks = []
     top_opps = lambda values, limit=8: [record(
@@ -2078,7 +2069,7 @@ def evaluate(data, config=None, measured=None):
         level = "高" if any(gap.get("tier") == "strategic" for gap in customer_gaps) else "中"
         amount_total = _sum(gap.get("amount") for gap in customer_gaps)
         energy_total = _sum(gap.get("energy") for gap in customer_gaps)
-        parts = [f"{len(customer_gaps)} 家客户的目标高于商机预测"]
+        parts = [f"{len(gap_accounts)} 家客户（{len(customer_gaps)} 个客户×产品组合）的目标高于商机预测"]
         if amount_total:
             parts.append(f"金额缺口合计 {amount_total:.2f} 亿元")
         if energy_total:
@@ -2087,23 +2078,24 @@ def evaluate(data, config=None, measured=None):
         for gap in customer_gaps[:8]:
             account_id = gap.get("accountId")
             if account_id:
-                evidence.append(record(f"opp-v2:account:{account_id}", customer=gap.get("accountName"),
+                evidence.append(record(f"opp-v2:account:{account_id}:{gap.get('productType')}",
+                                       customer=gap.get("accountName"), product=gap.get("productName"),
                                        amount=_round(gap.get("amount"), 4),
                                        quantity=_round(gap.get("energy"), 4),
                                        unit="亿元/GWh", value=account_id, name=gap.get("accountName")))
         risks.append(_risk("RK06", "客户预测不足", level, "RK06 客户预测不足",
                            "，".join(parts) + "。", ["RK06", "R08"], evidence,
                            dict(amount=_round(amount_total, 4), energy=_round(energy_total, 4),
-                                count=len(customer_gaps)), []))
+                                count=len(gap_accounts)), []))
 
     # RK07
     if no_opportunity or (not accounts and no_opportunity_count):
         evidence = [f_r09]
         for account in no_opportunity[:10]:
             evidence.append(record(f"opp-v2:account:{account.get('id')}", customer=account.get("name"),
-                                   status="从未建立商机" if any(account is item for item in never_opportunity) else "历史有商机、当前无在推商机",
+                                   status="无关联商机",
                                    value=account.get("id"), name=account.get("name")))
-        description = (f"战略客户名单中有 {no_opportunity_count} 家无商机，其中 {len(never_opportunity)} 家从未建立商机、{len(inactive_opportunity)} 家历史有商机但当前无在推。"
+        description = (f"战略客户中有 {no_opportunity_count} 家没有任何关联商机。"
                        if accounts else f"AP 补充口径显示有 {no_opportunity_count} 家无商机战略客户；客户明细未取得，不能归因。")
         risks.append(_risk("RK07", "战略客户待突破（无商机）", "高", "RK07 战略客户待突破（无商机）",
                            description, ["RK07", "R09"], evidence, dict(count=no_opportunity_count), []))
@@ -2646,7 +2638,7 @@ def evaluate(data, config=None, measured=None):
     caliber_notes.extend([
         "签单按本体 BR-Q02 判断：商机经订单明细关联到订单即已签单，否则未签单。",
         "签单进度按已签单覆盖率计算（已签单商机预测 ÷ 目标）；签单状态未知不计入已签或未签，也不单独触发进度滞后。",
-        "目标表按行求和，未按客户或产品去重；目标表缺少经验证的业务唯一键。",
+        "目标按本体 B01：同一商机（商机为空时按目标 ID）同一年度只取最新一条，再按客户、产品汇总。",
         f"预测电量按本体 B02 使用 {energy_field}"
         + ("（预测金额 ÷ 瓦时单价）" if _text(energy_cfg.get("mode")) == "amount_div_price" else f"（{energy_unit}）")
         + f"换算 {energy_cfg.get('outputUnit') or 'GWh'}。",
@@ -2661,10 +2653,6 @@ def evaluate(data, config=None, measured=None):
         data_issues.append(
             f"{unknown_contract_count} 条商机签单状态未知，涉及预测金额 {unknown_amount or 0:.2f} 亿元、"
             f"电量 {unknown_energy or 0:.2f} GWh；未知单列，既不计入明确未确认，也不视为已签。")
-    if (total_amount is not None and amount_coverage is not None and amount_coverage < 0.8):
-        data_issues.append(
-            f"正式订单金额覆盖率 {amount_coverage * 100:.1f}%，缺失的正式金额未补成预测金额；"
-            "全期间预测金额仅作参考，不替代 B02 参与规则。")
     limitations.extend(data_issues)
     limitations.extend(caliber_notes)
 
@@ -2803,8 +2791,8 @@ def evaluate(data, config=None, measured=None):
         R04=dict(count=focus_count, amount=focus_amount, energy=focus_energy),
         R05=dict(amount=products["1"]["pending_amount"], energy=products["1"]["pending_energy"]),
         R06=dict(amount=products["2"]["pending_amount"], energy=products["2"]["pending_energy"]),
-        R08=dict(count=len(customer_gaps)),
-        R09=dict(count=no_opportunity_count, never=len(never_opportunity), inactive=len(inactive_opportunity)),
+        R08=dict(count=len(gap_accounts), pairs=len(customer_gaps)),
+        R09=dict(count=no_opportunity_count),
         R10=dict(count=len(no_bidding)),
         R11=dict(count=len(in_progress_bids)),
         S03=bid_average, P0=overall_p0, P2=overall_p2,
