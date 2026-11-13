@@ -516,7 +516,7 @@ export function createStageRiskComponent(options = {}) {
             <div v-if="causeSummary" class="stage-risk-analysis__summary" :title="causeSummary"><number-text :text="causeSummary" /></div>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
-              <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——<number-text :text="dimension.description" />
+              <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ dimension.missingEvidence.join('；') }}</small>
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
                 <details v-if="traces[dimension.id] && (traces[dimension.id].rules.length || traces[dimension.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ evidenceFor(dimension).length }} 条证据</summary>
@@ -626,7 +626,7 @@ export function createStageRiskComponent(options = {}) {
             </details>
             <details v-if="judgementGroups.length" class="stage-risk-analysis__foot stage-risk-analysis__judgement">
               <summary>本体判定明细：<template v-for="(group, index) in judgementGroups" :key="'sum-' + group.kind"><template v-if="index">，</template>{{ group.title }}命中 {{ group.hit }}/{{ group.items.length }}</template></summary>
-              <div class="stage-risk-analysis__judgement-head">先由规则函数判定；规则无法判定的条目逐条交给模型，失败的条目跳过。</div>
+              <div class="stage-risk-analysis__judgement-head">先由规则函数判定；规则无法判定的条目逐条交给模型，失败的条目跳过；成立风险若没有命中任何本体根因，再由模型依据本轮数据推理根因。</div>
               <div v-for="group in judgementGroups" :key="group.kind" class="stage-risk-analysis__judgement-group">
                 <div class="stage-risk-analysis__judgement-title">{{ group.title }}：命中 {{ group.hit }} / 共 {{ group.items.length }}</div>
                 <div v-for="item in group.items" :key="group.kind + item.code"

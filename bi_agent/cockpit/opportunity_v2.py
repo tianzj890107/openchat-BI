@@ -38,7 +38,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-3"
+RULES_VERSION = "opportunity-v3-rules-4"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -423,7 +423,7 @@ _QUERY_AGGREGATION_NOTES = {
     "客户": "客户等级 1 为战略客户、2 为重点客户；0/3/4 归一般客户（本体 DR04~DR06），用于 R09/R10 客户覆盖判断。",
     "投标": "投标项目按输入时间不晚于观察时点过滤；同名多版本不擅自取最新，按样本记录标记。",
     "项目进展": "按商机取进展记录，用于原因文本证据；不做数值汇总。",
-    "订单关联": "订单 statecode=0 且非取消；按订单明细关联商机，只作签单佐证，不替代合同确认字段。",
+    "订单关联": "BR-Q02：按订单明细关联商机，去重订单数 ≥ 1 为已签单；不限定审批、取消状态或订单日期。",
     "产品团队": "团队成员关系按商机归属去重；同一人属于多团队时不强行合并。",
     "商机聚合": "明细行被截断时用于恢复全量聚合；仅参与规则计算，不在明细表展示。",
 }
@@ -782,6 +782,20 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         energy_gwh_expr = f"SUM(m.{mc[energy_field]}) / {energy_divisor}"
         energy_rows_expr = f"COUNT(m.{mc[energy_field]})"
     past = measured.month
+    # BR-Q02: an opportunity is signed when at least one order is linked to it
+    # through order detail (明细.new_opportunity_id → 明细.salesorderid →
+    # 订单.salesorderid).  No approval, cancel-state or date filter, and the
+    # contract-confirmation enum is not used.
+    order_table = _table(config, "LE07")
+    detail_table = _table(config, "LE08")
+    order_cols = _columns(config, "LE07")
+    detail_cols = _columns(config, "LE08")
+    signed_expr = (
+        f"(CASE WHEN EXISTS (SELECT 1 FROM {detail_table} sd "
+        f"JOIN {order_table} so ON so.{order_cols['salesorderid']} = sd.{detail_cols['salesorderid']} "
+        f"WHERE sd.{detail_cols['new_opportunity_id']} = o.{oc['opportunityid']}) "
+        f"THEN '1' ELSE '0' END)"
+    )
     opp_sql = (
         f"WITH agg AS ("
         f" SELECT m.{mc['new_opportunity_id']} AS opportunity_id, "
@@ -806,7 +820,8 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
         f" COALESCE(o.{oc['new_approvalstatus_acneed']}, '') AS acneed_status, "
         f" COALESCE(o.{oc['new_opportunitystatus']}, '') AS opportunity_status, "
-        f" o.{oc['new_contractconfirmation']} AS contract_confirmation, "
+        f" {signed_expr} AS contract_confirmation, "
+        f" COALESCE(o.{oc['new_demandinput']}::text, '') AS demand_input, "
         f" o.{oc['createdon']} AS created_at, o.{oc['new_stage1enddate']} AS stage1_end, "
         f" o.{oc['new_stage2enddate']} AS stage2_end, o.{oc['new_stage3enddate']} AS stage3_end, "
         f" o.{oc['new_stage4enddate']} AS stage4_end, o.{oc['new_stage5enddate']} AS stage5_end, "
@@ -825,7 +840,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
         f"COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
         f"COALESCE(o.{oc['new_opportunitystatus']}, '') AS opportunity_status, "
-        f"o.{oc['new_contractconfirmation']} AS contract_confirmation, "
+        f"{signed_expr} AS contract_confirmation, "
         f"o.{oc['createdon']} AS created_at, o.{oc['new_stage1enddate']} AS stage1_end, "
         f"o.{oc['new_stage2enddate']} AS stage2_end, o.{oc['new_stage3enddate']} AS stage3_end, "
         f"o.{oc['new_stage4enddate']} AS stage4_end, o.{oc['new_stage5enddate']} AS stage5_end "
@@ -851,7 +866,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
         f" AND m.{mc['statecode']} = 0 AND m.{mc['new_approvalstatus']} = 3 "
         f" GROUP BY 1"
-        f") SELECT COALESCE(o.{oc['new_contractconfirmation']}::text, '') AS contract_raw, "
+        f") SELECT {signed_expr} AS contract_raw, "
         f" COALESCE(NULLIF(a.{ac['new_accountlevel']}::text, ''), o.{oc['new_accountlevel']}, '') AS account_level, "
         f" COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
         f" COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
@@ -933,16 +948,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
 
     # Order counts are supporting evidence only.  Contract confirmation remains
     # the signing decision; an order existing never proves a contract is signed.
-    order_table = _table(config, "LE07")
-    detail_table = _table(config, "LE08")
-    order_cols = _columns(config, "LE07")
-    detail_cols = _columns(config, "LE08")
     order_sql = (
         f"SELECT d.{detail_cols['new_opportunity_id']} AS opportunity_id, "
         f"COUNT(DISTINCT o.{order_cols['salesorderid']}) AS order_count, "
         f"SUM(o.{order_cols['new_contract_amt']}) AS order_amount "
         f"FROM {detail_table} d JOIN {order_table} o ON o.{order_cols['salesorderid']} = d.{detail_cols['salesorderid']} "
-        f"WHERE d.{detail_cols['new_opportunity_id']} IS NOT NULL AND o.{order_cols['statecode']} = 0 "
+        f"WHERE d.{detail_cols['new_opportunity_id']} IS NOT NULL "
         f"GROUP BY 1"
     )
 
@@ -1123,6 +1134,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             stage=stage,
             stageName=_stage_name(stage, config),
             acneed=_text(row.get("acneed_status")),
+            demandInput=_text(row.get("demand_input")),
             status=_text(row.get("opportunity_status")),
             contract=contract,
             contractRaw=contract_raw,
@@ -1335,9 +1347,9 @@ def _cause_rule_outcomes(*, candidates, data, thresholds, source_ok, unsigned, o
 
     out = {}
     opportunities_ok = source_ok("商机预测") or bool(opps)
-    out["RC01"] = (outcome("RC01", "triggered", reason="存在合同未确认、需求审核未通过的战略客户 P0 商机")
+    out["RC01"] = (outcome("RC01", "triggered", reason="存在未签单的战略客户 P0 商机")
                    if "RC01" in candidates else
-                   outcome("RC01", "not_triggered", reason="没有需求审核未通过的战略客户 P0 合同未确认商机")
+                   outcome("RC01", "not_triggered", reason="没有未签单的战略客户 P0 商机")
                    if opportunities_ok else
                    outcome("RC01", "insufficient", reason="商机数据未取到", missing=["商机预测"]))
     if not strategic_pending:
@@ -1922,23 +1934,23 @@ def evaluate(data, config=None, measured=None):
     f_r01_e = fact("R01-ENERGY", "商机预测缺口（电量）", gap_energy, "GWh", "B01 − B02，电量单独计算", source=gap_source)
     f_gap_rate_a = fact("R01-RATE-AMOUNT", "商机预测缺口率（金额）", gap_rate_amount * 100 if gap_rate_amount is not None else None, "%")
     f_gap_rate_e = fact("R01-RATE-ENERGY", "商机预测缺口率（电量）", gap_rate_energy * 100 if gap_rate_energy is not None else None, "%")
-    f_r02_a = fact("R02-AMOUNT", "明确合同未确认商机预测（金额）", unsigned_amount, "亿元", "仅 new_contractconfirmation=0；状态未知单列，不混入待签")
-    f_r02_e = fact("R02-ENERGY", "明确合同未确认商机预测（电量）", unsigned_energy, "GWh", "仅 new_contractconfirmation=0；状态未知单列，不混入待签")
-    f_r02_unknown_a = fact("R02-UNKNOWN-AMOUNT", "合同状态未知商机预测（金额）", unknown_amount, "亿元", "new_contractconfirmation 为空或其他值；既不算已签也不算明确未签")
-    f_r02_unknown_e = fact("R02-UNKNOWN-ENERGY", "合同状态未知商机预测（电量）", unknown_energy, "GWh", "new_contractconfirmation 为空或其他值；既不算已签也不算明确未签")
-    f_r02_confirmed_a = fact("R02-CONFIRMED-AMOUNT", "已确认合同商机预测（金额）", confirmed_amount, "亿元", "仅 new_contractconfirmation=1")
-    f_r02_confirmed_e = fact("R02-CONFIRMED-ENERGY", "已确认合同商机预测（电量）", confirmed_energy, "GWh", "仅 new_contractconfirmation=1")
-    f_r03 = fact("R03-LAG", "已确认签订覆盖率落后时间进度（金额）", lag_amount, "百分点",
-                 "已确认签订覆盖率 = 合同已确认商机预测金额 ÷ 目标金额；合同状态未知不计入已签或未签")
-    f_r03_e = fact("R03-LAG-ENERGY", "已确认签订覆盖率落后时间进度（电量）", lag_energy, "百分点",
-                   "已确认签订覆盖率 = 合同已确认商机预测电量 ÷ 目标电量；合同状态未知不计入已签或未签")
-    f_r04_count = fact("R04-COUNT", "重点跟踪合同未确认商机数", focus_count, "条")
-    f_r04_a = fact("R04-AMOUNT", "重点跟踪合同未确认预测（金额）", focus_amount, "亿元")
-    f_r04_e = fact("R04-ENERGY", "重点跟踪合同未确认预测（电量）", focus_energy, "GWh")
-    f_r05_a = fact("R05-AMOUNT", "电芯类合同未确认预测（金额）", products["1"]["pending_amount"], "亿元")
-    f_r05_e = fact("R05-ENERGY", "电芯类合同未确认预测（电量）", products["1"]["pending_energy"], "GWh")
-    f_r06_a = fact("R06-AMOUNT", "PACK 类合同未确认预测（金额）", products["2"]["pending_amount"], "亿元")
-    f_r06_e = fact("R06-ENERGY", "PACK 类合同未确认预测（电量）", products["2"]["pending_energy"], "GWh")
+    f_r02_a = fact("R02-AMOUNT", "明确未签单商机预测（金额）", unsigned_amount, "亿元", "BR-Q02：未关联到订单")
+    f_r02_e = fact("R02-ENERGY", "明确未签单商机预测（电量）", unsigned_energy, "GWh", "BR-Q02：未关联到订单")
+    f_r02_unknown_a = fact("R02-UNKNOWN-AMOUNT", "签单状态未知商机预测（金额）", unknown_amount, "亿元", "签单状态无法判定")
+    f_r02_unknown_e = fact("R02-UNKNOWN-ENERGY", "签单状态未知商机预测（电量）", unknown_energy, "GWh", "签单状态无法判定")
+    f_r02_confirmed_a = fact("R02-CONFIRMED-AMOUNT", "已签单商机预测（金额）", confirmed_amount, "亿元", "BR-Q02：已关联至少 1 张订单")
+    f_r02_confirmed_e = fact("R02-CONFIRMED-ENERGY", "已签单商机预测（电量）", confirmed_energy, "GWh", "BR-Q02：已关联至少 1 张订单")
+    f_r03 = fact("R03-LAG", "已签单覆盖率落后时间进度（金额）", lag_amount, "百分点",
+                 "已签单覆盖率 = 已签单商机预测金额 ÷ 目标金额；签单状态未知不计入已签或未签")
+    f_r03_e = fact("R03-LAG-ENERGY", "已签单覆盖率落后时间进度（电量）", lag_energy, "百分点",
+                   "已签单覆盖率 = 已签单商机预测电量 ÷ 目标电量；签单状态未知不计入已签或未签")
+    f_r04_count = fact("R04-COUNT", "重点跟踪未签单商机数", focus_count, "条")
+    f_r04_a = fact("R04-AMOUNT", "重点跟踪未签单预测（金额）", focus_amount, "亿元")
+    f_r04_e = fact("R04-ENERGY", "重点跟踪未签单预测（电量）", focus_energy, "GWh")
+    f_r05_a = fact("R05-AMOUNT", "电芯类未签单预测（金额）", products["1"]["pending_amount"], "亿元")
+    f_r05_e = fact("R05-ENERGY", "电芯类未签单预测（电量）", products["1"]["pending_energy"], "GWh")
+    f_r06_a = fact("R06-AMOUNT", "PACK 类未签单预测（金额）", products["2"]["pending_amount"], "亿元")
+    f_r06_e = fact("R06-ENERGY", "PACK 类未签单预测（电量）", products["2"]["pending_energy"], "GWh")
     f_r08 = fact("R08", "客户预测缺口客户数", len(customer_gaps), "家", "客户目标 − 客户商机预测；金额或电量缺口大于 0")
     supplement_r09 = (_number((supplement.get("R09") or {}).get("count"))
                       if strategic_ok and isinstance(supplement.get("R09"), dict) else None)
@@ -1971,7 +1983,7 @@ def evaluate(data, config=None, measured=None):
     risks = []
     top_opps = lambda values, limit=8: [record(
         f"opp-v2:opp:{opp.get('id')}", customer=opp.get("accountName"), department=opp.get("department"),
-        product=opp.get("productName"), status=f"{opp.get('stageName')}·合同{'已确认' if opp.get('contract') == 'confirmed' else '未确认' if opp.get('contract') == 'not_confirmed' else '状态未知'}",
+        product=opp.get("productName"), status=f"{opp.get('stageName')}·{'已签单' if opp.get('contract') == 'confirmed' else '未签单' if opp.get('contract') == 'not_confirmed' else '签单状态未知'}",
         amount=opp.get("forecastAmount"), quantity=opp.get("forecastEnergy"), unit="亿元/GWh",
         value=opp.get("name"), name=opp.get("name"), evidence=opp.get("id"),
     ) for opp in values[:limit] if opp.get("id")]
@@ -2001,28 +2013,28 @@ def evaluate(data, config=None, measured=None):
                  "高" if lag >= thresholds["signLagHighPoints"] else "中")
         parts = []
         if lag_amount is not None:
-            parts.append(f"金额口径已确认签订覆盖率 {sign_progress_amount * 100:.1f}%、时间进度 {time_progress * 100:.1f}%，落后 {lag_amount:.1f} 个百分点。")
+            parts.append(f"金额口径已签单覆盖率 {sign_progress_amount * 100:.1f}%、时间进度 {time_progress * 100:.1f}%，落后 {lag_amount:.1f} 个百分点。")
         if lag_energy is not None:
-            parts.append(f"电量口径已确认签订覆盖率 {sign_progress_energy * 100:.1f}%，落后 {lag_energy:.1f} 个百分点。")
+            parts.append(f"电量口径已签单覆盖率 {sign_progress_energy * 100:.1f}%，落后 {lag_energy:.1f} 个百分点。")
         if quarterly:
             parts.append(f"第 {quarter} 季度待签及缺口占比超过 {quarter_window * 100:.0f}% 窗口阈值。")
         evidence = [f_r03, f_r03_e, f_r02_a, f_r02_e, f_r02_unknown_a, f_r02_unknown_e,
                     f_r01_a, f_r01_e]
-        risks.append(_risk("RK02", "签单进度滞后", level, "RK02 签单进度滞后（已确认签订覆盖率口径）",
+        risks.append(_risk("RK02", "签单进度滞后", level, "RK02 签单进度滞后（已签单覆盖率口径）",
                            "".join(parts), ["RK02", "R03", "R02", "R01"], evidence,
                            dict(amount=unsigned_amount, energy=unsigned_energy, count=None), []))
 
     # RK03
     if ((gap_amount is not None and gap_amount > 0) or (gap_energy is not None and gap_energy > 0)) and focus_count and ((focus_amount or 0) > 0 or (focus_energy or 0) > 0):
         level = "高" if focus_has_strategic else "中"
-        parts = [f"战略及重点客户合同未确认商机 {focus_count} 条"]
+        parts = [f"战略及重点客户未签单商机 {focus_count} 条"]
         if focus_amount:
             parts.append(f"涉及预测金额 {focus_amount:.2f} 亿元")
         if focus_energy:
             parts.append(f"涉及预测电量 {focus_energy:.2f} GWh")
         evidence = [f_r04_count, f_r04_a, f_r04_e, f_r01_a, f_r01_e]
-        risks.append(_risk("RK03", "重点跟踪合同未确认商机", level, "RK03 重点跟踪合同未确认商机",
-                           "，".join(parts) + "；合同确认状态未完成。", ["RK03", "R04", "R01"], evidence,
+        risks.append(_risk("RK03", "重点跟踪未签单商机", level, "RK03 重点跟踪未签单商机",
+                           "，".join(parts) + "；尚未关联订单。", ["RK03", "R04", "R01"], evidence,
                            dict(amount=focus_amount, energy=focus_energy, count=focus_count), []))
 
     # RK04/RK05
@@ -2044,19 +2056,19 @@ def evaluate(data, config=None, measured=None):
                  "中" if pending_amount >= thresholds["productRiskAmountMedium"] else "低")
         parts = []
         if pending_amount:
-            parts.append(f"合同未确认预测金额 {pending_amount:.2f} 亿元")
+            parts.append(f"未签单预测金额 {pending_amount:.2f} 亿元")
         if pending_energy:
-            parts.append(f"合同未确认预测电量 {pending_energy:.2f} GWh")
+            parts.append(f"未签单预测电量 {pending_energy:.2f} GWh")
         if under:
             parts.append("该类总预测低于同口径目标")
         product_lags = [value for value in (bucket.get("lag_amount"), bucket.get("lag_energy"))
                         if value is not None]
         if lagged and product_lags:
-            parts.append(f"该类已确认签订覆盖率落后时间进度 {max(product_lags):.1f} 个百分点")
+            parts.append(f"该类已签单覆盖率落后时间进度 {max(product_lags):.1f} 个百分点")
         evidence = [f_r05_a if key == "1" else f_r06_a, f_r05_e if key == "1" else f_r06_e]
         risks.append(_risk(code, "电芯类待签商机风险" if key == "1" else "PACK 类待签商机风险",
                            level, f"{code} {'电芯' if key == '1' else 'PACK'} 类待签商机风险",
-                           "，".join(parts) + "；按合同确认口径判断。",
+                           "，".join(parts) + "；按 BR-Q02 订单关联口径判断。",
                            [code, "R05" if key == "1" else "R06", "B01", "B02"], evidence,
                            dict(amount=pending_amount, energy=pending_energy, count=bucket["pending_count"]), []))
 
@@ -2241,18 +2253,17 @@ def evaluate(data, config=None, measured=None):
     risk_assessments = [_program_risk_assessment(candidate) for candidate in risk_candidates]
 
     # ---- causes -----------------------------------------------------------
-    def acneed_unconfirmed(opp):
-        # Empty/unknown approval is not evidence that customer demand is
-        # unconfirmed.  Only explicit non-pass states may become RC01/RC07.
-        return opp.get("acneed") in {"1", "2", "4", "5"}
-
-    strategic_p0 = [opp for opp in unsigned if opp.get("tier") == "strategic" and opp.get("stage") == "11" and acneed_unconfirmed(opp)]
+    # BR-C01: C01 no longer filters on demand confirmation (that is a drill-
+    # down).  BR-C07: C06 is a non-focus, P0, unsigned opportunity whose
+    # new_demandinput = 0; an empty value is not evidence either way.
+    strategic_p0 = [opp for opp in unsigned if opp.get("tier") == "strategic" and opp.get("stage") == "11"]
     p2_late = [opp for opp in unsigned if opp.get("stage") == "13" and opp in late_p2]
     p2_late = list({opp.get("id"): opp for opp in p2_late if opp.get("id")}.values())
     focus_ratio = _div(focus_amount, unsigned_amount) if unsigned_amount else None
     rest_amount = (unsigned_amount - (focus_amount or 0)) if unsigned_amount is not None else None
     rest_ratio = _div(rest_amount, unsigned_amount) if unsigned_amount else None
-    rest_p0 = [opp for opp in unsigned if opp.get("tier") == "general" and opp.get("stage") == "11" and acneed_unconfirmed(opp)]
+    rest_p0 = [opp for opp in unsigned if opp.get("tier") not in {"strategic", "priority"}
+               and opp.get("stage") == "11" and opp.get("demandInput") == "0"]
     product_pending_ratio = {}
     for key in ("1", "2"):
         bucket = products[key]
@@ -2290,7 +2301,7 @@ def evaluate(data, config=None, measured=None):
         candidates["RC01"] = dict(
             kind="verified", status="supported", stage="opportunity",
             title="战略客户需求确认未落实",
-            description=f"{len(strategic_p0)} 条战略客户 P0 商机合同未确认且客户需求审核未通过，涉及" +
+            description=f"{len(strategic_p0)} 条战略客户 P0 商机尚未签单，涉及" +
                         (f"预测金额 {amount:.2f} 亿元" if amount else "预测量待补") +
                         (f"、预测电量 {energy:.2f} GWh" if energy else "") + "。",
             evidence=[f_r04_count, f_r04_a, f_r04_e] + top_opps(strategic_p0, 6),
@@ -2323,7 +2334,7 @@ def evaluate(data, config=None, measured=None):
         candidates["RC06"] = dict(
             kind="verified", status="supported", stage="opportunity",
             title="重点跟踪商机承接不足",
-        description=f"重点跟踪合同未确认商机占全部合同未确认预测 {focus_ratio * 100:.1f}%，低于 {thresholds['focusTrackingRatio'] * 100:.0f}% 阈值。",
+        description=f"重点跟踪未签单商机占全部未签单预测 {focus_ratio * 100:.1f}%，低于 {thresholds['focusTrackingRatio'] * 100:.0f}% 阈值。",
             evidence=[f_r04_a, f_r04_e, f_r02_a, f_r02_e],
             risks={"RK01", "RK02"} & {risk["code"] for risk in risks},
         )
@@ -2332,7 +2343,7 @@ def evaluate(data, config=None, measured=None):
         candidates["RC07"] = dict(
             kind="verified", status="supported", stage="opportunity",
             title="其余商机需求未确认",
-            description=f"一般客户合同未确认预测占比 {rest_ratio * 100:.1f}%，其中 {len(rest_p0)} 条 P0 商机需求审核未通过" +
+            description=f"一般客户未签单预测占比 {rest_ratio * 100:.1f}%，其中 {len(rest_p0)} 条 P0 商机未录入客户需求" +
                         (f"，涉及金额 {amount:.2f} 亿元" if amount else "") + "。",
             evidence=[f_r02_a, f_r02_e] + top_opps(rest_p0, 6),
             risks={"RK01", "RK02", "RK03"} & {risk["code"] for risk in risks},
@@ -2600,7 +2611,7 @@ def evaluate(data, config=None, measured=None):
                              else (risk.get('name') or "商机风险"))
     summary = ("；".join(part for part in summary_parts if part).rstrip("。；") + "。"
                if summary_parts else
-               "本期未发现需要优先处置的商机风险，合同未确认与预测差异继续按证据跟踪。")
+               "本期未发现需要优先处置的商机风险，未签单与预测差异继续按证据跟踪。")
     summary = re.sub(r"\s+", " ", summary)[:240]
 
     data_issues = []
@@ -2628,8 +2639,8 @@ def evaluate(data, config=None, measured=None):
     if not bids_complete:
         data_issues.append("投标明细达到行数上限；投标周期和投标中项目相关规则未判定。")
     caliber_notes.extend([
-        "合同签订按 new_contractconfirmation 判断；签订日期字段实库为空，不能用日期推断。",
-        "签单进度按已确认签订覆盖率计算（合同已确认商机预测 ÷ 目标）；合同状态未知不计入已签或未签，也不单独触发进度滞后。",
+        "签单按本体 BR-Q02 判断：商机经订单明细关联到订单即已签单，否则未签单。",
+        "签单进度按已签单覆盖率计算（已签单商机预测 ÷ 目标）；签单状态未知不计入已签或未签，也不单独触发进度滞后。",
         "目标表按行求和，未按客户或产品去重；目标表缺少经验证的业务唯一键。",
         f"预测电量按本体 B02 使用 {energy_field}"
         + ("（预测金额 ÷ 瓦时单价）" if _text(energy_cfg.get("mode")) == "amount_div_price" else f"（{energy_unit}）")
@@ -2642,7 +2653,7 @@ def evaluate(data, config=None, measured=None):
     ])
     if unknown_contract_count:
         data_issues.append(
-            f"{unknown_contract_count} 条商机合同状态未知，涉及预测金额 {unknown_amount or 0:.2f} 亿元、"
+            f"{unknown_contract_count} 条商机签单状态未知，涉及预测金额 {unknown_amount or 0:.2f} 亿元、"
             f"电量 {unknown_energy or 0:.2f} GWh；未知单列，既不计入明确未确认，也不视为已签。")
     if (total_amount is not None and amount_coverage is not None and amount_coverage < 0.8):
         data_issues.append(

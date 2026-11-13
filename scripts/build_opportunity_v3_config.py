@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_含SQL.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_精简关联版.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -33,6 +33,7 @@ FIELD_NAMES = {
         "opportunityid", "name", "parentaccountid", "new_accountlevel",
         "new_accproducttype", "new_processstage", "new_approvalstatus_acneed",
         "new_approvalstatus", "new_opportunitystatus", "new_contractconfirmation",
+        "new_demandinput",
         "new_contractconfirmation_date", "createdon", "new_stage1enddate",
         "new_stage2enddate", "new_stage3enddate", "new_stage4enddate",
         "new_stage5enddate", "ownerid", "statecode", "estimatedvalue",
@@ -427,6 +428,7 @@ def build_config(workbook):
                 result=clean(row.get("判断或结果")),
                 action=clean(row.get("处置动作")),
                 category=clean(row.get("规则类别")),
+                relatedElements=clean(row.get("关联本体元素")),
             )
     risks = {}
     for row in rows(workbook, "风险"):
@@ -558,17 +560,6 @@ def build_config(workbook):
     # User-approved corrections to a workbook statement.  They are kept
     # separate so the ontology-derived overrides never hide a manual decision.
     business_corrections = {
-        "BR-Q02": {
-            "decision": "签单按合同签订判断，订单数不构成签单",
-            "conflictsWith": "V3_含SQL 的 BR-Q02 改为订单明细关联判定",
-            "field": "new_contractconfirmation",
-            "confirmed": ["1"],
-            "notConfirmed": ["0"],
-            "unknown": "空值或非 0/1",
-            "note": "保留此前用户确认的合同签订口径；new_contractconfirmation_date "
-                    "实库 0% 覆盖，不能用于测量日判断。若改为 V3 的订单明细口径，"
-                    "需同时调整 R02/R03/C01/C06~C09 的待签集合。",
-        },
         "RK07": {
             "decision": "RK07 只关联 RC09，解除 RK07 与 RC01 的矛盾关联",
             "reason": "RK07 客户无商机，不能同时要求存在该客户的 P0 商机。",
@@ -612,10 +603,10 @@ def build_config(workbook):
     # overrides; the UI and task drafting never re-interpret the workbook.
     links["RK07"] = {"risk": "RK07", "causes": ["RC09"], "advice": ["AC02", "AC03"]}
     config = dict(
-        version="opportunity-v3-rules-3",
-        ontology="商机获取节点 V3",
-        source=dict(path=str(SOURCE.relative_to(ROOT)), sha256=digest(SOURCE)),
-        dictionary=dict(path=str(DICTIONARY.relative_to(ROOT)), sha256=digest(DICTIONARY)),
+        version="opportunity-v3-rules-4",
+        ontology="商机获取节点 V3 精简关联版",
+        source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
+        dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,
         fields=fields,
         metrics=metrics,

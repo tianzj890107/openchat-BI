@@ -1,9 +1,9 @@
 {
-  "version": "opportunity-v3-rules-3",
-  "ontology": "商机获取节点 V3",
+  "version": "opportunity-v3-rules-4",
+  "ontology": "商机获取节点 V3 精简关联版",
   "source": {
-    "path": "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_含SQL.xlsx",
-    "sha256": "92d11bbbd63fda36aee88f10274634d675e55933e945beea0e0c965a05f0ed26"
+    "path": "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_精简关联版.xlsx",
+    "sha256": "c9337a59e4f443ff11836c5c7bcbb6e67771209efa3fa3f6b821112b55e24da7"
   },
   "dictionary": {
     "path": "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx",
@@ -245,6 +245,15 @@
         "english": "new_contractconfirmation",
         "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
         "column": "new_contractconfirmation",
+        "mapping": "直接映射"
+      },
+      "new_demandinput": {
+        "entity": "LE01",
+        "attribute": "LE01-A0185",
+        "name": "客户需求输入",
+        "english": "new_demandinput",
+        "table": "ded_public.p_fm_edw_v_ods_crm_opportunity_esb",
+        "column": "new_demandinput",
         "mapping": "直接映射"
       },
       "new_contractconfirmation_date": {
@@ -3376,7 +3385,8 @@
       "trigger": "计算 B02 及其派生指标（R01~R06、R08、C01、C06~C09、P*-02）",
       "result": "金额为空不补 0；SUM 忽略单个 NULL，缺失条数在结果明细；部分合计不代表全量完整",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "指标：B02、R01、R02、R03、R04、R05\nR06、R08、C01、C06、C07、C08\nC09、P0-02、P1-02、P2-02、P3-02、P4-02\n实体：LE02 项目月度销售预测"
     },
     "BR-Q02": {
       "code": "BR-Q02",
@@ -3385,7 +3395,8 @@
       "trigger": "计算 D015 / R02 / R04~R06 / C01 / C06~C09",
       "result": "不使用订单头 opportunityid，也不使用合同确认枚举；不额外限定审批、取消状态或订单日期（统计关联现状，非历史签单快照）",
       "action": "未能关联订单的商机按未签单",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "维度：D015 商机签单\n实体：LE01 商机管理、LE08 订单产品、LE07 订单\n指标：R02、R04、R05、R06、C01、C06\nC07、C08、C09"
     },
     "BR-Q03": {
       "code": "BR-Q03",
@@ -3394,7 +3405,8 @@
       "trigger": "所有计数与汇总",
       "result": "—",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "指标：全部计数与汇总指标（按各指标取数对象适用）\n实体：LE01 商机管理、LE05 客户、LE07 订单"
     },
     "BR-Q04": {
       "code": "BR-Q04",
@@ -3403,7 +3415,8 @@
       "trigger": "计算 R04、C08、C09、C06",
       "result": "客户等级见 DR04~DR06；客户 SQL parameters.strategic_levels / focus_levels 可调",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "维度：D005 客户等级\n指标：R04、C08、C09、C06"
     },
     "BR-Q05": {
       "code": "BR-Q05",
@@ -3412,7 +3425,8 @@
       "trigger": "全部 R / C 规则",
       "result": "—",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "风险：RK01—RK10（涉及金额、电量的判定）\n根因：RC01—RC09（涉及金额、电量的判定）"
     },
     "BR-Q06": {
       "code": "BR-Q06",
@@ -3421,7 +3435,8 @@
       "trigger": "P0-01~P4-01、P0-02~P4-02、C07 及超期判定",
       "result": "单笔周期严格大于同阶段同产品均值 × 1.5 判超期（等于不触发）；日期逆序剔除并计数；同商机每阶段只计一次",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "指标：P0-01、P0-02、P1-01、P1-02、P2-01、P2-02\nP3-01、P3-02、P4-01、P4-02、C07\n维度：D003 产品类型、D_STAGE 商机阶段"
     },
     "BR-Q07": {
       "code": "BR-Q07",
@@ -3430,7 +3445,8 @@
       "trigger": "D_IS_BIDDING、R10、R11、S03",
       "result": "名称不一致会漏判；S03 以投标表为底表、终点为开标时间 bid_open_time（中标公布时间只用于识别缺开标日期）",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "维度：D_IS_BIDDING 是否进入投标\n实体：LE01 商机管理、LE09 投标信息\n指标：R10、R11、S03"
     },
     "BR-Q08": {
       "code": "BR-Q08",
@@ -3439,7 +3455,8 @@
       "trigger": "全部 55 项指标",
       "result": "年度目标（B01 / C03）不随期间缩为单月",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "指标：全部 55 项指标\n维度：D001 月度销售预测期间、D029 目标时间"
     },
     "BR-Q09": {
       "code": "BR-Q09",
@@ -3448,16 +3465,18 @@
       "trigger": "P0-03~P0-08、P1-03~P1-07、P2-03~P2-05、P3-03~P3-06、P4-03~P4-04、S01~S04",
       "result": "独立起止事件未明确的环节主值保持 NULL（P0-05、P0-08、P1-06、P2-05、P3-03、P3-05、P3-06、P4-03、P4-04、S01、S02、S04）；P0-07 暂沿用创建 → 预测完成",
       "action": "待业务补充完成事件",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "指标：P0-03、P0-04、P0-05、P0-06、P0-07、P0-08\nP1-03、P1-04、P1-05、P1-06、P1-07、P2-03\nP2-04、P2-05、P3-03、P3-04、P3-05、P3-06\nP4-03、P4-04、S01、S02、S03、S04"
     },
     "BR-Q10": {
       "code": "BR-Q10",
       "name": "SAP 建档周期",
-      "description": "仅 new_issap = 1；以 COALESCE(new_sapdate, new_sapsubmitdate) 归期；商机创建早于该基准记 0 天，其余暂 NULL",
+      "description": "new_sapsubmitdate-new_sapdate，且new_issap = 1",
       "trigger": "P3-04",
       "result": "new_issapnew 只按原始 1 / 2 分组",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "指标：P3-04 SAP 建档周期\n实体：LE05 客户"
     },
     "BR-Q11": {
       "code": "BR-Q11",
@@ -3466,7 +3485,8 @@
       "trigger": "B01、C03、C04、C05",
       "result": "不使用 new_total_amount；空商机 ID 目标以目标 ID 独立保留；多团队归属不分摊，保留未分配",
       "action": "—",
-      "category": "口径规则"
+      "category": "口径规则",
+      "relatedElements": "指标：B01、C03、C04、C05\n实体：LE06 销售目标管理、LE17 发货单明细、LE18 产品物料"
     },
     "BR-DQ01": {
       "code": "BR-DQ01",
@@ -3475,178 +3495,198 @@
       "trigger": "所有指标",
       "result": "结果标注“数据不足”",
       "action": "推送数据治理清单",
-      "category": "数据质量规则"
+      "category": "数据质量规则",
+      "relatedElements": "指标：全部 55 项指标\n运行记录：RUN01 指标结果快照、RUN06 根因证据"
     },
     "BR-A01": {
       "code": "BR-A01",
       "name": "商机预测覆盖不足判定",
       "description": "商机总预测低于年度目标",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "R01 > 0 成立（金额、电量分别判断）；等级：缺口率 ≥ 10% 高；5%~10% 中；< 5% 低",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK01 商机预测覆盖不足\n判定指标：R01、B01、B02"
     },
     "BR-A02": {
       "code": "BR-A02",
       "name": "签单进度滞后判定",
       "description": "签单进度落后于时间进度",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "逐日：签单进度 < 时间进度；季度窗口：7–9 月待签及缺口占比 > 50%、10–12 月 > 25%；等级：落后 ≥ 15 个百分点 极高；10~15 高；< 10 中",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK02 签单进度滞后\n判定指标：R03、R02、R01"
     },
     "BR-A03": {
       "code": "BR-A03",
       "name": "重点跟踪未签单商机判定",
       "description": "战略、重点客户仍有未签单商机且总预测存在缺口",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "R01 > 0 且 R04 商机数 > 0、预测金额或电量 > 0；等级：战略客户 高；重点客户 中",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK03 重点跟踪未签单商机\n判定指标：R04、R01"
     },
     "BR-A04": {
       "code": "BR-A04",
       "name": "电芯类待签商机风险判定",
       "description": "电芯类待签预测 > 0，且该类预测不足或签单进度落后",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "R05 > 0 且（电芯总预测 < 电芯目标 或 按 R03 电芯签单进度落后）；等级：待签 ≥ 30 亿元 高；10~30 中",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK04 电芯类待签商机风险\n判定指标：R05、B01、B02、R03"
     },
     "BR-A05": {
       "code": "BR-A05",
       "name": "PACK 类待签商机风险判定",
       "description": "PACK 类待签预测 > 0，且该类预测不足或签单进度落后",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "R06 > 0 且（PACK 总预测 < PACK 目标 或 按 R03 PACK 签单进度落后）；等级：待签 ≥ 30 亿元 高；10~30 中",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK05 PACK 类待签商机风险\n判定指标：R06、B01、B02、R03"
     },
     "BR-A06": {
       "code": "BR-A06",
       "name": "客户预测不足判定",
       "description": "有商机客户的预测低于客户目标",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "有商机且 R08 缺口 > 0；等级：战略客户 高；其他 中",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK06 客户预测不足\n判定指标：R08"
     },
     "BR-A07": {
       "code": "BR-A07",
       "name": "战略客户待突破（无商机）判定",
       "description": "战略客户名单内无任何商机",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "R09 > 0；等级：存在即高",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK07 战略客户待突破（无商机）\n判定指标：R09"
     },
     "BR-A08": {
       "code": "BR-A08",
       "name": "战略客户有商机未投标判定",
       "description": "战略客户有商机但均未进入投标",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "R10 > 0；当前阶段用时 > 动态平均周期 × 1.5 标记推进滞后；等级：存在即高；推进滞后 极高",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK08 战略客户有商机未投标\n判定指标：R10"
     },
     "BR-A09": {
       "code": "BR-A09",
       "name": "投标中商机超期判定",
       "description": "投标中商机在途用时超过投标环节动态平均周期 1.5 倍（S03：输入时间 → 开标时间）",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "在途用时 > S03 × 1.5（严格大于）；等级：战略 / 重点客户 高；其他 中",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK09 投标中商机超期\n判定指标：R11、S03"
     },
     "BR-A10": {
       "code": "BR-A10",
       "name": "商机获取阶段超期判定",
       "description": "商机获取阶段单笔周期超过动态平均周期 1.5 倍",
-      "trigger": "指标计算完成（E02）后检测",
+      "trigger": "指标计算完成后检测",
       "result": "单笔周期 > P0-01 × 1.5（严格大于）；等级：影响预测 ≥ 10 亿元 高；其他 中",
-      "action": "生成指标异常（E03）并登记风险实例（A03）",
-      "category": "指标异常判定（→ 风险）"
+      "action": "生成指标异常并登记风险实例",
+      "category": "指标异常判定（→ 风险）",
+      "relatedElements": "风险：RK10 商机获取阶段超期\n判定指标：P0-01、P0-02"
     },
     "BR-C01": {
       "code": "BR-C01",
       "name": "战略客户需求确认未落实成立判定",
       "description": "C01 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "存在战略客户（等级 1）处于 P0（new_processstage = 11）、有效（statecode = 0）且未签单的商机，数量或预测金额 / 电量 > 0（客户口径：C01 不再以需求未确认作取值过滤，需求确认情况作原因下钻）",
-      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
-      "category": "根因成立判定"
+      "action": "规则初筛后调用 AI 根因分析，结果需复核",
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC01 战略客户需求确认未落实\n判定指标：C01"
     },
     "BR-C02": {
       "code": "BR-C02",
       "name": "投标前置条件未满足成立判定",
       "description": "C02 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "战略客户待投标商机至少一项适用的商务或技术投标前置条件不满足",
-      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
-      "category": "根因成立判定"
+      "action": "规则初筛后调用 AI 根因分析，结果需复核",
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC02 投标前置条件未满足\n判定指标：C02"
     },
     "BR-C03": {
       "code": "BR-C03",
       "name": "方案推动超期成立判定",
       "description": "C07、P2-01、P2-02、P2-03、P2-04、P2-05 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "未签单商机处于 P2 且在途用时 > P2 动态平均周期（P2-01）× 1.5（严格大于；等于不触发）；卡点环节按 P2-03 技术协议 / 规格书、P2-04 质保协议、P2-05 中信保限额各自周期 > 同组均值 × 1.5 定位",
-      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
-      "category": "根因成立判定"
+      "action": "规则初筛后调用 AI 根因分析，结果需复核",
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC03 方案推动超期\n判定指标：C07、P2-01、P2-02、P2-03、P2-04、P2-05"
     },
     "BR-C04": {
       "code": "BR-C04",
       "name": "产品部销售缺口成立判定",
       "description": "C05、C03、C04 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "同一产品部累计实际销售 − 年度目标 < 0（金额、电量分别判断）",
       "action": "规则判定写入根因分析结果",
-      "category": "根因成立判定"
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC04 产品部销售缺口\n判定指标：C05、C03、C04"
     },
     "BR-C05": {
       "code": "BR-C05",
       "name": "产品结构待签集中成立判定",
       "description": "R05、R06 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "某产品类型待签预测占该类总预测 ≥ 20%",
       "action": "规则判定写入根因分析结果",
-      "category": "根因成立判定"
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC05 产品结构待签集中\n判定指标：R05、R06"
     },
     "BR-C06": {
       "code": "BR-C06",
       "name": "重点跟踪商机承接不足成立判定",
       "description": "C08 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "分母 > 0 且 R04 ÷ R02 < 70%（严格小于；等于 70% 不成立）",
       "action": "规则判定写入根因分析结果",
-      "category": "根因成立判定"
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC06 重点跟踪商机承接不足\n判定指标：C08"
     },
     "BR-C07": {
       "code": "BR-C07",
       "name": "其余商机需求未确认成立判定",
       "description": "C06、C09 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "C09 其余占比 ≥ 30%，且 C06（重点跟踪以外、P0、statecode = 0、未签单、new_demandinput = 0）商机数或预测金额 / 电量 > 0；金额、电量分别判断",
-      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
-      "category": "根因成立判定"
+      "action": "规则初筛后调用 AI 根因分析，结果需复核",
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC07 其余商机需求未确认\n判定指标：C06、C09"
     },
     "BR-C08": {
       "code": "BR-C08",
       "name": "商机获取环节卡点成立判定",
       "description": "P0-01、P0-02、P0-03、P0-04、P0-05、P0-06、P0-07、P0-08 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "P0 阶段超期（P0-02 > 0）时，按小环节自身起止定位：P0-03 签保密协议、P0-04 输入客户需求、P0-05 选择协作团队、P0-06 申请需求输入、P0-07 创建或更新销售预测、P0-08 确认客户组织架构；单笔周期 > 同组动态均值 × 1.5",
-      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
-      "category": "根因成立判定"
+      "action": "规则初筛后调用 AI 根因分析，结果需复核",
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC08 商机获取环节卡点\n判定指标：P0-01、P0-02、P0-03、P0-04、P0-05、P0-06、P0-07、P0-08"
     },
     "BR-C09": {
       "code": "BR-C09",
       "name": "战略客户开拓不足成立判定",
       "description": "R09 相关",
-      "trigger": "风险实例登记后（E04）",
+      "trigger": "风险实例登记后",
       "result": "战略客户名单内商机数 = 0 的客户数 > 0（R09 > 0），且无近期线索、拜访或需求调研记录（依据专家关联规则：R09 无商机客户需补查需求及开拓情况）",
-      "action": "规则初筛后调用 AI 根因分析（A04），结果需复核",
-      "category": "根因成立判定"
+      "action": "规则初筛后调用 AI 根因分析，结果需复核",
+      "category": "根因成立判定",
+      "relatedElements": "根因：RC09 战略客户开拓不足\n判定指标：R09"
     },
     "BR-L01": {
       "code": "BR-L01",
@@ -3655,16 +3695,18 @@
       "trigger": "根因判定后",
       "result": "列出具体卡点及受影响预测量；R01 总体缺口单独计算",
       "action": "—",
-      "category": "风险根因关联"
+      "category": "风险根因关联",
+      "relatedElements": "风险：RK01—RK10\n根因：RC01—RC09\n关联关系：按“指标-风险-根因-行动建议链路”中的风险与根因配对"
     },
     "BR-D01": {
       "code": "BR-D01",
       "name": "建议生成",
       "description": "每个成立根因至少生成一条建议，引用建议库模板，由 AI 补充具体对象、数字与时间",
-      "trigger": "根因分析完成（E05）",
+      "trigger": "根因分析完成",
       "result": "建议须含措施、责任角色、期限、目标值、验收标准、跟踪指标",
       "action": "—",
-      "category": "行动建议规则"
+      "category": "行动建议规则",
+      "relatedElements": "根因：RC01—RC09\n行动建议：AC01—AC12\n运行记录：RUN07 行动建议记录、RUN08 建议措施项"
     },
     "BR-D02": {
       "code": "BR-D02",
@@ -3673,16 +3715,18 @@
       "trigger": "AI 根因分析与建议生成",
       "result": "输出后校验：出现输入中没有的数字即判失败并重试",
       "action": "—",
-      "category": "行动建议规则"
+      "category": "行动建议规则",
+      "relatedElements": "指标：全部 55 项指标\n根因：RC01—RC09；行动建议：AC01—AC12\n运行记录：RUN01 指标结果快照、RUN06 根因证据"
     },
     "BR-D03": {
       "code": "BR-D03",
       "name": "任务令人工确认",
       "description": "建议合并为任务令后须经人工核对责任分工、期限与目标值，确认后下发",
-      "trigger": "建议确认（E07）",
+      "trigger": "建议确认",
       "result": "未确认不得下发；下发后建议状态置为“已下发”",
       "action": "—",
-      "category": "行动建议规则"
+      "category": "行动建议规则",
+      "relatedElements": "行动建议：AC01—AC12\n业务对象：BO07 任务令；逻辑实体：LE13 任务令\n运行记录：RUN07 行动建议记录"
     }
   },
   "risks": {
@@ -4885,19 +4929,6 @@
     }
   },
   "businessCorrections": {
-    "BR-Q02": {
-      "decision": "签单按合同签订判断，订单数不构成签单",
-      "conflictsWith": "V3_含SQL 的 BR-Q02 改为订单明细关联判定",
-      "field": "new_contractconfirmation",
-      "confirmed": [
-        "1"
-      ],
-      "notConfirmed": [
-        "0"
-      ],
-      "unknown": "空值或非 0/1",
-      "note": "保留此前用户确认的合同签订口径；new_contractconfirmation_date 实库 0% 覆盖，不能用于测量日判断。若改为 V3 的订单明细口径，需同时调整 R02/R03/C01/C06~C09 的待签集合。"
-    },
     "RK07": {
       "decision": "RK07 只关联 RC09，解除 RK07 与 RC01 的矛盾关联",
       "reason": "RK07 客户无商机，不能同时要求存在该客户的 P0 商机。",

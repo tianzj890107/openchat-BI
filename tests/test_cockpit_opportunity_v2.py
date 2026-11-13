@@ -46,7 +46,7 @@ def _judge_no(request):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-3'
+    assert config_version() == 'opportunity-v3-rules-4'
     assert len(config_digest()) == 64
     assert len(config['metrics']) == 55
     assert len(config['risks']) == 10
@@ -64,8 +64,8 @@ def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
 def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
-    assert trace['ontology'] == '商机获取节点 V3'
-    assert trace['version'] == 'opportunity-v3-rules-3'
+    assert trace['ontology'] == '商机获取节点 V3 精简关联版'
+    assert trace['version'] == 'opportunity-v3-rules-4'
     assert len(trace['digest']) == 12
     assert len(trace['metrics']) == 55
     assert len(trace['risks']) == 10
@@ -295,7 +295,7 @@ def test_unknown_contract_does_not_reduce_confirmed_signing_coverage():
     assert value['metrics']['R03']['signProgressEnergy'] == 1.0
     assert value['metrics']['R02']['unknownAmount'] == 20.0
     assert 'RK02' not in {risk['code'] for risk in value['risks']}
-    assert any('合同状态未知不计入已签或未签' in item for item in value['result']['limitations'])
+    assert any('签单状态未知不计入已签或未签' in item for item in value['result']['limitations'])
 
 
 def test_build_card_reports_internal_steps_in_execution_order():
@@ -352,7 +352,9 @@ def test_build_card_reports_internal_steps_in_execution_order():
 
 
 
-def test_unknown_acneed_status_is_not_a_verified_cause():
+def test_rc01_follows_br_c01_without_a_demand_confirmation_filter():
+    # V3 BR-C01: an unsigned strategic P0 opportunity settles RC01 whatever
+    # its demand approval status; demand confirmation is only a drill-down.
     opportunity = _opportunity(acneed='', stage='11', stage1End=None)
     data = _data(
         targets=dict(amount=100.0, energy=100.0, byProduct={}, byAccount={}),
@@ -360,7 +362,63 @@ def test_unknown_acneed_status_is_not_a_verified_cause():
         accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
     )
     value = evaluate(data)
-    assert 'RC01' not in {cause['causeCode'] for cause in value['result']['causes']}
+    assert 'RC01' in {cause['causeCode'] for cause in value['result']['causes']}
+
+
+def test_rc07_needs_an_explicit_empty_demand_input_per_br_c07():
+    def causes(demand_input):
+        focus = _opportunity(id='focus', forecastAmount=1.0, forecastEnergy=1.0)
+        rest = _opportunity(id='rest', accountId='account-2', accountLevel='3', tier='general',
+                            stage='11', stage1End=None, demandInput=demand_input,
+                            forecastAmount=9.0, forecastEnergy=9.0)
+        data = _data(opportunities=[focus, rest],
+                     allOpportunities=[deepcopy(focus), deepcopy(rest)],
+                     accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')])
+        return {cause['causeCode'] for cause in evaluate(data)['result']['causes']}
+    assert 'RC07' in causes('0')
+    assert 'RC07' not in causes('1')
+    assert 'RC07' not in causes('')
+
+
+def test_signing_follows_br_q02_order_linkage_not_the_contract_enum():
+    config = load_config()
+    assert 'BR-Q02' not in config.get('businessCorrections', {})
+    seen = {}
+
+    class Result:
+        truncated = False
+        rows = []
+
+    class Reader:
+        def run(self, sql, params, timeout_ms=0):
+            seen[sql] = params
+            return Result()
+
+    class Snapshot:
+        def __enter__(self):
+            return Reader()
+
+        def __exit__(self, *args):
+            return False
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def snapshot(self, **kwargs):
+            return Snapshot()
+
+        def run(self, sql, params, timeout_ms=0):
+            return Reader().run(sql, params, timeout_ms)
+
+    collect('2026', database=Database(), config=config, measurement_date='2026-11-11')
+    opportunity_sql = [sql for sql in seen if 'AS contract_confirmation' in sql or 'AS contract_raw' in sql]
+    assert len(opportunity_sql) >= 2  # detail + all; the full aggregate runs only on truncation
+    for sql in opportunity_sql:
+        assert 'new_contractconfirmation' not in sql
+        assert 'EXISTS (SELECT 1 FROM' in sql and 'new_opportunity_id' in sql
+    order_sql = next(sql for sql in seen if 'AS order_count' in sql)
+    assert 'statecode' not in order_sql
 
 
 def test_local_model_uses_only_the_configured_route(monkeypatch):
@@ -965,7 +1023,8 @@ def test_causes_follow_established_risks_and_advice_follows_established_causes()
         requests.append(request)
         return dict(established=request['kind'] == 'cause', reason='进展文本显示卡点')
     judged = _judged(value, judge)
-    causes = {item['code']: item for item in judged['ontologyJudgement']['causes']}
+    causes = {item['code']: item for item in judged['ontologyJudgement']['causes']
+              if not item.get('inferred')}
     established = {item['riskCode'] for item in judged['findings']}
     links = load_config()['links']
     for code, entry in causes.items():
@@ -992,7 +1051,7 @@ def test_every_item_is_listed_with_its_status_for_the_ontology_display():
     judgement = judged['ontologyJudgement']
     config = load_config()
     assert [item['code'] for item in judgement['risks']] == list(config['risks'])
-    assert [item['code'] for item in judgement['causes']] == list(config['causes'])
+    assert [item['code'] for item in judgement['causes'] if not item.get('inferred')] == list(config['causes'])
     assert [item['code'] for item in judgement['advice']] == list(config['advice'])
     labels = {item['statusLabel'] for group in judgement.values() if isinstance(group, list)
               for item in group if isinstance(item, dict)}
@@ -1017,6 +1076,82 @@ def test_without_a_model_undecided_items_are_skipped_and_reported():
     errors = [item for item in judged['ontologyJudgement']['risks'] if item.get('error')]
     assert errors and all(item['error'] == '未启用模型判断，已跳过' for item in errors)
     assert judged['ontologyJudgement']['failures']
+
+
+def _explained_and_orphan_risks(judged):
+    causes = judged['ontologyJudgement']['causes']
+    explained = {code for item in causes if item['established'] is True and not item.get('inferred')
+                 for code in item.get('linkedRisks', [])}
+    established = [item['riskCode'] for item in judged['findings']]
+    return explained, [code for code in established if code not in explained]
+
+
+def test_risks_without_an_ontology_cause_get_model_inferred_causes():
+    value = _strategic_value()
+    requests = []
+
+    def judge(request):
+        requests.append(request)
+        if request['kind'] == 'inference':
+            return dict(causes=[dict(title=f"{request['code']} 推理根因", description='依据 R02 数值推理',
+                                     dataGaps='需补客户拜访记录')], note='')
+        return dict(established=False, reason='模型判定不成立')
+    judged = _judged(value, judge)
+    explained, orphans = _explained_and_orphan_risks(judged)
+    inference = [item for item in requests if item['kind'] == 'inference']
+    # One call per established risk that no ontology cause explains, and only those.
+    assert orphans and [item['code'] for item in inference] == orphans
+    assert not {item['code'] for item in inference} & explained
+    first = inference[0]
+    assert first['risk']['code'] == orphans[0] and 'observed' in first['risk']
+    linked = load_config()['links'][orphans[0]]['causes']
+    assert [item['code'] for item in first['ontologyCauses']] == [code for code in load_config()['causes']
+                                                                if code in linked]
+    assert all(item['status'] for item in first['ontologyCauses'])
+    assert 'metrics' in first['data']
+    inferred = [item for item in judged['causes'] if item['inferred']]
+    assert [item['causeCode'] for item in inferred] == [f'{code}-AI1' for code in orphans]
+    assert all(item['decidedBy'] == 'model' and item['kind'] == 'hypothesis' for item in inferred)
+    assert inferred[0]['riskCodes'] == [orphans[0]] and inferred[0]['missingEvidence'] == ['需补客户拜访记录']
+    assert [d['causeCode'] for d in judged['analysisDimensions']][-len(inferred):] == [
+        item['causeCode'] for item in inferred]
+    # Inferred causes carry no ontology advice.
+    assert not any(set(item['causeIds']) & {cause['id'] for cause in inferred}
+                   for item in judged['recommendations'])
+    trace = [item for item in judged['ontologyJudgement']['causes'] if item.get('inferred')]
+    assert {item['statusLabel'] for item in trace} == {'模型推理（本体根因未命中）'}
+    assert judged['ontologyJudgement']['inferenceCalls'] == len(orphans)
+    assert '由模型在本体根因未命中时推理' in judged['summary']
+
+
+def test_a_failed_inference_is_reported_and_skipped():
+    value = _strategic_value()
+
+    def judge(request):
+        if request['kind'] == 'inference':
+            raise TimeoutError('模型超时')
+        return dict(established=False, reason='模型判定不成立')
+    judged = _judged(value, judge)
+    _, orphans = _explained_and_orphan_risks(judged)
+    assert orphans
+    assert not any(item['inferred'] for item in judged['causes'])
+    failed = [item for item in judged['ontologyJudgement']['causes'] if item.get('inferred')]
+    assert [item['code'] for item in failed] == [f'{code}-AI' for code in orphans]
+    assert all(item['statusLabel'] == '判断失败，已跳过' for item in failed)
+    assert any(line.startswith(f'根因 {orphans[0]}-AI：') for line in judged['ontologyJudgement']['failures'])
+    assert judged['findings']
+
+
+def test_an_empty_inference_adds_no_cause_but_keeps_the_models_note():
+    def judge(request):
+        if request['kind'] == 'inference':
+            return dict(causes=[], note='缺少客户拜访数据')
+        return dict(established=False, reason='模型判定不成立')
+    judged = _judged(_strategic_value(), judge)
+    assert not any(item['inferred'] for item in judged['causes'])
+    notes = [item for item in judged['ontologyJudgement']['causes'] if item.get('inferred')]
+    assert notes and all(item['reason'] == '缺少客户拜访数据' and item['established'] is None for item in notes)
+    assert {item['statusLabel'] for item in notes} == {'模型未能推理'}
 
 
 def test_rc04_rule_uses_the_product_team_gap_query():
@@ -1072,6 +1207,28 @@ def test_item_judge_sends_no_tools_and_reports_a_tool_call_as_its_error(monkeypa
     assert entry['decidedBy'] == 'none' and entry['established'] is None
     assert entry['error'].startswith('模型没有作答，而是发起了工具调用')
     assert entry['error'].endswith('已跳过')
+
+
+def test_item_judge_uses_the_inference_prompt_for_unexplained_risks(monkeypatch):
+    import bi_agent.llm.provider as provider
+    from bi_agent.cockpit import opportunity_judgement as judgement
+    from bi_agent.cockpit import opportunity_v2 as module
+
+    seen = []
+
+    def fake_stream(messages, system_prompt, allowed_tools, *args, **kwargs):
+        seen.append((allowed_tools, system_prompt))
+        return iter([dict(type='text_delta', text='{"causes": [{"title": "拜访不足", "description": "R09=30", '
+                                                   '"dataGaps": ""}], "note": ""}'),
+                     dict(type='message_end', stop_reason='end_turn', finish_reason='stop', usage={})])
+
+    monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a'])
+    answer = judgement._infer(judgement.default_item_judge,
+                              dict(kind='inference', code='RK07'), None, '1/1')
+    assert seen[0][0] == [] and seen[0][1] == judgement.INFER_PROMPT
+    assert answer['causes'] == [dict(title='拜访不足', description='R09=30', dataGaps='')]
+    assert answer['model'] == 'route-a'
 
 
 def test_rule_first_card_is_delivered_to_the_page_as_judged():
