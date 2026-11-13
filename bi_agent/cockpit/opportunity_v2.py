@@ -981,11 +981,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         ("产品类型", product_sql, []),
         ("商机预测", opp_sql, [past, past, past, year, measured]),
         ("全部商机", all_opp_sql, [measured]),
-        ("投标", bid_sql, [measured]),
         ("项目进展", progress_sql, [measured, measured]),
         ("订单关联", order_sql, []),
         ("产品团队", team_sql, []),
     ]
+    if {"RK08", "RK09"} & set(config.get("risks") or {}):
+        specs.insert(4, ("投标", bid_sql, [measured]))
     # RC04 is judged on the ontology's own C05 query (product team actual
     # sales minus annual target); it is not a core query.
     team_gap_sql = _ontology_metric_sql(config, "C05", year, measured, schema)
@@ -2181,8 +2182,9 @@ def evaluate(data, config=None, measured=None):
             ratios.append(abs(count) / 100.0)
         return max(ratios or [0.0])
 
-    risks = sorted(unique.values(), key=lambda item: (
-        item["levelRank"], -round(impact_ratio(item), 6), item["code"]))
+    configured_risks = set(config.get("risks") or {})
+    risks = sorted((risk for risk in unique.values() if risk["code"] in configured_risks),
+                   key=lambda item: (item["levelRank"], -round(impact_ratio(item), 6), item["code"]))
     for risk in risks:
         risk["id"] = f"opp-v2:risk:{risk['code']}"
         risk["kind"] = "risk_fact"
@@ -2616,10 +2618,13 @@ def evaluate(data, config=None, measured=None):
 
     data_issues = []
     caliber_notes = []
+    # The bid part can be excluded from the ontology config; then no bid
+    # wording is published either.
+    bid_enabled = bool({"RK08", "RK09"} & set(config.get("risks") or {}))
     if not strategic_ok:
         data_issues.append(
             "战略客户名单未配置：" + strategic_reason +
-            "；战略客户数量、无商机及未投标判断未执行，不按客户等级推算。")
+            f"；战略客户数量、无商机{'及未投标' if bid_enabled else ''}判断未执行，不按客户等级推算。")
     if strategic_ok and recent_floor is None:
         data_issues.append("本体 BR-C09 未定义“近期”窗口，战略客户开拓原因的近期活动判断未执行。")
     if total_energy is None and total_amount is not None:
@@ -2635,8 +2640,8 @@ def evaluate(data, config=None, measured=None):
             "商机月度明细达到行数上限；明细仅用于展示，金额、电量、合同、产品、客户规则采用全量聚合；逐条周期和项目进展规则未判定。")
     if not all_opps_complete:
         data_issues.append(
-            "全部商机明细达到行数上限；战略客户无商机、未投标等逐客户判断未执行，避免把截断样本当成全量。")
-    if not bids_complete:
+            f"全部商机明细达到行数上限；战略客户无商机{'、未投标' if bid_enabled else ''}等逐客户判断未执行，避免把截断样本当成全量。")
+    if bid_enabled and not bids_complete:
         data_issues.append("投标明细达到行数上限；投标周期和投标中项目相关规则未判定。")
     caliber_notes.extend([
         "签单按本体 BR-Q02 判断：商机经订单明细关联到订单即已签单，否则未签单。",
@@ -2646,7 +2651,8 @@ def evaluate(data, config=None, measured=None):
         + ("（预测金额 ÷ 瓦时单价）" if _text(energy_cfg.get("mode")) == "amount_div_price" else f"（{energy_unit}）")
         + f"换算 {energy_cfg.get('outputUnit') or 'GWh'}。",
         "项目阶段、产品类型与客户等级按本体维度派生规则映射；其他枚举不推断。"
-        "投标关联按本体 BR-Q07 使用商机名称与投标项目名称原值精确匹配；同名歧义不判未投标。",
+        + ("投标关联按本体 BR-Q07 使用商机名称与投标项目名称原值精确匹配；同名歧义不判未投标。"
+           if bid_enabled else ""),
         "RC04 产品部销售缺口需跨发货环节实际销售，本次不把不可得数据推成原因。",
         "动态均值按本体 BR-Q06 执行：" + (clean_cycle_sample or "样本范围未提供") + "。",
         "建议中的责任角色与期限为模型给出的建议值，须人工确认后才能下发任务令。",
@@ -2766,6 +2772,14 @@ def evaluate(data, config=None, measured=None):
             riskCodes=sorted(risk_codes),
             evidenceIds=evidence_ids,
         ))
+    # Facts of excluded ontology metrics (e.g. the bid part) are not published.
+    excluded_metrics = set((config.get("excluded") or {}).get("metrics") or [])
+    if {"R11", "S03"} & excluded_metrics:
+        excluded_metrics |= {"S03-P1", "S03-P2", "BID-AMBIGUOUS"}
+    for fact_code in excluded_metrics:
+        evidence_facts.pop(f"opp-v2:metric:{fact_code}", None)
+    cause_outcomes = {code: value for code, value in cause_outcomes.items()
+                      if code in (config.get("causes") or {})}
     fact_list = list(evidence_facts.values())
     evidence_id_set = {str(item.get("id")) for key in ("facts", "records", "evidence")
                        for item in (fact_list if key == "facts" else
@@ -2775,6 +2789,31 @@ def evaluate(data, config=None, measured=None):
         facts=len(fact_list), records=len(records), referenced=len(evidence_refs),
         distinct=len(evidence_id_set),
     )
+    metric_values = dict(
+        B01=dict(amount=target_amount, energy=target_energy),
+        B02=dict(amount=total_amount, energy=total_energy),
+        R01=dict(amount=gap_amount, energy=gap_energy),
+        R02=dict(amount=unsigned_amount, energy=unsigned_energy,
+                 unknownAmount=unknown_amount, unknownEnergy=unknown_energy,
+                 confirmedAmount=confirmed_amount, confirmedEnergy=confirmed_energy),
+        R03=dict(lagAmount=lag_amount, lagEnergy=lag_energy,
+                 signProgressAmount=sign_progress_amount, signProgressEnergy=sign_progress_energy,
+                 confirmedCoverageAmount=sign_progress_amount, confirmedCoverageEnergy=sign_progress_energy,
+                 timeProgress=time_progress),
+        R04=dict(count=focus_count, amount=focus_amount, energy=focus_energy),
+        R05=dict(amount=products["1"]["pending_amount"], energy=products["1"]["pending_energy"]),
+        R06=dict(amount=products["2"]["pending_amount"], energy=products["2"]["pending_energy"]),
+        R08=dict(count=len(customer_gaps)),
+        R09=dict(count=no_opportunity_count, never=len(never_opportunity), inactive=len(inactive_opportunity)),
+        R10=dict(count=len(no_bidding)),
+        R11=dict(count=len(in_progress_bids)),
+        S03=bid_average, P0=overall_p0, P2=overall_p2,
+        bidAmbiguous=len(ambiguous_bid_names),
+    )
+    for metric_code in excluded_metrics:
+        metric_values.pop(metric_code, None)
+    if "S03" in excluded_metrics:
+        metric_values.pop("bidAmbiguous", None)
     return dict(
         causeOutcomes=cause_outcomes,
         ruleOutcomes=deepcopy(risk_candidates),
@@ -2792,27 +2831,7 @@ def evaluate(data, config=None, measured=None):
             periods=[data.get("period")],
             dataAsOf=data.get("measurementDate"),
         ),
-        metrics=dict(
-            B01=dict(amount=target_amount, energy=target_energy),
-            B02=dict(amount=total_amount, energy=total_energy),
-            R01=dict(amount=gap_amount, energy=gap_energy),
-            R02=dict(amount=unsigned_amount, energy=unsigned_energy,
-                     unknownAmount=unknown_amount, unknownEnergy=unknown_energy,
-                     confirmedAmount=confirmed_amount, confirmedEnergy=confirmed_energy),
-            R03=dict(lagAmount=lag_amount, lagEnergy=lag_energy,
-                     signProgressAmount=sign_progress_amount, signProgressEnergy=sign_progress_energy,
-                     confirmedCoverageAmount=sign_progress_amount, confirmedCoverageEnergy=sign_progress_energy,
-                     timeProgress=time_progress),
-            R04=dict(count=focus_count, amount=focus_amount, energy=focus_energy),
-            R05=dict(amount=products["1"]["pending_amount"], energy=products["1"]["pending_energy"]),
-            R06=dict(amount=products["2"]["pending_amount"], energy=products["2"]["pending_energy"]),
-            R08=dict(count=len(customer_gaps)),
-            R09=dict(count=no_opportunity_count, never=len(never_opportunity), inactive=len(inactive_opportunity)),
-            R10=dict(count=len(no_bidding)),
-            R11=dict(count=len(in_progress_bids)),
-            S03=bid_average, P0=overall_p0, P2=overall_p2,
-            bidAmbiguous=len(ambiguous_bid_names),
-        ),
+        metrics=metric_values,
         risks=risks,
         causes=cause_items,
         recommendations=recommendations,

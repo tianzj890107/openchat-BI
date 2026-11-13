@@ -1719,83 +1719,6 @@
       "ctes": "parameters → context → account_rows → accounts → opportunity_rows → bid_rows → customer_coverage",
       "sql": "-- 指标 R09 待突破的战略客户数：可直接调用 SQL（PostgreSQL 只读；业务表均为 ded_public）\n-- 来源：穿透式分析_55种指标_查询_2025_C0及环节周期合并修订.sql 第 10 个指标分支；仅保留该指标依赖的 7 个 CTE，结果与整段执行时该指标的行一致。\n-- 修改统计期间：只改 parameters 中的 start_date / end_exclusive（结束日不含）；无绑定参数。\nWITH\nparameters AS MATERIALIZED (\nSELECT DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive,\n       CURRENT_TIMESTAMP::timestamp AS observed_at,\n       ARRAY['1']::text[] AS strategic_levels,\n       ARRAY['1','2']::text[] AS focus_levels,\n       1000000::numeric AS target_power_units_per_gwh\n-- 默认2025全年；结束日不含。仅修改这里，不需要填写绑定参数。\n-- 战略客户默认等级1；重点跟踪默认1战略＋2重要。0核心/4BG不自动纳入。\n-- 目标power暂沿用当前M0007单项的kWh换算，不用quantity冒充电量。\n),\ncontext AS MATERIALIZED (\nSELECT p.*,LEAST(observed_at,end_exclusive::timestamp) AS cutoff,\n       make_date(EXTRACT(YEAR FROM start_date)::integer,1,1) AS year_start,\n       make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1) AS next_year_start,\n       GREATEST(0::numeric,LEAST(1::numeric,\n        (LEAST(observed_at,end_exclusive::timestamp)::date-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1))::numeric\n        /(make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1)-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1)))) AS time_progress\nFROM parameters p\n),\naccount_rows AS MATERIALIZED (\nSELECT a.accountid::text AS account_id,a.name::text AS account_name,\n       a.new_accountlevel::text AS level_code,\n       a.new_sapdate::timestamp AS sap_created_at,a.new_sapsubmitdate::timestamp AS sap_submitted_at,\n       a.new_approved_time_facreview::timestamp AS account_factory_approved_at,\n       a.new_submit_time_facreview::timestamp AS account_factory_submitted_at,\n       a.new_sinosurestartdate::timestamp AS account_sinosure_start,\n       a.new_sinosureenddate::timestamp AS account_sinosure_end,\n       a.new_submit_time_accredit::timestamp AS account_credit_submitted_at,\n       a.new_approvaltime_accredit::timestamp AS account_credit_approved_at,\n       a.new_cdastartdate::timestamp AS account_cda_start,\n       a.new_cdaenddate::timestamp AS account_cda_end,\n       a.new_cda_submittime::timestamp AS account_cda_submitted_at,\n       a.new_cda_approved_time::timestamp AS account_cda_approved_at,\n       a.new_approvalstatus_facreview::text AS account_factory_approval_status,\n       a.new_sapcode::text AS sap_code,a.new_issap::text AS sap_registered,\n       a.new_issapnew::text AS sap_registration_kind,\n       ROW_NUMBER() OVER(PARTITION BY a.accountid ORDER BY a.modifiedon DESC NULLS LAST,a.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_account_esb a WHERE NULLIF(BTRIM(a.accountid::text),'') IS NOT NULL\n),\naccounts AS MATERIALIZED (\nSELECT account_id,account_name,level_code,sap_created_at,sap_submitted_at,account_factory_approved_at,account_factory_submitted_at,account_sinosure_start,account_sinosure_end,account_credit_submitted_at,account_credit_approved_at,account_cda_start,account_cda_end,account_cda_submitted_at,account_cda_approved_at,account_factory_approval_status,sap_code,sap_registered,sap_registration_kind FROM account_rows WHERE rn=1\n),\nopportunity_rows AS MATERIALIZED (\nSELECT o.opportunityid::text AS opportunity_id,o.parentaccountid::text AS account_id,\n       o.name::text AS project_name,o.ownerid::text AS owner_id,\n       CASE WHEN o.new_accproducttype::text IN ('1','电芯') THEN '电芯'\n            WHEN o.new_accproducttype::text IN ('2','PACK') THEN 'PACK' ELSE '其他' END AS product_type,\n       o.new_isqualifiedsuppliers::text AS supplier_flag,\n       o.new_istechnologyagreement::text AS technical_flag,\n       o.new_iswarranty::text AS warranty_flag,\n       o.new_processstage::text AS process_stage,o.statecode::text AS system_state,o.new_demandinput::text AS demand_status,\n       o.createdon::timestamp AS created_at,o.new_stage1enddate::timestamp AS s1,\n       o.new_stage2enddate::timestamp AS s2,o.new_stage3enddate::timestamp AS s3,\n       o.new_stage4enddate::timestamp AS s4,o.new_stage5enddate::timestamp AS s5,\n       o.new_cdastartdate::timestamp AS new_cdastartdate,\n       o.new_cdaenddate::timestamp AS new_cdaenddate,\n       o.new_approved_time_acneed::timestamp AS new_approved_time_acneed,\n       o.new_submit_time_acneed::timestamp AS new_submit_time_acneed,\n       o.new_issalesforecast_date::timestamp AS new_issalesforecast_date,\n       o.new_approved_time_projectassess::timestamp AS new_approved_time_projectassess,\n       o.new_submit_time_projectassess::timestamp AS new_submit_time_projectassess,\n       o.new_sampletestpass_time::timestamp AS new_sampletestpass_time,\n       o.new_sampletime::timestamp AS new_sampletime,\n       o.new_technicalsigningdate::timestamp AS new_technicalsigningdate,\n       o.new_submit_time_techcon::timestamp AS new_submit_time_techcon,\n       o.new_warrantysigningdate::timestamp AS new_warrantysigningdate,\n       o.new_submit_time_qsl::timestamp AS new_submit_time_qsl,\n       o.new_isneedcda::text AS new_isneedcda,\n       o.new_approvalstatus_acneed::text AS new_approvalstatus_acneed,\n       o.new_approvalstatus_projectassess::text AS new_approvalstatus_projectassess,\n       o.new_approvalstatus_techcon::text AS new_approvalstatus_techcon,\n       o.new_approvalstatus_qsl::text AS new_approvalstatus_qsl,\n       o.new_sampletestresult::text AS new_sampletestresult,\n       ROW_NUMBER() OVER(PARTITION BY o.opportunityid ORDER BY o.modifiedon DESC NULLS LAST,o.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_opportunity_esb o\nWHERE NULLIF(BTRIM(o.opportunityid::text),'') IS NOT NULL\n),\nbid_rows AS MATERIALIZED (\nSELECT b.project_name::text AS project_name,b.seq_no::text AS bid_id,b.seq_no AS bid_seq,b.remark::text AS remark,\n       NULLIF(BTRIM(b.input_time::text),'')::timestamp AS input_at,\n       NULLIF(BTRIM(b.bid_open_time::text),'')::timestamp AS open_at,\n       NULLIF(BTRIM(b.winner_announce_time::text),'')::timestamp AS result_at\nFROM ded_public.p_fm_bid_project_info b\nWHERE NULLIF(BTRIM(b.project_name::text),'') IS NOT NULL\n),\ncustomer_coverage AS MATERIALIZED (\nSELECT a.account_id,a.account_name,a.level_code,\n COUNT(DISTINCT o.opportunity_id) AS opportunity_count,\n COUNT(DISTINCT o.opportunity_id) FILTER(WHERE b.project_name IS NOT NULL) AS entered_count,\n COUNT(DISTINCT o.opportunity_id) FILTER(WHERE o.product_type='电芯') AS cell_opportunity_count,\n COUNT(DISTINCT o.opportunity_id) FILTER(WHERE o.product_type='PACK') AS pack_opportunity_count\nFROM accounts a CROSS JOIN context p\nLEFT JOIN opportunity_rows o ON o.account_id=a.account_id AND o.rn=1\nLEFT JOIN (SELECT DISTINCT project_name FROM bid_rows) b ON b.project_name=o.project_name\nWHERE a.level_code=ANY(p.strategic_levels)\nGROUP BY a.account_id,a.account_name,a.level_code\n-- 客户为底表：客户.accountid＝商机.parentaccountid。\n-- 商机.name＝投标.project_name，原值精确匹配；不要求物理外键约束。\n-- 统计关联现状，不用客户/商机创建年份、审批状态或预测记录存在性筛掉客户。\n-- 投标记录是否存在按项目名称判断，不因其输入/开标时间为空就当未投标。\n-- R10：有商机并且所有商机都未匹配投标，按客户去重；任一商机已投标则不计入。\n),\nmetric_results AS (\nSELECT 10 AS sort_no,'R09'::text AS code,'待突破的战略客户数'::text AS metric_name,\nNULL::text AS product_team,\n (NULL)::numeric AS amount_yi,(NULL)::numeric AS energy_gwh,(COUNT(*) FILTER(WHERE c.opportunity_count=0))::bigint AS item_count,\n (NULL)::numeric AS ratio_value,(NULL)::numeric AS days_value,('已实现；客户底表按关联商机数判定')::text AS status,\n '以客户表为底表，客户等级默认1（战略大客户）。通过客户.accountid＝商机.parentaccountid关联全部商机；关联商机数为0的客户按客户ID去重计数。 统计客户与商机关联现状；不按创建年份/审批状态/预测有无筛客户。等级0核心大客户不自动并入。值在“数量”列。'::text AS note,(jsonb_build_object('战略客户总数',COUNT(*),'有商机客户',COUNT(*) FILTER(WHERE opportunity_count>0),'无商机客户',COUNT(*) FILTER(WHERE opportunity_count=0),'客户明细',jsonb_agg(to_jsonb(c))))::jsonb AS detail\nFROM customer_coverage c\n)\nSELECT r.code AS \"指标序号\",r.metric_name AS \"指标名称\",r.product_team AS \"产品团队\",\np.start_date AS \"期间开始\",p.end_exclusive AS \"期间结束不含\",p.cutoff AS \"周期观察截止\",\nr.amount_yi AS \"金额_亿元\",r.energy_gwh AS \"电量_GWh\",r.item_count AS \"数量\",\nr.ratio_value AS \"比率_原始小数\",r.days_value AS \"平均周期_天\",\nCASE WHEN r.status='查询已实现；缺失输入及部分合计见明细' THEN\n CASE WHEN r.amount_yi IS NOT NULL OR r.energy_gwh IS NOT NULL OR r.item_count IS NOT NULL\n        OR r.ratio_value IS NOT NULL OR r.days_value IS NOT NULL\n      THEN '已有查询结果；完整性与适用列见明细'\n      ELSE '没有可计算结果；检查输入、时间及关联范围' END ELSE r.status END AS \"计算说明状态\",\nr.note AS \"取值说明\",r.detail AS \"分组明细及缺口\"\nFROM metric_results r CROSS JOIN context p ORDER BY r.sort_no,r.product_team NULLS LAST;;"
     },
-    "R10": {
-      "code": "R10",
-      "name": "有商机但未进入投标的战略客户数",
-      "definition": "客户表为底表，accountid＝商机.parentaccountid；商机.name＝投标.project_name原值精确匹配。仅统计有至少一个商机，且所有商机均未匹配到投标记录的战略客户；按客户ID去重。",
-      "formula": "有商机但尚未投标的客户纳入推进清单。当前阶段用时超过动态平均周期的 1.5 倍时，标记推进滞后。适用的商务或技术投标条件不满足时，标记投标准入风险（见 C02）。按电芯、PACK 分组。",
-      "caliber": "看板统计未进入投标的商机数；投标按商机名称＝投标项目名称且已录入判断。并非战略客户中“有商机且全部未进入投标”的客户去重数。",
-      "type": "派生指标",
-      "entities": [
-        "LE01",
-        "LE05",
-        "LE09"
-      ],
-      "attributes": "LE01-A0001 商机管理.主键（opportunityid，空 0%）\nLE01-A0476 商机管理.客户（parentaccountid，空 0%）\nLE01-A0477 商机管理.项目名称（name，空 0%）\nLE05-A0001 客户.主键（accountid，空 0%）\nLE05-A0244 客户.客户等级（new_accountlevel，空 0%）\nLE05-A0277 客户.客户名称（name，空 0%）\nLE09-A0002 投标信息.项目名称（project_name，空 0%）",
-      "unit": "家",
-      "dimension": "—",
-      "sqlCodes": "YWLN_M_NON_BIDDING_OPPORTUNITY_COUNT（仅相近项）",
-      "stage": "风险 3",
-      "node": "商机获取",
-      "resultColumns": "数量",
-      "aggregate": "count",
-      "physicalFields": "客户.accountid/new_accountlevel；商机.opportunityid/parentaccountid/name；投标.project_name",
-      "dashboardSql": "看板统计未进入投标的商机数；投标按商机名称＝投标项目名称且已录入判断。并非战略客户中“有商机且全部未进入投标”的客户去重数。",
-      "notes": "任一商机匹配投标则客户不计入全部未投标。统计当前关联，不按输入时间是否有值误判未投标；未提供批准计划集合，仅代表CRM战略客户范围。值在“数量”列。",
-      "sqlStatus": "按结果动态判定（见 SQL 中 status 的 CASE）",
-      "v3Change": "口径按客户修订",
-      "risks": [
-        "RK08"
-      ],
-      "causes": [],
-      "advice": [
-        "AC03",
-        "AC04"
-      ],
-      "role": "风险触发 / 行动跟踪",
-      "cteCount": "7",
-      "ctes": "parameters → context → account_rows → accounts → opportunity_rows → bid_rows → customer_coverage",
-      "sql": "-- 指标 R10 有商机但未进入投标的战略客户数：可直接调用 SQL（PostgreSQL 只读；业务表均为 ded_public）\n-- 来源：穿透式分析_55种指标_查询_2025_C0及环节周期合并修订.sql 第 11 个指标分支；仅保留该指标依赖的 7 个 CTE，结果与整段执行时该指标的行一致。\n-- 修改统计期间：只改 parameters 中的 start_date / end_exclusive（结束日不含）；无绑定参数。\nWITH\nparameters AS MATERIALIZED (\nSELECT DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive,\n       CURRENT_TIMESTAMP::timestamp AS observed_at,\n       ARRAY['1']::text[] AS strategic_levels,\n       ARRAY['1','2']::text[] AS focus_levels,\n       1000000::numeric AS target_power_units_per_gwh\n-- 默认2025全年；结束日不含。仅修改这里，不需要填写绑定参数。\n-- 战略客户默认等级1；重点跟踪默认1战略＋2重要。0核心/4BG不自动纳入。\n-- 目标power暂沿用当前M0007单项的kWh换算，不用quantity冒充电量。\n),\ncontext AS MATERIALIZED (\nSELECT p.*,LEAST(observed_at,end_exclusive::timestamp) AS cutoff,\n       make_date(EXTRACT(YEAR FROM start_date)::integer,1,1) AS year_start,\n       make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1) AS next_year_start,\n       GREATEST(0::numeric,LEAST(1::numeric,\n        (LEAST(observed_at,end_exclusive::timestamp)::date-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1))::numeric\n        /(make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1)-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1)))) AS time_progress\nFROM parameters p\n),\naccount_rows AS MATERIALIZED (\nSELECT a.accountid::text AS account_id,a.name::text AS account_name,\n       a.new_accountlevel::text AS level_code,\n       a.new_sapdate::timestamp AS sap_created_at,a.new_sapsubmitdate::timestamp AS sap_submitted_at,\n       a.new_approved_time_facreview::timestamp AS account_factory_approved_at,\n       a.new_submit_time_facreview::timestamp AS account_factory_submitted_at,\n       a.new_sinosurestartdate::timestamp AS account_sinosure_start,\n       a.new_sinosureenddate::timestamp AS account_sinosure_end,\n       a.new_submit_time_accredit::timestamp AS account_credit_submitted_at,\n       a.new_approvaltime_accredit::timestamp AS account_credit_approved_at,\n       a.new_cdastartdate::timestamp AS account_cda_start,\n       a.new_cdaenddate::timestamp AS account_cda_end,\n       a.new_cda_submittime::timestamp AS account_cda_submitted_at,\n       a.new_cda_approved_time::timestamp AS account_cda_approved_at,\n       a.new_approvalstatus_facreview::text AS account_factory_approval_status,\n       a.new_sapcode::text AS sap_code,a.new_issap::text AS sap_registered,\n       a.new_issapnew::text AS sap_registration_kind,\n       ROW_NUMBER() OVER(PARTITION BY a.accountid ORDER BY a.modifiedon DESC NULLS LAST,a.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_account_esb a WHERE NULLIF(BTRIM(a.accountid::text),'') IS NOT NULL\n),\naccounts AS MATERIALIZED (\nSELECT account_id,account_name,level_code,sap_created_at,sap_submitted_at,account_factory_approved_at,account_factory_submitted_at,account_sinosure_start,account_sinosure_end,account_credit_submitted_at,account_credit_approved_at,account_cda_start,account_cda_end,account_cda_submitted_at,account_cda_approved_at,account_factory_approval_status,sap_code,sap_registered,sap_registration_kind FROM account_rows WHERE rn=1\n),\nopportunity_rows AS MATERIALIZED (\nSELECT o.opportunityid::text AS opportunity_id,o.parentaccountid::text AS account_id,\n       o.name::text AS project_name,o.ownerid::text AS owner_id,\n       CASE WHEN o.new_accproducttype::text IN ('1','电芯') THEN '电芯'\n            WHEN o.new_accproducttype::text IN ('2','PACK') THEN 'PACK' ELSE '其他' END AS product_type,\n       o.new_isqualifiedsuppliers::text AS supplier_flag,\n       o.new_istechnologyagreement::text AS technical_flag,\n       o.new_iswarranty::text AS warranty_flag,\n       o.new_processstage::text AS process_stage,o.statecode::text AS system_state,o.new_demandinput::text AS demand_status,\n       o.createdon::timestamp AS created_at,o.new_stage1enddate::timestamp AS s1,\n       o.new_stage2enddate::timestamp AS s2,o.new_stage3enddate::timestamp AS s3,\n       o.new_stage4enddate::timestamp AS s4,o.new_stage5enddate::timestamp AS s5,\n       o.new_cdastartdate::timestamp AS new_cdastartdate,\n       o.new_cdaenddate::timestamp AS new_cdaenddate,\n       o.new_approved_time_acneed::timestamp AS new_approved_time_acneed,\n       o.new_submit_time_acneed::timestamp AS new_submit_time_acneed,\n       o.new_issalesforecast_date::timestamp AS new_issalesforecast_date,\n       o.new_approved_time_projectassess::timestamp AS new_approved_time_projectassess,\n       o.new_submit_time_projectassess::timestamp AS new_submit_time_projectassess,\n       o.new_sampletestpass_time::timestamp AS new_sampletestpass_time,\n       o.new_sampletime::timestamp AS new_sampletime,\n       o.new_technicalsigningdate::timestamp AS new_technicalsigningdate,\n       o.new_submit_time_techcon::timestamp AS new_submit_time_techcon,\n       o.new_warrantysigningdate::timestamp AS new_warrantysigningdate,\n       o.new_submit_time_qsl::timestamp AS new_submit_time_qsl,\n       o.new_isneedcda::text AS new_isneedcda,\n       o.new_approvalstatus_acneed::text AS new_approvalstatus_acneed,\n       o.new_approvalstatus_projectassess::text AS new_approvalstatus_projectassess,\n       o.new_approvalstatus_techcon::text AS new_approvalstatus_techcon,\n       o.new_approvalstatus_qsl::text AS new_approvalstatus_qsl,\n       o.new_sampletestresult::text AS new_sampletestresult,\n       ROW_NUMBER() OVER(PARTITION BY o.opportunityid ORDER BY o.modifiedon DESC NULLS LAST,o.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_opportunity_esb o\nWHERE NULLIF(BTRIM(o.opportunityid::text),'') IS NOT NULL\n),\nbid_rows AS MATERIALIZED (\nSELECT b.project_name::text AS project_name,b.seq_no::text AS bid_id,b.seq_no AS bid_seq,b.remark::text AS remark,\n       NULLIF(BTRIM(b.input_time::text),'')::timestamp AS input_at,\n       NULLIF(BTRIM(b.bid_open_time::text),'')::timestamp AS open_at,\n       NULLIF(BTRIM(b.winner_announce_time::text),'')::timestamp AS result_at\nFROM ded_public.p_fm_bid_project_info b\nWHERE NULLIF(BTRIM(b.project_name::text),'') IS NOT NULL\n),\ncustomer_coverage AS MATERIALIZED (\nSELECT a.account_id,a.account_name,a.level_code,\n COUNT(DISTINCT o.opportunity_id) AS opportunity_count,\n COUNT(DISTINCT o.opportunity_id) FILTER(WHERE b.project_name IS NOT NULL) AS entered_count,\n COUNT(DISTINCT o.opportunity_id) FILTER(WHERE o.product_type='电芯') AS cell_opportunity_count,\n COUNT(DISTINCT o.opportunity_id) FILTER(WHERE o.product_type='PACK') AS pack_opportunity_count\nFROM accounts a CROSS JOIN context p\nLEFT JOIN opportunity_rows o ON o.account_id=a.account_id AND o.rn=1\nLEFT JOIN (SELECT DISTINCT project_name FROM bid_rows) b ON b.project_name=o.project_name\nWHERE a.level_code=ANY(p.strategic_levels)\nGROUP BY a.account_id,a.account_name,a.level_code\n-- 客户为底表：客户.accountid＝商机.parentaccountid。\n-- 商机.name＝投标.project_name，原值精确匹配；不要求物理外键约束。\n-- 统计关联现状，不用客户/商机创建年份、审批状态或预测记录存在性筛掉客户。\n-- 投标记录是否存在按项目名称判断，不因其输入/开标时间为空就当未投标。\n-- R10：有商机并且所有商机都未匹配投标，按客户去重；任一商机已投标则不计入。\n),\nmetric_results AS (\nSELECT 11 AS sort_no,'R10'::text AS code,'有商机但未进入投标的战略客户数'::text AS metric_name,\nNULL::text AS product_team,\n (NULL)::numeric AS amount_yi,(NULL)::numeric AS energy_gwh,(COUNT(*) FILTER(WHERE c.opportunity_count>0 AND c.entered_count=0))::bigint AS item_count,\n (NULL)::numeric AS ratio_value,(NULL)::numeric AS days_value,('已实现；CRM客户关联范围，计划全集尚未映射')::text AS status,\n '客户表为底表，accountid＝商机.parentaccountid；商机.name＝投标.project_name原值精确匹配。仅统计有至少一个商机，且所有商机均未匹配到投标记录的战略客户；按客户ID去重。 任一商机匹配投标则客户不计入全部未投标。统计当前关联，不按输入时间是否有值误判未投标；未提供批准计划集合，仅代表CRM战略客户范围。值在“数量”列。'::text AS note,(jsonb_build_object('战略客户总数',COUNT(*),'有商机客户',COUNT(*) FILTER(WHERE opportunity_count>0),'有商机且全部未投标客户',COUNT(*) FILTER(WHERE opportunity_count>0 AND entered_count=0),'至少一商机已投标客户',COUNT(*) FILTER(WHERE entered_count>0),'电芯客户',COUNT(*) FILTER(WHERE opportunity_count>0 AND entered_count=0 AND cell_opportunity_count>0),'PACK客户',COUNT(*) FILTER(WHERE opportunity_count>0 AND entered_count=0 AND pack_opportunity_count>0),'客户明细',jsonb_agg(to_jsonb(c)) FILTER(WHERE opportunity_count>0 AND entered_count=0)))::jsonb AS detail\nFROM customer_coverage c\n)\nSELECT r.code AS \"指标序号\",r.metric_name AS \"指标名称\",r.product_team AS \"产品团队\",\np.start_date AS \"期间开始\",p.end_exclusive AS \"期间结束不含\",p.cutoff AS \"周期观察截止\",\nr.amount_yi AS \"金额_亿元\",r.energy_gwh AS \"电量_GWh\",r.item_count AS \"数量\",\nr.ratio_value AS \"比率_原始小数\",r.days_value AS \"平均周期_天\",\nCASE WHEN r.status='查询已实现；缺失输入及部分合计见明细' THEN\n CASE WHEN r.amount_yi IS NOT NULL OR r.energy_gwh IS NOT NULL OR r.item_count IS NOT NULL\n        OR r.ratio_value IS NOT NULL OR r.days_value IS NOT NULL\n      THEN '已有查询结果；完整性与适用列见明细'\n      ELSE '没有可计算结果；检查输入、时间及关联范围' END ELSE r.status END AS \"计算说明状态\",\nr.note AS \"取值说明\",r.detail AS \"分组明细及缺口\"\nFROM metric_results r CROSS JOIN context p ORDER BY r.sort_no,r.product_team NULLS LAST;;"
-    },
-    "R11": {
-      "code": "R11",
-      "name": "投标中商机数",
-      "definition": "筛选当前状态为投标中，按商机 ID 去重。按电芯、PACK 拆分，可按客户下钻。",
-      "formula": "投标中商机的实际在途用时超过投标环节动态平均周期的 1.5 倍时，判为投标超期（见 S03）。按电芯、PACK 输出商机数及超期明细。",
-      "caliber": "已进入投标商机数只判断曾关联已录入投标，不排除已公布结果；是否投标中筛选则取同项目最新投标，未弃标且结果未公布。",
-      "type": "派生指标",
-      "entities": [
-        "LE01",
-        "LE05",
-        "LE07",
-        "LE08",
-        "LE09"
-      ],
-      "attributes": "LE01-A0001 商机管理.主键（opportunityid，空 0%）\nLE01-A0477 商机管理.项目名称（name，空 0%）\nLE05-A0277 客户.客户名称（name，空 0%）\nLE09-A0002 投标信息.项目名称（project_name，空 0%）\nLE09-A0003 投标信息.输入时间（input_time，空 1.63%）\nLE09-A0039 投标信息.中标人公布时间（winner_announce_time，空 55.98%）\nLE09-A0040 投标信息.备注（客情关系、特殊情况等说明）（remark，空 25%）",
-      "unit": "条",
-      "dimension": "—",
-      "sqlCodes": "YWLN_M_BIDDING_OPPORTUNITY_COUNT；YWLN_D_IS_BIDDING（基础项）",
-      "stage": "风险 3",
-      "node": "商机获取",
-      "resultColumns": "数量",
-      "aggregate": "count",
-      "physicalFields": "商机.name/opportunityid；投标.project_name/input_time/winner_announce_time/remark",
-      "dashboardSql": "已进入投标商机数只判断曾关联已录入投标，不排除已公布结果；是否投标中筛选则取同项目最新投标，未弃标且结果未公布。",
-      "notes": "已进入投标数≠当前投标中数，独立查询按最新未弃标且结果未出判断。",
-      "sqlStatus": "查询已实现；缺失输入及部分合计见明细",
-      "v3Change": "口径按客户修订",
-      "risks": [
-        "RK09"
-      ],
-      "causes": [],
-      "advice": [
-        "AC04"
-      ],
-      "role": "风险触发 / 行动跟踪",
-      "cteCount": "12",
-      "ctes": "parameters → context → account_rows → accounts → opportunity_rows → opportunities → orders → order_line_links → signed_orders → bid_rows → bid_latest → opportunity_flags",
-      "sql": "-- 指标 R11 投标中商机数：可直接调用 SQL（PostgreSQL 只读；业务表均为 ded_public）\n-- 来源：穿透式分析_55种指标_查询_2025_C0及环节周期合并修订.sql 第 12 个指标分支；仅保留该指标依赖的 12 个 CTE，结果与整段执行时该指标的行一致。\n-- 修改统计期间：只改 parameters 中的 start_date / end_exclusive（结束日不含）；无绑定参数。\nWITH\nparameters AS MATERIALIZED (\nSELECT DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive,\n       CURRENT_TIMESTAMP::timestamp AS observed_at,\n       ARRAY['1']::text[] AS strategic_levels,\n       ARRAY['1','2']::text[] AS focus_levels,\n       1000000::numeric AS target_power_units_per_gwh\n-- 默认2025全年；结束日不含。仅修改这里，不需要填写绑定参数。\n-- 战略客户默认等级1；重点跟踪默认1战略＋2重要。0核心/4BG不自动纳入。\n-- 目标power暂沿用当前M0007单项的kWh换算，不用quantity冒充电量。\n),\ncontext AS MATERIALIZED (\nSELECT p.*,LEAST(observed_at,end_exclusive::timestamp) AS cutoff,\n       make_date(EXTRACT(YEAR FROM start_date)::integer,1,1) AS year_start,\n       make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1) AS next_year_start,\n       GREATEST(0::numeric,LEAST(1::numeric,\n        (LEAST(observed_at,end_exclusive::timestamp)::date-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1))::numeric\n        /(make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1)-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1)))) AS time_progress\nFROM parameters p\n),\naccount_rows AS MATERIALIZED (\nSELECT a.accountid::text AS account_id,a.name::text AS account_name,\n       a.new_accountlevel::text AS level_code,\n       a.new_sapdate::timestamp AS sap_created_at,a.new_sapsubmitdate::timestamp AS sap_submitted_at,\n       a.new_approved_time_facreview::timestamp AS account_factory_approved_at,\n       a.new_submit_time_facreview::timestamp AS account_factory_submitted_at,\n       a.new_sinosurestartdate::timestamp AS account_sinosure_start,\n       a.new_sinosureenddate::timestamp AS account_sinosure_end,\n       a.new_submit_time_accredit::timestamp AS account_credit_submitted_at,\n       a.new_approvaltime_accredit::timestamp AS account_credit_approved_at,\n       a.new_cdastartdate::timestamp AS account_cda_start,\n       a.new_cdaenddate::timestamp AS account_cda_end,\n       a.new_cda_submittime::timestamp AS account_cda_submitted_at,\n       a.new_cda_approved_time::timestamp AS account_cda_approved_at,\n       a.new_approvalstatus_facreview::text AS account_factory_approval_status,\n       a.new_sapcode::text AS sap_code,a.new_issap::text AS sap_registered,\n       a.new_issapnew::text AS sap_registration_kind,\n       ROW_NUMBER() OVER(PARTITION BY a.accountid ORDER BY a.modifiedon DESC NULLS LAST,a.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_account_esb a WHERE NULLIF(BTRIM(a.accountid::text),'') IS NOT NULL\n),\naccounts AS MATERIALIZED (\nSELECT account_id,account_name,level_code,sap_created_at,sap_submitted_at,account_factory_approved_at,account_factory_submitted_at,account_sinosure_start,account_sinosure_end,account_credit_submitted_at,account_credit_approved_at,account_cda_start,account_cda_end,account_cda_submitted_at,account_cda_approved_at,account_factory_approval_status,sap_code,sap_registered,sap_registration_kind FROM account_rows WHERE rn=1\n),\nopportunity_rows AS MATERIALIZED (\nSELECT o.opportunityid::text AS opportunity_id,o.parentaccountid::text AS account_id,\n       o.name::text AS project_name,o.ownerid::text AS owner_id,\n       CASE WHEN o.new_accproducttype::text IN ('1','电芯') THEN '电芯'\n            WHEN o.new_accproducttype::text IN ('2','PACK') THEN 'PACK' ELSE '其他' END AS product_type,\n       o.new_isqualifiedsuppliers::text AS supplier_flag,\n       o.new_istechnologyagreement::text AS technical_flag,\n       o.new_iswarranty::text AS warranty_flag,\n       o.new_processstage::text AS process_stage,o.statecode::text AS system_state,o.new_demandinput::text AS demand_status,\n       o.createdon::timestamp AS created_at,o.new_stage1enddate::timestamp AS s1,\n       o.new_stage2enddate::timestamp AS s2,o.new_stage3enddate::timestamp AS s3,\n       o.new_stage4enddate::timestamp AS s4,o.new_stage5enddate::timestamp AS s5,\n       o.new_cdastartdate::timestamp AS new_cdastartdate,\n       o.new_cdaenddate::timestamp AS new_cdaenddate,\n       o.new_approved_time_acneed::timestamp AS new_approved_time_acneed,\n       o.new_submit_time_acneed::timestamp AS new_submit_time_acneed,\n       o.new_issalesforecast_date::timestamp AS new_issalesforecast_date,\n       o.new_approved_time_projectassess::timestamp AS new_approved_time_projectassess,\n       o.new_submit_time_projectassess::timestamp AS new_submit_time_projectassess,\n       o.new_sampletestpass_time::timestamp AS new_sampletestpass_time,\n       o.new_sampletime::timestamp AS new_sampletime,\n       o.new_technicalsigningdate::timestamp AS new_technicalsigningdate,\n       o.new_submit_time_techcon::timestamp AS new_submit_time_techcon,\n       o.new_warrantysigningdate::timestamp AS new_warrantysigningdate,\n       o.new_submit_time_qsl::timestamp AS new_submit_time_qsl,\n       o.new_isneedcda::text AS new_isneedcda,\n       o.new_approvalstatus_acneed::text AS new_approvalstatus_acneed,\n       o.new_approvalstatus_projectassess::text AS new_approvalstatus_projectassess,\n       o.new_approvalstatus_techcon::text AS new_approvalstatus_techcon,\n       o.new_approvalstatus_qsl::text AS new_approvalstatus_qsl,\n       o.new_sampletestresult::text AS new_sampletestresult,\n       ROW_NUMBER() OVER(PARTITION BY o.opportunityid ORDER BY o.modifiedon DESC NULLS LAST,o.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_opportunity_esb o\nWHERE NULLIF(BTRIM(o.opportunityid::text),'') IS NOT NULL\n),\nopportunities AS MATERIALIZED (\nSELECT o.opportunity_id,o.account_id,o.project_name,o.owner_id,o.product_type,o.process_stage,o.demand_status,\n       o.created_at,o.s1,o.s2,o.s3,o.s4,o.s5,a.account_name,a.level_code,\n       o.new_cdastartdate,\n       o.new_cdaenddate,\n       o.new_approved_time_acneed,\n       o.new_submit_time_acneed,\n       o.new_issalesforecast_date,\n       o.new_approved_time_projectassess,\n       o.new_submit_time_projectassess,\n       o.new_sampletestpass_time,\n       o.new_sampletime,\n       o.new_technicalsigningdate,\n       o.new_submit_time_techcon,\n       o.new_warrantysigningdate,\n       o.new_submit_time_qsl,\n       o.new_isneedcda,\n       o.new_approvalstatus_acneed,\n       o.new_approvalstatus_projectassess,\n       o.new_approvalstatus_techcon,\n       o.new_approvalstatus_qsl,\n       o.new_sampletestresult,a.sap_created_at,a.sap_submitted_at,a.sap_code,a.account_factory_approved_at,a.account_factory_submitted_at,a.account_sinosure_start,a.account_sinosure_end,a.account_credit_submitted_at,a.account_credit_approved_at,a.account_cda_start,a.account_cda_end,a.account_cda_submitted_at,a.account_cda_approved_at,a.account_factory_approval_status\nFROM opportunity_rows o LEFT JOIN accounts a USING(account_id) CROSS JOIN context p\nWHERE o.rn=1 AND (o.created_at IS NULL OR o.created_at<=p.cutoff)\n),\norders AS MATERIALIZED (\nSELECT DISTINCT salesorderid::text AS order_id\nFROM ded_public.p_fm_edw_v_ods_crm_salesorder_esb\nWHERE NULLIF(BTRIM(salesorderid::text),'') IS NOT NULL\n-- 签单严格按“有关联订单”确认：不使用订单头opportunityid，也不使用合同确认枚举。\n-- 未额外限定审批、取消状态或订单日期；本查询统计的是关联关系现状，不是历史签单快照。\n),\norder_line_links AS MATERIALIZED (\nSELECT DISTINCT l.new_opportunity_id::text AS opportunity_id,l.salesorderid::text AS order_id\nFROM ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb l\nWHERE NULLIF(BTRIM(l.new_opportunity_id::text),'') IS NOT NULL\n  AND NULLIF(BTRIM(l.salesorderid::text),'') IS NOT NULL\n),\nsigned_orders AS MATERIALIZED (\nSELECT l.opportunity_id,COUNT(DISTINCT l.order_id) AS order_count\nFROM order_line_links l JOIN orders o USING(order_id) GROUP BY l.opportunity_id\n),\nbid_rows AS MATERIALIZED (\nSELECT b.project_name::text AS project_name,b.seq_no::text AS bid_id,b.seq_no AS bid_seq,b.remark::text AS remark,\n       NULLIF(BTRIM(b.input_time::text),'')::timestamp AS input_at,\n       NULLIF(BTRIM(b.bid_open_time::text),'')::timestamp AS open_at,\n       NULLIF(BTRIM(b.winner_announce_time::text),'')::timestamp AS result_at\nFROM ded_public.p_fm_bid_project_info b\nWHERE NULLIF(BTRIM(b.project_name::text),'') IS NOT NULL\n),\nbid_latest AS MATERIALIZED (\nSELECT project_name,bid_id,remark,input_at,result_at FROM (\n SELECT b.*,ROW_NUMBER() OVER(PARTITION BY project_name ORDER BY input_at DESC NULLS LAST,bid_seq DESC NULLS LAST) AS rn\n FROM bid_rows b CROSS JOIN context p WHERE b.input_at IS NOT NULL AND b.input_at<=p.cutoff\n) r WHERE rn=1\n),\nopportunity_flags AS MATERIALIZED (\nSELECT o.*,COALESCE(s.order_count,0) AS order_count,COALESCE(s.order_count,0)>0 AS signed,\n       b.project_name IS NOT NULL AS entered_bid,\n       b.project_name IS NOT NULL AND COALESCE(b.remark,'') NOT LIKE '%弃标%'\n          AND (b.result_at IS NULL OR b.result_at>p.cutoff) AS bidding,\n       b.bid_id,b.input_at,b.result_at\nFROM opportunities o LEFT JOIN signed_orders s USING(opportunity_id)\nLEFT JOIN bid_latest b ON b.project_name=o.project_name CROSS JOIN context p\n),\nmetric_results AS (\nSELECT 12 AS sort_no,'R11'::text AS code,'投标中商机数'::text AS metric_name,\nNULL::text AS product_team,\n(NULL)::numeric AS amount_yi,(NULL)::numeric AS energy_gwh,(COUNT(DISTINCT opportunity_id) FILTER(WHERE bidding))::bigint AS item_count,\n(NULL)::numeric AS ratio_value,(NULL)::numeric AS days_value,'查询已实现；缺失输入及部分合计见明细'::text AS status,\n'项目名精确匹配最新投标；未弃标且结果未公布；不是历史已进入投标总数。'::text AS note,(jsonb_build_object('已进入投标商机',COUNT(DISTINCT opportunity_id) FILTER(WHERE entered_bid),'当前投标中',COUNT(DISTINCT opportunity_id) FILTER(WHERE bidding),'电芯投标中',COUNT(DISTINCT opportunity_id) FILTER(WHERE bidding AND product_type='电芯'),'PACK投标中',COUNT(DISTINCT opportunity_id) FILTER(WHERE bidding AND product_type='PACK')))::jsonb AS detail\nFROM opportunity_flags o\n)\nSELECT r.code AS \"指标序号\",r.metric_name AS \"指标名称\",r.product_team AS \"产品团队\",\np.start_date AS \"期间开始\",p.end_exclusive AS \"期间结束不含\",p.cutoff AS \"周期观察截止\",\nr.amount_yi AS \"金额_亿元\",r.energy_gwh AS \"电量_GWh\",r.item_count AS \"数量\",\nr.ratio_value AS \"比率_原始小数\",r.days_value AS \"平均周期_天\",\nCASE WHEN r.status='查询已实现；缺失输入及部分合计见明细' THEN\n CASE WHEN r.amount_yi IS NOT NULL OR r.energy_gwh IS NOT NULL OR r.item_count IS NOT NULL\n        OR r.ratio_value IS NOT NULL OR r.days_value IS NOT NULL\n      THEN '已有查询结果；完整性与适用列见明细'\n      ELSE '没有可计算结果；检查输入、时间及关联范围' END ELSE r.status END AS \"计算说明状态\",\nr.note AS \"取值说明\",r.detail AS \"分组明细及缺口\"\nFROM metric_results r CROSS JOIN context p ORDER BY r.sort_no,r.product_team NULLS LAST;;"
-    },
     "C01": {
       "code": "C01",
       "name": "处于 P0 阶段的战略客户未签单商机数及预测量",
@@ -1834,44 +1757,6 @@
       "cteCount": "11",
       "ctes": "parameters → context → account_rows → accounts → opportunity_rows → orders → order_line_links → signed_orders → forecast_rows → strategic_p0_unsigned → strategic_p0_values",
       "sql": "-- 指标 C01 处于 P0 阶段的战略客户未签单商机数及预测量：可直接调用 SQL（PostgreSQL 只读；业务表均为 ded_public）\n-- 来源：穿透式分析_55种指标_查询_2025_C0及环节周期合并修订.sql 第 13 个指标分支；仅保留该指标依赖的 11 个 CTE，结果与整段执行时该指标的行一致。\n-- 修改统计期间：只改 parameters 中的 start_date / end_exclusive（结束日不含）；无绑定参数。\nWITH\nparameters AS MATERIALIZED (\nSELECT DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive,\n       CURRENT_TIMESTAMP::timestamp AS observed_at,\n       ARRAY['1']::text[] AS strategic_levels,\n       ARRAY['1','2']::text[] AS focus_levels,\n       1000000::numeric AS target_power_units_per_gwh\n-- 默认2025全年；结束日不含。仅修改这里，不需要填写绑定参数。\n-- 战略客户默认等级1；重点跟踪默认1战略＋2重要。0核心/4BG不自动纳入。\n-- 目标power暂沿用当前M0007单项的kWh换算，不用quantity冒充电量。\n),\ncontext AS MATERIALIZED (\nSELECT p.*,LEAST(observed_at,end_exclusive::timestamp) AS cutoff,\n       make_date(EXTRACT(YEAR FROM start_date)::integer,1,1) AS year_start,\n       make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1) AS next_year_start,\n       GREATEST(0::numeric,LEAST(1::numeric,\n        (LEAST(observed_at,end_exclusive::timestamp)::date-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1))::numeric\n        /(make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1)-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1)))) AS time_progress\nFROM parameters p\n),\naccount_rows AS MATERIALIZED (\nSELECT a.accountid::text AS account_id,a.name::text AS account_name,\n       a.new_accountlevel::text AS level_code,\n       a.new_sapdate::timestamp AS sap_created_at,a.new_sapsubmitdate::timestamp AS sap_submitted_at,\n       a.new_approved_time_facreview::timestamp AS account_factory_approved_at,\n       a.new_submit_time_facreview::timestamp AS account_factory_submitted_at,\n       a.new_sinosurestartdate::timestamp AS account_sinosure_start,\n       a.new_sinosureenddate::timestamp AS account_sinosure_end,\n       a.new_submit_time_accredit::timestamp AS account_credit_submitted_at,\n       a.new_approvaltime_accredit::timestamp AS account_credit_approved_at,\n       a.new_cdastartdate::timestamp AS account_cda_start,\n       a.new_cdaenddate::timestamp AS account_cda_end,\n       a.new_cda_submittime::timestamp AS account_cda_submitted_at,\n       a.new_cda_approved_time::timestamp AS account_cda_approved_at,\n       a.new_approvalstatus_facreview::text AS account_factory_approval_status,\n       a.new_sapcode::text AS sap_code,a.new_issap::text AS sap_registered,\n       a.new_issapnew::text AS sap_registration_kind,\n       ROW_NUMBER() OVER(PARTITION BY a.accountid ORDER BY a.modifiedon DESC NULLS LAST,a.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_account_esb a WHERE NULLIF(BTRIM(a.accountid::text),'') IS NOT NULL\n),\naccounts AS MATERIALIZED (\nSELECT account_id,account_name,level_code,sap_created_at,sap_submitted_at,account_factory_approved_at,account_factory_submitted_at,account_sinosure_start,account_sinosure_end,account_credit_submitted_at,account_credit_approved_at,account_cda_start,account_cda_end,account_cda_submitted_at,account_cda_approved_at,account_factory_approval_status,sap_code,sap_registered,sap_registration_kind FROM account_rows WHERE rn=1\n),\nopportunity_rows AS MATERIALIZED (\nSELECT o.opportunityid::text AS opportunity_id,o.parentaccountid::text AS account_id,\n       o.name::text AS project_name,o.ownerid::text AS owner_id,\n       CASE WHEN o.new_accproducttype::text IN ('1','电芯') THEN '电芯'\n            WHEN o.new_accproducttype::text IN ('2','PACK') THEN 'PACK' ELSE '其他' END AS product_type,\n       o.new_isqualifiedsuppliers::text AS supplier_flag,\n       o.new_istechnologyagreement::text AS technical_flag,\n       o.new_iswarranty::text AS warranty_flag,\n       o.new_processstage::text AS process_stage,o.statecode::text AS system_state,o.new_demandinput::text AS demand_status,\n       o.createdon::timestamp AS created_at,o.new_stage1enddate::timestamp AS s1,\n       o.new_stage2enddate::timestamp AS s2,o.new_stage3enddate::timestamp AS s3,\n       o.new_stage4enddate::timestamp AS s4,o.new_stage5enddate::timestamp AS s5,\n       o.new_cdastartdate::timestamp AS new_cdastartdate,\n       o.new_cdaenddate::timestamp AS new_cdaenddate,\n       o.new_approved_time_acneed::timestamp AS new_approved_time_acneed,\n       o.new_submit_time_acneed::timestamp AS new_submit_time_acneed,\n       o.new_issalesforecast_date::timestamp AS new_issalesforecast_date,\n       o.new_approved_time_projectassess::timestamp AS new_approved_time_projectassess,\n       o.new_submit_time_projectassess::timestamp AS new_submit_time_projectassess,\n       o.new_sampletestpass_time::timestamp AS new_sampletestpass_time,\n       o.new_sampletime::timestamp AS new_sampletime,\n       o.new_technicalsigningdate::timestamp AS new_technicalsigningdate,\n       o.new_submit_time_techcon::timestamp AS new_submit_time_techcon,\n       o.new_warrantysigningdate::timestamp AS new_warrantysigningdate,\n       o.new_submit_time_qsl::timestamp AS new_submit_time_qsl,\n       o.new_isneedcda::text AS new_isneedcda,\n       o.new_approvalstatus_acneed::text AS new_approvalstatus_acneed,\n       o.new_approvalstatus_projectassess::text AS new_approvalstatus_projectassess,\n       o.new_approvalstatus_techcon::text AS new_approvalstatus_techcon,\n       o.new_approvalstatus_qsl::text AS new_approvalstatus_qsl,\n       o.new_sampletestresult::text AS new_sampletestresult,\n       ROW_NUMBER() OVER(PARTITION BY o.opportunityid ORDER BY o.modifiedon DESC NULLS LAST,o.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_opportunity_esb o\nWHERE NULLIF(BTRIM(o.opportunityid::text),'') IS NOT NULL\n),\norders AS MATERIALIZED (\nSELECT DISTINCT salesorderid::text AS order_id\nFROM ded_public.p_fm_edw_v_ods_crm_salesorder_esb\nWHERE NULLIF(BTRIM(salesorderid::text),'') IS NOT NULL\n-- 签单严格按“有关联订单”确认：不使用订单头opportunityid，也不使用合同确认枚举。\n-- 未额外限定审批、取消状态或订单日期；本查询统计的是关联关系现状，不是历史签单快照。\n),\norder_line_links AS MATERIALIZED (\nSELECT DISTINCT l.new_opportunity_id::text AS opportunity_id,l.salesorderid::text AS order_id\nFROM ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb l\nWHERE NULLIF(BTRIM(l.new_opportunity_id::text),'') IS NOT NULL\n  AND NULLIF(BTRIM(l.salesorderid::text),'') IS NOT NULL\n),\nsigned_orders AS MATERIALIZED (\nSELECT l.opportunity_id,COUNT(DISTINCT l.order_id) AS order_count\nFROM order_line_links l JOIN orders o USING(order_id) GROUP BY l.opportunity_id\n),\nforecast_rows AS MATERIALIZED (\nSELECT m.new_oppmonthid::text AS forecast_id,m.new_opportunity_id::text AS opportunity_id,\n       m.new_accountdate::timestamp AS forecast_month,m.new_forecast_amt_rmb::numeric AS amount_yuan,\n       m.new_whprice::numeric AS wh_price,\n       ROW_NUMBER() OVER(PARTITION BY m.new_opportunity_id,date_trunc('month',m.new_accountdate::timestamp)\n        ORDER BY m.createdon DESC NULLS LAST,m.modifiedon DESC NULLS LAST,m.new_oppmonthid DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb m CROSS JOIN context p\nWHERE NULLIF(BTRIM(m.new_oppmonthid::text),'') IS NOT NULL\n  AND NULLIF(BTRIM(m.new_opportunity_id::text),'') IS NOT NULL\n  AND m.new_accountdate::timestamp>=p.start_date AND m.new_accountdate::timestamp<p.end_exclusive\n-- 月度事实：同商机同月按创建/修改时间取最新；不是全年每商机只留一个月份。\n-- 商机预测金额直接用new_forecast_amt_rmb，不混用实际销售额。\n-- 原穿透Excel/阶段TXT未另给审核状态范围，此查询不附加审核/业务状态过滤。\n),\nstrategic_p0_unsigned AS MATERIALIZED (\nSELECT o.opportunity_id,o.product_type,a.account_id\nFROM opportunity_rows o JOIN accounts a ON a.account_id=o.account_id\nLEFT JOIN signed_orders s ON s.opportunity_id=o.opportunity_id CROSS JOIN context p\nWHERE o.rn=1 AND o.process_stage='11' AND o.system_state='0'\n AND a.level_code=ANY(p.strategic_levels) AND COALESCE(s.order_count,0)=0\n-- 有效商机按statecode=0，不额外添加审核状态或需求未确认筛选。\n-- 先确定P0战略未签商机集合，不因商机缺月度预测记录而漏掉商机数量。\n-- 订单关联由商机→订单明细.new_opportunity_id→订单.salesorderid判定，不使用合同确认枚举。\n-- 数量为当前关联现状；预测金额及电量按所选预测期间。\n),\nstrategic_p0_values AS MATERIALIZED (\nSELECT CASE WHEN GROUPING(c.product_type)=1 THEN '全部' ELSE c.product_type END AS product_type,\n COUNT(DISTINCT c.opportunity_id) AS opportunity_count,\n CASE WHEN COUNT(DISTINCT c.opportunity_id)=0 THEN 0 ELSE SUM(f.amount_yuan)/100000000::numeric END AS amount_yi,\n CASE WHEN COUNT(DISTINCT c.opportunity_id)=0 THEN 0 ELSE SUM(f.amount_yuan/NULLIF(f.wh_price,0))/1000000000::numeric END AS energy_gwh,\n COUNT(f.forecast_id) AS forecast_rows,\n COUNT(DISTINCT c.opportunity_id) FILTER(WHERE f.forecast_id IS NULL) AS opportunities_without_period_forecast,\n COUNT(f.forecast_id) FILTER(WHERE f.amount_yuan IS NULL) AS missing_amount_rows,\n COUNT(f.forecast_id) FILTER(WHERE f.amount_yuan IS NULL OR f.wh_price IS NULL OR f.wh_price=0) AS missing_energy_input_rows\nFROM strategic_p0_unsigned c LEFT JOIN forecast_rows f ON f.opportunity_id=c.opportunity_id AND f.rn=1\nGROUP BY GROUPING SETS((),(c.product_type))\n),\nmetric_results AS (\nSELECT 13 AS sort_no,'C01'::text AS code,'处于 P0 阶段的战略客户未签单商机数及预测量'::text AS metric_name,\nNULL::text AS product_team,\n amount_yi,energy_gwh,opportunity_count::bigint AS item_count,NULL::numeric AS ratio_value,NULL::numeric AS days_value,\n '已实现；P0有效战略未签集合，数量与预测分开计算'::text AS status,\n 'new_processstage=11，statecode=0，客户等级1，订单明细关联订单数为0；预测缺失不影响商机计数；预测按所选期间商机＋月份最新版本汇总。'::text AS note,\n (SELECT jsonb_agg(to_jsonb(x)) FROM strategic_p0_values x) AS detail\nFROM strategic_p0_values WHERE product_type='全部'\n)\nSELECT r.code AS \"指标序号\",r.metric_name AS \"指标名称\",r.product_team AS \"产品团队\",\np.start_date AS \"期间开始\",p.end_exclusive AS \"期间结束不含\",p.cutoff AS \"周期观察截止\",\nr.amount_yi AS \"金额_亿元\",r.energy_gwh AS \"电量_GWh\",r.item_count AS \"数量\",\nr.ratio_value AS \"比率_原始小数\",r.days_value AS \"平均周期_天\",\nCASE WHEN r.status='查询已实现；缺失输入及部分合计见明细' THEN\n CASE WHEN r.amount_yi IS NOT NULL OR r.energy_gwh IS NOT NULL OR r.item_count IS NOT NULL\n        OR r.ratio_value IS NOT NULL OR r.days_value IS NOT NULL\n      THEN '已有查询结果；完整性与适用列见明细'\n      ELSE '没有可计算结果；检查输入、时间及关联范围' END ELSE r.status END AS \"计算说明状态\",\nr.note AS \"取值说明\",r.detail AS \"分组明细及缺口\"\nFROM metric_results r CROSS JOIN context p ORDER BY r.sort_no,r.product_team NULLS LAST;;"
-    },
-    "C02": {
-      "code": "C02",
-      "name": "战略客户待投标商机的商务与技术不满足项",
-      "definition": "筛选战略客户已有投标计划且尚未进入投标的商机。读取每条商机适用的商务和技术投标前置条件及检查结果。",
-      "formula": "如战略客户有待投标商机，且至少一项适用的商务或技术投标前置条件不满足，则判定“投标前置条件未满足”原因成立。关联对应商机的未进入投标及签单推进风险。按商务、技术分别统计，合计按商机 ID 去重。",
-      "caliber": "",
-      "type": "派生指标",
-      "entities": [
-        "LE01",
-        "LE05",
-        "LE09"
-      ],
-      "attributes": "LE01-A0001 商机管理.主键（opportunityid，空 0%）",
-      "unit": "条、亿元／GWh",
-      "dimension": "—",
-      "sqlCodes": "",
-      "stage": "原因 1",
-      "node": "商机获取",
-      "resultColumns": "（暂无取值，结果为 NULL）",
-      "aggregate": "count",
-      "physicalFields": "",
-      "dashboardSql": "",
-      "notes": "仍缺适用的商务/技术条件、判定阈值与批准投标计划；本查询提供战略未投标商机的原始Boolean候选统计，但不将候选冒充正式不满足项。",
-      "sqlStatus": "缺适用条件/投标计划定义；基础候选诊断见明细",
-      "v3Change": "口径按客户修订",
-      "risks": [],
-      "causes": [
-        "RC02"
-      ],
-      "advice": [
-        "AC04",
-        "AC05"
-      ],
-      "role": "根因判定 / 行动跟踪",
-      "cteCount": "7",
-      "ctes": "parameters → context → account_rows → accounts → opportunity_rows → bid_rows → c02_base_candidates",
-      "sql": "-- 指标 C02 战略客户待投标商机的商务与技术不满足项：可直接调用 SQL（PostgreSQL 只读；业务表均为 ded_public）\n-- 来源：穿透式分析_55种指标_查询_2025_C0及环节周期合并修订.sql 第 14 个指标分支；仅保留该指标依赖的 7 个 CTE，结果与整段执行时该指标的行一致。\n-- 修改统计期间：只改 parameters 中的 start_date / end_exclusive（结束日不含）；无绑定参数。\nWITH\nparameters AS MATERIALIZED (\nSELECT DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive,\n       CURRENT_TIMESTAMP::timestamp AS observed_at,\n       ARRAY['1']::text[] AS strategic_levels,\n       ARRAY['1','2']::text[] AS focus_levels,\n       1000000::numeric AS target_power_units_per_gwh\n-- 默认2025全年；结束日不含。仅修改这里，不需要填写绑定参数。\n-- 战略客户默认等级1；重点跟踪默认1战略＋2重要。0核心/4BG不自动纳入。\n-- 目标power暂沿用当前M0007单项的kWh换算，不用quantity冒充电量。\n),\ncontext AS MATERIALIZED (\nSELECT p.*,LEAST(observed_at,end_exclusive::timestamp) AS cutoff,\n       make_date(EXTRACT(YEAR FROM start_date)::integer,1,1) AS year_start,\n       make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1) AS next_year_start,\n       GREATEST(0::numeric,LEAST(1::numeric,\n        (LEAST(observed_at,end_exclusive::timestamp)::date-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1))::numeric\n        /(make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1)-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1)))) AS time_progress\nFROM parameters p\n),\naccount_rows AS MATERIALIZED (\nSELECT a.accountid::text AS account_id,a.name::text AS account_name,\n       a.new_accountlevel::text AS level_code,\n       a.new_sapdate::timestamp AS sap_created_at,a.new_sapsubmitdate::timestamp AS sap_submitted_at,\n       a.new_approved_time_facreview::timestamp AS account_factory_approved_at,\n       a.new_submit_time_facreview::timestamp AS account_factory_submitted_at,\n       a.new_sinosurestartdate::timestamp AS account_sinosure_start,\n       a.new_sinosureenddate::timestamp AS account_sinosure_end,\n       a.new_submit_time_accredit::timestamp AS account_credit_submitted_at,\n       a.new_approvaltime_accredit::timestamp AS account_credit_approved_at,\n       a.new_cdastartdate::timestamp AS account_cda_start,\n       a.new_cdaenddate::timestamp AS account_cda_end,\n       a.new_cda_submittime::timestamp AS account_cda_submitted_at,\n       a.new_cda_approved_time::timestamp AS account_cda_approved_at,\n       a.new_approvalstatus_facreview::text AS account_factory_approval_status,\n       a.new_sapcode::text AS sap_code,a.new_issap::text AS sap_registered,\n       a.new_issapnew::text AS sap_registration_kind,\n       ROW_NUMBER() OVER(PARTITION BY a.accountid ORDER BY a.modifiedon DESC NULLS LAST,a.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_account_esb a WHERE NULLIF(BTRIM(a.accountid::text),'') IS NOT NULL\n),\naccounts AS MATERIALIZED (\nSELECT account_id,account_name,level_code,sap_created_at,sap_submitted_at,account_factory_approved_at,account_factory_submitted_at,account_sinosure_start,account_sinosure_end,account_credit_submitted_at,account_credit_approved_at,account_cda_start,account_cda_end,account_cda_submitted_at,account_cda_approved_at,account_factory_approval_status,sap_code,sap_registered,sap_registration_kind FROM account_rows WHERE rn=1\n),\nopportunity_rows AS MATERIALIZED (\nSELECT o.opportunityid::text AS opportunity_id,o.parentaccountid::text AS account_id,\n       o.name::text AS project_name,o.ownerid::text AS owner_id,\n       CASE WHEN o.new_accproducttype::text IN ('1','电芯') THEN '电芯'\n            WHEN o.new_accproducttype::text IN ('2','PACK') THEN 'PACK' ELSE '其他' END AS product_type,\n       o.new_isqualifiedsuppliers::text AS supplier_flag,\n       o.new_istechnologyagreement::text AS technical_flag,\n       o.new_iswarranty::text AS warranty_flag,\n       o.new_processstage::text AS process_stage,o.statecode::text AS system_state,o.new_demandinput::text AS demand_status,\n       o.createdon::timestamp AS created_at,o.new_stage1enddate::timestamp AS s1,\n       o.new_stage2enddate::timestamp AS s2,o.new_stage3enddate::timestamp AS s3,\n       o.new_stage4enddate::timestamp AS s4,o.new_stage5enddate::timestamp AS s5,\n       o.new_cdastartdate::timestamp AS new_cdastartdate,\n       o.new_cdaenddate::timestamp AS new_cdaenddate,\n       o.new_approved_time_acneed::timestamp AS new_approved_time_acneed,\n       o.new_submit_time_acneed::timestamp AS new_submit_time_acneed,\n       o.new_issalesforecast_date::timestamp AS new_issalesforecast_date,\n       o.new_approved_time_projectassess::timestamp AS new_approved_time_projectassess,\n       o.new_submit_time_projectassess::timestamp AS new_submit_time_projectassess,\n       o.new_sampletestpass_time::timestamp AS new_sampletestpass_time,\n       o.new_sampletime::timestamp AS new_sampletime,\n       o.new_technicalsigningdate::timestamp AS new_technicalsigningdate,\n       o.new_submit_time_techcon::timestamp AS new_submit_time_techcon,\n       o.new_warrantysigningdate::timestamp AS new_warrantysigningdate,\n       o.new_submit_time_qsl::timestamp AS new_submit_time_qsl,\n       o.new_isneedcda::text AS new_isneedcda,\n       o.new_approvalstatus_acneed::text AS new_approvalstatus_acneed,\n       o.new_approvalstatus_projectassess::text AS new_approvalstatus_projectassess,\n       o.new_approvalstatus_techcon::text AS new_approvalstatus_techcon,\n       o.new_approvalstatus_qsl::text AS new_approvalstatus_qsl,\n       o.new_sampletestresult::text AS new_sampletestresult,\n       ROW_NUMBER() OVER(PARTITION BY o.opportunityid ORDER BY o.modifiedon DESC NULLS LAST,o.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_opportunity_esb o\nWHERE NULLIF(BTRIM(o.opportunityid::text),'') IS NOT NULL\n),\nbid_rows AS MATERIALIZED (\nSELECT b.project_name::text AS project_name,b.seq_no::text AS bid_id,b.seq_no AS bid_seq,b.remark::text AS remark,\n       NULLIF(BTRIM(b.input_time::text),'')::timestamp AS input_at,\n       NULLIF(BTRIM(b.bid_open_time::text),'')::timestamp AS open_at,\n       NULLIF(BTRIM(b.winner_announce_time::text),'')::timestamp AS result_at\nFROM ded_public.p_fm_bid_project_info b\nWHERE NULLIF(BTRIM(b.project_name::text),'') IS NOT NULL\n),\nc02_base_candidates AS MATERIALIZED (\nSELECT o.opportunity_id,o.product_type,o.supplier_flag,o.technical_flag,o.warranty_flag\nFROM opportunity_rows o JOIN accounts a ON a.account_id=o.account_id CROSS JOIN context p\nWHERE o.rn=1 AND o.system_state='0' AND a.level_code=ANY(p.strategic_levels)\n AND NOT EXISTS(SELECT 1 FROM bid_rows b WHERE b.project_name=o.project_name)\n-- 只是战略未进入投标的基础候选；尚未取得批准投标计划及适用前置条件清单。\n-- 不能仅凭某个Boolean为0就断定该商机违反了一项适用的投标准入要求。\n),\nmetric_results AS (\nSELECT 14 AS sort_no,'C02'::text AS code,'战略客户待投标商机的商务与技术不满足项'::text AS metric_name,\n NULL::text AS product_team,NULL::numeric AS amount_yi,NULL::numeric AS energy_gwh,NULL::bigint AS item_count,\n NULL::numeric AS ratio_value,NULL::numeric AS days_value,'缺适用条件/投标计划定义；基础候选诊断见明细'::text AS status,\n '暂不能计算正式C02。缺的是哪些条件必须满足及何种值为不满足，不是时间字段。基础候选统计不冒充正式不满足项。'::text AS note,\n (SELECT jsonb_build_object('战略未投标基础候选商机数',COUNT(DISTINCT opportunity_id),\n '未成为合格供应商候选数',COUNT(DISTINCT opportunity_id) FILTER(WHERE supplier_flag='0'),\n '技术协议未签署候选数',COUNT(DISTINCT opportunity_id) FILTER(WHERE technical_flag='0'),\n '质保协议未签署候选数',COUNT(DISTINCT opportunity_id) FILTER(WHERE warranty_flag='0'),\n '说明','以上仅原始状态候选，未确认适用条件，不能直接作为C02正式值') FROM c02_base_candidates) AS detail\n)\nSELECT r.code AS \"指标序号\",r.metric_name AS \"指标名称\",r.product_team AS \"产品团队\",\np.start_date AS \"期间开始\",p.end_exclusive AS \"期间结束不含\",p.cutoff AS \"周期观察截止\",\nr.amount_yi AS \"金额_亿元\",r.energy_gwh AS \"电量_GWh\",r.item_count AS \"数量\",\nr.ratio_value AS \"比率_原始小数\",r.days_value AS \"平均周期_天\",\nCASE WHEN r.status='查询已实现；缺失输入及部分合计见明细' THEN\n CASE WHEN r.amount_yi IS NOT NULL OR r.energy_gwh IS NOT NULL OR r.item_count IS NOT NULL\n        OR r.ratio_value IS NOT NULL OR r.days_value IS NOT NULL\n      THEN '已有查询结果；完整性与适用列见明细'\n      ELSE '没有可计算结果；检查输入、时间及关联范围' END ELSE r.status END AS \"计算说明状态\",\nr.note AS \"取值说明\",r.detail AS \"分组明细及缺口\"\nFROM metric_results r CROSS JOIN context p ORDER BY r.sort_no,r.product_team NULLS LAST;;"
     },
     "C07": {
       "code": "C07",
@@ -3311,40 +3196,6 @@
       "ctes": "parameters → context",
       "sql": "-- 指标 S02 标前引导平均周期：可直接调用 SQL（PostgreSQL 只读；业务表均为 ded_public）\n-- 来源：穿透式分析_55种指标_查询_2025_C0及环节周期合并修订.sql 第 53 个指标分支；仅保留该指标依赖的 2 个 CTE，结果与整段执行时该指标的行一致。\n-- 修改统计期间：只改 parameters 中的 start_date / end_exclusive（结束日不含）；无绑定参数。\nWITH\nparameters AS MATERIALIZED (\nSELECT DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive,\n       CURRENT_TIMESTAMP::timestamp AS observed_at,\n       ARRAY['1']::text[] AS strategic_levels,\n       ARRAY['1','2']::text[] AS focus_levels,\n       1000000::numeric AS target_power_units_per_gwh\n-- 默认2025全年；结束日不含。仅修改这里，不需要填写绑定参数。\n-- 战略客户默认等级1；重点跟踪默认1战略＋2重要。0核心/4BG不自动纳入。\n-- 目标power暂沿用当前M0007单项的kWh换算，不用quantity冒充电量。\n),\ncontext AS MATERIALIZED (\nSELECT p.*,LEAST(observed_at,end_exclusive::timestamp) AS cutoff,\n       make_date(EXTRACT(YEAR FROM start_date)::integer,1,1) AS year_start,\n       make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1) AS next_year_start,\n       GREATEST(0::numeric,LEAST(1::numeric,\n        (LEAST(observed_at,end_exclusive::timestamp)::date-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1))::numeric\n        /(make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1)-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1)))) AS time_progress\nFROM parameters p\n),\nmetric_results AS (\nSELECT 53 AS sort_no,'S02'::text AS code,'标前引导平均周期'::text AS metric_name,\nNULL::text AS product_team,\n(NULL)::numeric AS amount_yi,(NULL)::numeric AS energy_gwh,(NULL)::bigint AS item_count,\n(NULL)::numeric AS ratio_value,(NULL)::numeric AS days_value,'未明确本环节完成事件映射，暂留NULL'::text AS status,\n'未明确标前引导所属阶段及完成事件。'::text AS note,(NULL)::jsonb AS detail\n)\nSELECT r.code AS \"指标序号\",r.metric_name AS \"指标名称\",r.product_team AS \"产品团队\",\np.start_date AS \"期间开始\",p.end_exclusive AS \"期间结束不含\",p.cutoff AS \"周期观察截止\",\nr.amount_yi AS \"金额_亿元\",r.energy_gwh AS \"电量_GWh\",r.item_count AS \"数量\",\nr.ratio_value AS \"比率_原始小数\",r.days_value AS \"平均周期_天\",\nCASE WHEN r.status='查询已实现；缺失输入及部分合计见明细' THEN\n CASE WHEN r.amount_yi IS NOT NULL OR r.energy_gwh IS NOT NULL OR r.item_count IS NOT NULL\n        OR r.ratio_value IS NOT NULL OR r.days_value IS NOT NULL\n      THEN '已有查询结果；完整性与适用列见明细'\n      ELSE '没有可计算结果；检查输入、时间及关联范围' END ELSE r.status END AS \"计算说明状态\",\nr.note AS \"取值说明\",r.detail AS \"分组明细及缺口\"\nFROM metric_results r CROSS JOIN context p ORDER BY r.sort_no,r.product_team NULLS LAST;;"
     },
-    "S03": {
-      "code": "S03",
-      "name": "投标平均周期",
-      "definition": "投标平均周期：开标时间bid_open_time－输入时间input_time，换算天后取平均。投标输入日期落所选期间，同项目期间内取最新记录；已完成按开标日，在途按观察截止，分别给出均值与样本数。",
-      "formula": "单笔实际周期严格大于对应动态平均周期的 1.5 倍时判为超期风险。",
-      "caliber": "同项目取最新投标记录，输入时间至结果公布；仅已完成记录纳入均值，按投标输入时间归期，未按产品类型计算动态均值。",
-      "type": "原子指标",
-      "entities": [
-        "LE01",
-        "LE09"
-      ],
-      "attributes": "LE01-A0044 商机管理.客户需求产品类型（new_accproducttype，空 0.07%）\nLE01-A0477 商机管理.项目名称（name，空 0%）\nLE09-A0001 投标信息.序号（seq_no，空 0%）\nLE09-A0002 投标信息.项目名称（project_name，空 0%）\nLE09-A0003 投标信息.输入时间（input_time，空 1.63%）\nLE09-A0004 投标信息.开标时间（bid_open_time，空 3.26%）",
-      "unit": "天",
-      "dimension": "投标输入时间",
-      "sqlCodes": "YWLN_M0047（存在，统计样本不同）",
-      "stage": "补充流程",
-      "node": "商机获取",
-      "resultColumns": "数量、平均周期_天",
-      "aggregate": "avg",
-      "physicalFields": "投标.input_time/bid_open_time/project_name/seq_no；商机.name/new_accproducttype仅用于产品分组",
-      "dashboardSql": "同项目取最新投标记录，输入时间至结果公布；仅已完成记录纳入均值，按投标输入时间归期，未按产品类型计算动态均值。",
-      "notes": "总体以投标表为底表，不因匹配不到商机漏计。产品分组按项目名精确关联；中标公布时间仅用于识别缺开标日期，不作为周期终点。主周期含可判定在途；已完成均值单列于明细。",
-      "sqlStatus": "按结果动态判定（见 SQL 中 status 的 CASE）",
-      "v3Change": "口径按客户修订",
-      "risks": [
-        "RK09"
-      ],
-      "causes": [],
-      "advice": [],
-      "role": "风险触发",
-      "cteCount": "5",
-      "ctes": "parameters → context → opportunity_rows → bid_rows → bid_cycles",
-      "sql": "-- 指标 S03 投标平均周期：可直接调用 SQL（PostgreSQL 只读；业务表均为 ded_public）\n-- 来源：穿透式分析_55种指标_查询_2025_C0及环节周期合并修订.sql 第 54 个指标分支；仅保留该指标依赖的 5 个 CTE，结果与整段执行时该指标的行一致。\n-- 修改统计期间：只改 parameters 中的 start_date / end_exclusive（结束日不含）；无绑定参数。\nWITH\nparameters AS MATERIALIZED (\nSELECT DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive,\n       CURRENT_TIMESTAMP::timestamp AS observed_at,\n       ARRAY['1']::text[] AS strategic_levels,\n       ARRAY['1','2']::text[] AS focus_levels,\n       1000000::numeric AS target_power_units_per_gwh\n-- 默认2025全年；结束日不含。仅修改这里，不需要填写绑定参数。\n-- 战略客户默认等级1；重点跟踪默认1战略＋2重要。0核心/4BG不自动纳入。\n-- 目标power暂沿用当前M0007单项的kWh换算，不用quantity冒充电量。\n),\ncontext AS MATERIALIZED (\nSELECT p.*,LEAST(observed_at,end_exclusive::timestamp) AS cutoff,\n       make_date(EXTRACT(YEAR FROM start_date)::integer,1,1) AS year_start,\n       make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1) AS next_year_start,\n       GREATEST(0::numeric,LEAST(1::numeric,\n        (LEAST(observed_at,end_exclusive::timestamp)::date-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1))::numeric\n        /(make_date(EXTRACT(YEAR FROM start_date)::integer+1,1,1)-make_date(EXTRACT(YEAR FROM start_date)::integer,1,1)))) AS time_progress\nFROM parameters p\n),\nopportunity_rows AS MATERIALIZED (\nSELECT o.opportunityid::text AS opportunity_id,o.parentaccountid::text AS account_id,\n       o.name::text AS project_name,o.ownerid::text AS owner_id,\n       CASE WHEN o.new_accproducttype::text IN ('1','电芯') THEN '电芯'\n            WHEN o.new_accproducttype::text IN ('2','PACK') THEN 'PACK' ELSE '其他' END AS product_type,\n       o.new_isqualifiedsuppliers::text AS supplier_flag,\n       o.new_istechnologyagreement::text AS technical_flag,\n       o.new_iswarranty::text AS warranty_flag,\n       o.new_processstage::text AS process_stage,o.statecode::text AS system_state,o.new_demandinput::text AS demand_status,\n       o.createdon::timestamp AS created_at,o.new_stage1enddate::timestamp AS s1,\n       o.new_stage2enddate::timestamp AS s2,o.new_stage3enddate::timestamp AS s3,\n       o.new_stage4enddate::timestamp AS s4,o.new_stage5enddate::timestamp AS s5,\n       o.new_cdastartdate::timestamp AS new_cdastartdate,\n       o.new_cdaenddate::timestamp AS new_cdaenddate,\n       o.new_approved_time_acneed::timestamp AS new_approved_time_acneed,\n       o.new_submit_time_acneed::timestamp AS new_submit_time_acneed,\n       o.new_issalesforecast_date::timestamp AS new_issalesforecast_date,\n       o.new_approved_time_projectassess::timestamp AS new_approved_time_projectassess,\n       o.new_submit_time_projectassess::timestamp AS new_submit_time_projectassess,\n       o.new_sampletestpass_time::timestamp AS new_sampletestpass_time,\n       o.new_sampletime::timestamp AS new_sampletime,\n       o.new_technicalsigningdate::timestamp AS new_technicalsigningdate,\n       o.new_submit_time_techcon::timestamp AS new_submit_time_techcon,\n       o.new_warrantysigningdate::timestamp AS new_warrantysigningdate,\n       o.new_submit_time_qsl::timestamp AS new_submit_time_qsl,\n       o.new_isneedcda::text AS new_isneedcda,\n       o.new_approvalstatus_acneed::text AS new_approvalstatus_acneed,\n       o.new_approvalstatus_projectassess::text AS new_approvalstatus_projectassess,\n       o.new_approvalstatus_techcon::text AS new_approvalstatus_techcon,\n       o.new_approvalstatus_qsl::text AS new_approvalstatus_qsl,\n       o.new_sampletestresult::text AS new_sampletestresult,\n       ROW_NUMBER() OVER(PARTITION BY o.opportunityid ORDER BY o.modifiedon DESC NULLS LAST,o.createdon DESC NULLS LAST) AS rn\nFROM ded_public.p_fm_edw_v_ods_crm_opportunity_esb o\nWHERE NULLIF(BTRIM(o.opportunityid::text),'') IS NOT NULL\n),\nbid_rows AS MATERIALIZED (\nSELECT b.project_name::text AS project_name,b.seq_no::text AS bid_id,b.seq_no AS bid_seq,b.remark::text AS remark,\n       NULLIF(BTRIM(b.input_time::text),'')::timestamp AS input_at,\n       NULLIF(BTRIM(b.bid_open_time::text),'')::timestamp AS open_at,\n       NULLIF(BTRIM(b.winner_announce_time::text),'')::timestamp AS result_at\nFROM ded_public.p_fm_bid_project_info b\nWHERE NULLIF(BTRIM(b.project_name::text),'') IS NOT NULL\n),\nbid_cycles AS MATERIALIZED (\nSELECT b.bid_id,b.project_name,COALESCE(m.product_type,'未匹配商机') AS product_type,\n b.input_at,b.open_at,\n CASE WHEN b.open_at>=b.input_at AND b.open_at<=p.cutoff\n      THEN EXTRACT(EPOCH FROM (b.open_at-b.input_at))/86400::numeric\n      WHEN b.input_at<=p.cutoff AND\n       (b.open_at>p.cutoff OR\n        (b.open_at IS NULL AND (b.result_at IS NULL OR b.result_at>p.cutoff)\n         AND COALESCE(b.remark,'') NOT LIKE '%弃标%'))\n      THEN EXTRACT(EPOCH FROM (p.cutoff-b.input_at))/86400::numeric END AS elapsed_days,\n b.open_at>=b.input_at AND b.open_at<=p.cutoff AS completed,\n b.open_at IS NOT NULL AND b.open_at<b.input_at AS reversed_dates,\n b.open_at IS NULL AND b.result_at IS NOT NULL AND b.result_at<=p.cutoff AS missing_open_after_result\nFROM (\n SELECT r.*,ROW_NUMBER() OVER(PARTITION BY r.project_name\n   ORDER BY r.input_at DESC NULLS LAST,r.bid_seq DESC NULLS LAST) AS cycle_rn\n FROM bid_rows r CROSS JOIN context p\n WHERE r.input_at>=p.start_date AND r.input_at<p.end_exclusive AND r.input_at<=p.cutoff\n) b\nLEFT JOIN (\n SELECT project_name,CASE WHEN COUNT(DISTINCT product_type)=1 THEN MIN(product_type)\n                         ELSE '多产品类型' END AS product_type\n FROM opportunity_rows WHERE rn=1 AND NULLIF(BTRIM(project_name),'') IS NOT NULL\n GROUP BY project_name\n) m ON m.project_name=b.project_name\nCROSS JOIN context p WHERE b.cycle_rn=1\n-- 投标平均周期终点为bid_open_time（开标），不是winner_announce_time（中标公布）。\n-- 总体从投标表取样，不因未匹配商机而漏掉投标；名称匹配只用于产品分组。\n-- 期间内同项目取最新输入；无开标时间但已有中标公布为缺开标日期，不算在途。\n-- 确认在途的记录至观察截止；已完成与在途统计分别在结果明细中提供。\n),\nmetric_results AS (\nSELECT 54 AS sort_no,'S03'::text AS code,'投标平均周期'::text AS metric_name,\nNULL::text AS product_team,\n (NULL)::numeric AS amount_yi,(NULL)::numeric AS energy_gwh,(COUNT(elapsed_days))::bigint AS item_count,\n (NULL)::numeric AS ratio_value,(AVG(elapsed_days))::numeric AS days_value,(CASE WHEN COUNT(elapsed_days)>0 THEN '已实现；输入至开标，有效样本及在途见明细' ELSE '已映射；所选期间无有效投标周期样本' END)::text AS status,\n '投标平均周期：开标时间bid_open_time－输入时间input_time，换算天后取平均。投标输入日期落所选期间，同项目期间内取最新记录；已完成按开标日，在途按观察截止，分别给出均值与样本数。 总体以投标表为底表，不因匹配不到商机漏计。产品分组按项目名精确关联；中标公布时间仅用于识别缺开标日期，不作为周期终点。主周期含可判定在途；已完成均值单列于明细。'::text AS note,(jsonb_build_object('期间投标项目数',COUNT(*),'有效周期样本',COUNT(elapsed_days),'已完成数',COUNT(*) FILTER(WHERE completed),'已完成平均天数',AVG(elapsed_days) FILTER(WHERE completed),'在途数',COUNT(elapsed_days) FILTER(WHERE NOT COALESCE(completed,FALSE)),'开标早于输入数',COUNT(*) FILTER(WHERE reversed_dates),'已出结果但缺开标日期数',COUNT(*) FILTER(WHERE missing_open_after_result),'产品分组',(SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT product_type,COUNT(elapsed_days) AS samples,AVG(elapsed_days) AS mean_days FROM bid_cycles GROUP BY product_type) x)))::jsonb AS detail\nFROM bid_cycles\n)\nSELECT r.code AS \"指标序号\",r.metric_name AS \"指标名称\",r.product_team AS \"产品团队\",\np.start_date AS \"期间开始\",p.end_exclusive AS \"期间结束不含\",p.cutoff AS \"周期观察截止\",\nr.amount_yi AS \"金额_亿元\",r.energy_gwh AS \"电量_GWh\",r.item_count AS \"数量\",\nr.ratio_value AS \"比率_原始小数\",r.days_value AS \"平均周期_天\",\nCASE WHEN r.status='查询已实现；缺失输入及部分合计见明细' THEN\n CASE WHEN r.amount_yi IS NOT NULL OR r.energy_gwh IS NOT NULL OR r.item_count IS NOT NULL\n        OR r.ratio_value IS NOT NULL OR r.days_value IS NOT NULL\n      THEN '已有查询结果；完整性与适用列见明细'\n      ELSE '没有可计算结果；检查输入、时间及关联范围' END ELSE r.status END AS \"计算说明状态\",\nr.note AS \"取值说明\",r.detail AS \"分组明细及缺口\"\nFROM metric_results r CROSS JOIN context p ORDER BY r.sort_no,r.product_team NULLS LAST;;"
-    },
     "S04": {
       "code": "S04",
       "name": "谈判平均周期",
@@ -3437,16 +3288,6 @@
       "action": "—",
       "category": "口径规则",
       "relatedElements": "指标：P0-01、P0-02、P1-01、P1-02、P2-01、P2-02\nP3-01、P3-02、P4-01、P4-02、C07\n维度：D003 产品类型、D_STAGE 商机阶段"
-    },
-    "BR-Q07": {
-      "code": "BR-Q07",
-      "name": "投标关联",
-      "description": "商机.name = 投标.project_name 原值精确匹配（不要求物理外键）；同项目取最新投标输入记录；投标记录是否存在按项目名称判断",
-      "trigger": "D_IS_BIDDING、R10、R11、S03",
-      "result": "名称不一致会漏判；S03 以投标表为底表、终点为开标时间 bid_open_time（中标公布时间只用于识别缺开标日期）",
-      "action": "—",
-      "category": "口径规则",
-      "relatedElements": "维度：D_IS_BIDDING 是否进入投标\n实体：LE01 商机管理、LE09 投标信息\n指标：R10、R11、S03"
     },
     "BR-Q08": {
       "code": "BR-Q08",
@@ -3568,26 +3409,6 @@
       "category": "指标异常判定（→ 风险）",
       "relatedElements": "风险：RK07 战略客户待突破（无商机）\n判定指标：R09"
     },
-    "BR-A08": {
-      "code": "BR-A08",
-      "name": "战略客户有商机未投标判定",
-      "description": "战略客户有商机但均未进入投标",
-      "trigger": "指标计算完成后检测",
-      "result": "R10 > 0；当前阶段用时 > 动态平均周期 × 1.5 标记推进滞后；等级：存在即高；推进滞后 极高",
-      "action": "生成指标异常并登记风险实例",
-      "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK08 战略客户有商机未投标\n判定指标：R10"
-    },
-    "BR-A09": {
-      "code": "BR-A09",
-      "name": "投标中商机超期判定",
-      "description": "投标中商机在途用时超过投标环节动态平均周期 1.5 倍（S03：输入时间 → 开标时间）",
-      "trigger": "指标计算完成后检测",
-      "result": "在途用时 > S03 × 1.5（严格大于）；等级：战略 / 重点客户 高；其他 中",
-      "action": "生成指标异常并登记风险实例",
-      "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK09 投标中商机超期\n判定指标：R11、S03"
-    },
     "BR-A10": {
       "code": "BR-A10",
       "name": "商机获取阶段超期判定",
@@ -3607,16 +3428,6 @@
       "action": "规则初筛后调用 AI 根因分析，结果需复核",
       "category": "根因成立判定",
       "relatedElements": "根因：RC01 战略客户需求确认未落实\n判定指标：C01"
-    },
-    "BR-C02": {
-      "code": "BR-C02",
-      "name": "投标前置条件未满足成立判定",
-      "description": "C02 相关",
-      "trigger": "风险实例登记后",
-      "result": "战略客户待投标商机至少一项适用的商务或技术投标前置条件不满足",
-      "action": "规则初筛后调用 AI 根因分析，结果需复核",
-      "category": "根因成立判定",
-      "relatedElements": "根因：RC02 投标前置条件未满足\n判定指标：C02"
     },
     "BR-C03": {
       "code": "BR-C03",
@@ -3757,7 +3568,6 @@
       "impact": "商机、客户、产品类型、产品团队",
       "candidateCauses": [
         "RC01",
-        "RC02",
         "RC06",
         "RC07",
         "RC08"
@@ -3834,33 +3644,6 @@
         "RC01"
       ]
     },
-    "RK08": {
-      "code": "RK08",
-      "name": "战略客户有商机未投标",
-      "description": "战略客户有商机但均未进入投标",
-      "indicators": "R10",
-      "rule": "BR-A08",
-      "condition": "R10 > 0；当前阶段用时 > 动态平均周期 × 1.5 标记推进滞后",
-      "levelRule": "存在即高；推进滞后 极高",
-      "impact": "商机、客户、产品类型、产品团队",
-      "candidateCauses": [
-        "RC01",
-        "RC02"
-      ]
-    },
-    "RK09": {
-      "code": "RK09",
-      "name": "投标中商机超期",
-      "description": "投标中商机在途用时超过投标环节动态平均周期 1.5 倍（S03：输入时间 → 开标时间）",
-      "indicators": "R11、S03",
-      "rule": "BR-A09",
-      "condition": "在途用时 > S03 × 1.5（严格大于）",
-      "levelRule": "战略 / 重点客户 高；其他 中",
-      "impact": "商机、客户、产品类型、产品团队",
-      "candidateCauses": [
-        "RC02"
-      ]
-    },
     "RK10": {
       "code": "RK10",
       "name": "商机获取阶段超期",
@@ -3890,27 +3673,10 @@
         "RK03",
         "RK06",
         "RK07",
-        "RK08",
         "RK10"
       ],
       "method": "规则 + AI",
       "aiFocus": "AI 对 C01 商机下钻需求输入完成标志（new_demandinput）、客户需求提交 / 审批时间与项目进展文本，归纳未落实环节（需求未输入 / 未审批 / 被驳回）及客户侧原因；输出受影响商机清单与预测量",
-      "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
-    },
-    "RC02": {
-      "code": "RC02",
-      "name": "投标前置条件未满足",
-      "group": "原因 1",
-      "indicators": "C02",
-      "rule": "BR-C02",
-      "condition": "战略客户待投标商机至少一项适用的商务或技术投标前置条件不满足",
-      "risks": [
-        "RK02",
-        "RK08",
-        "RK09"
-      ],
-      "method": "AI 为主（缺结构化数据）",
-      "aiFocus": "AI 从项目进展、方案与报价记录中识别商务（资质、付款、价格）/ 技术（方案、规格、认证）不满足项；需人工复核",
       "output": "是否成立、受影响商机 / 客户清单、受影响预测金额与电量、证据（指标值、查询配置键、明细）"
     },
     "RC03": {
@@ -4074,42 +3840,6 @@
       "priority": "高",
       "method": "根因成立后按模板生成，AI 补充具体对象、数字与时间（数字须来自指标结果）",
       "source": "V3.1 原型（任务令措施）"
-    },
-    "AC04": {
-      "code": "AC04",
-      "name": "逐项关闭投标前置条件",
-      "causes": [
-        "RC02"
-      ],
-      "action": "逐项关闭投标前置条件",
-      "measure": "对战略客户待投标商机列出商务（资质、付款、价格）与技术（方案、规格、认证）不满足项，逐项指定责任人关闭，推动进入投标",
-      "object": "R10 清单中的待投标商机",
-      "owner": "销售 VP（牵头）＋ 方案负责人",
-      "deadline": "20 个工作日",
-      "target": "不满足项清零；R10 降为 0",
-      "acceptance": "每条商机前置条件全部满足或说明无法投标原因",
-      "tracking": "C02、R10、R11",
-      "priority": "高",
-      "method": "根因成立后按模板生成，AI 补充具体对象、数字与时间（数字须来自指标结果）",
-      "source": "V3.1 原型 + 业务专家 C02"
-    },
-    "AC05": {
-      "code": "AC05",
-      "name": "补建投标前置条件台账",
-      "causes": [
-        "RC02"
-      ],
-      "action": "补建投标前置条件台账",
-      "measure": "在 CRM 中补建投标前置条件清单及检查结果字段，使 C02 可按规则自动判定（当前源表无该数据）",
-      "object": "投标管理流程",
-      "owner": "投标管理 / CRM 管理员",
-      "deadline": "30 个工作日",
-      "target": "C02 由 AI 推断转为规则判定",
-      "acceptance": "台账字段上线并覆盖全部待投标商机",
-      "tracking": "C02",
-      "priority": "中",
-      "method": "根因成立后按模板生成，AI 补充具体对象、数字与时间（数字须来自指标结果）",
-      "source": "数据治理（专家规则依赖）"
     },
     "AC06": {
       "code": "AC06",
@@ -4316,15 +4046,12 @@
       "risk": "RK02",
       "causes": [
         "RC01",
-        "RC02",
         "RC06",
         "RC07",
         "RC08"
       ],
       "advice": [
         "AC01",
-        "AC04",
-        "AC05",
         "AC10",
         "AC11",
         "AC12"
@@ -4342,34 +4069,6 @@
           "target": "C01 中需求输入未完成（new_demandinput = 0）的商机降为 0，C01 商机数下降",
           "tracking": "C01 处于 P0 阶段的战略客户未签单商机数及预测量\nR04 重点跟踪未签单商机数与预测金额／电量",
           "closure": "闭环（跟踪 C01）",
-          "nextStep": "确认后按责任角色合并为任务令下发"
-        },
-        {
-          "indicator": "R03 签单进度与时间进度差\nR02 未签单商机预测金额／电量\nR01 商机预测缺口",
-          "risk": "RK02",
-          "cause": "RC02",
-          "advice": [
-            "AC04"
-          ],
-          "owner": "销售 VP（牵头）＋ 方案负责人",
-          "deadline": "20 个工作日",
-          "target": "不满足项清零；R10 降为 0",
-          "tracking": "C02 战略客户待投标商机的商务与技术不满足项\nR10 有商机但未进入投标的战略客户数\nR11 投标中商机数",
-          "closure": "闭环（跟踪 C02）",
-          "nextStep": "确认后按责任角色合并为任务令下发"
-        },
-        {
-          "indicator": "R03 签单进度与时间进度差\nR02 未签单商机预测金额／电量\nR01 商机预测缺口",
-          "risk": "RK02",
-          "cause": "RC02",
-          "advice": [
-            "AC05"
-          ],
-          "owner": "投标管理 / CRM 管理员",
-          "deadline": "30 个工作日",
-          "target": "C02 由 AI 推断转为规则判定",
-          "tracking": "C02 战略客户待投标商机的商务与技术不满足项",
-          "closure": "闭环（跟踪 C02）",
           "nextStep": "确认后按责任角色合并为任务令下发"
         },
         {
@@ -4636,102 +4335,6 @@
         "AC03"
       ]
     },
-    "RK08": {
-      "risk": "RK08",
-      "causes": [
-        "RC01",
-        "RC02"
-      ],
-      "advice": [
-        "AC01",
-        "AC04",
-        "AC05"
-      ],
-      "rows": [
-        {
-          "indicator": "R10 有商机但未进入投标的战略客户数",
-          "risk": "RK08",
-          "cause": "RC01",
-          "advice": [
-            "AC01"
-          ],
-          "owner": "销售负责人（牵头）＋ 方案经理",
-          "deadline": "10 个工作日",
-          "target": "C01 中需求输入未完成（new_demandinput = 0）的商机降为 0，C01 商机数下降",
-          "tracking": "C01 处于 P0 阶段的战略客户未签单商机数及预测量\nR04 重点跟踪未签单商机数与预测金额／电量",
-          "closure": "闭环（跟踪 C01）",
-          "nextStep": "确认后按责任角色合并为任务令下发"
-        },
-        {
-          "indicator": "R10 有商机但未进入投标的战略客户数",
-          "risk": "RK08",
-          "cause": "RC02",
-          "advice": [
-            "AC04"
-          ],
-          "owner": "销售 VP（牵头）＋ 方案负责人",
-          "deadline": "20 个工作日",
-          "target": "不满足项清零；R10 降为 0",
-          "tracking": "C02 战略客户待投标商机的商务与技术不满足项\nR10 有商机但未进入投标的战略客户数\nR11 投标中商机数",
-          "closure": "闭环（跟踪 C02、R10）",
-          "nextStep": "确认后按责任角色合并为任务令下发"
-        },
-        {
-          "indicator": "R10 有商机但未进入投标的战略客户数",
-          "risk": "RK08",
-          "cause": "RC02",
-          "advice": [
-            "AC05"
-          ],
-          "owner": "投标管理 / CRM 管理员",
-          "deadline": "30 个工作日",
-          "target": "C02 由 AI 推断转为规则判定",
-          "tracking": "C02 战略客户待投标商机的商务与技术不满足项",
-          "closure": "闭环（跟踪 C02）",
-          "nextStep": "确认后按责任角色合并为任务令下发"
-        }
-      ]
-    },
-    "RK09": {
-      "risk": "RK09",
-      "causes": [
-        "RC02"
-      ],
-      "advice": [
-        "AC04",
-        "AC05"
-      ],
-      "rows": [
-        {
-          "indicator": "R11 投标中商机数\nS03 投标平均周期",
-          "risk": "RK09",
-          "cause": "RC02",
-          "advice": [
-            "AC04"
-          ],
-          "owner": "销售 VP（牵头）＋ 方案负责人",
-          "deadline": "20 个工作日",
-          "target": "不满足项清零；R10 降为 0",
-          "tracking": "C02 战略客户待投标商机的商务与技术不满足项\nR10 有商机但未进入投标的战略客户数\nR11 投标中商机数",
-          "closure": "闭环（跟踪 C02、R11）",
-          "nextStep": "确认后按责任角色合并为任务令下发"
-        },
-        {
-          "indicator": "R11 投标中商机数\nS03 投标平均周期",
-          "risk": "RK09",
-          "cause": "RC02",
-          "advice": [
-            "AC05"
-          ],
-          "owner": "投标管理 / CRM 管理员",
-          "deadline": "30 个工作日",
-          "target": "C02 由 AI 推断转为规则判定",
-          "tracking": "C02 战略客户待投标商机的商务与技术不满足项",
-          "closure": "闭环（跟踪 C02）",
-          "nextStep": "确认后按责任角色合并为任务令下发"
-        }
-      ]
-    },
     "RK10": {
       "risk": "RK10",
       "causes": [
@@ -4845,11 +4448,6 @@
       "1": "电芯",
       "2": "PACK"
     },
-    "bidMatch": {
-      "strategy": "名称不一致会漏判；S03 以投标表为底表、终点为开标时间 bid_open_time（中标公布时间只用于识别缺开标日期）",
-      "idRelationAvailable": false,
-      "source": "BR-Q07"
-    },
     "dynamicCycle": {
       "multiplier": 1.5,
       "strict": true,
@@ -4940,6 +4538,33 @@
         "AC03"
       ]
     }
+  },
+  "excluded": {
+    "topic": "投标",
+    "reason": "投标部分暂时从销售额口径明细卡片删除（2026-11-12 用户指示）",
+    "metrics": [
+      "R10",
+      "R11",
+      "C02",
+      "S03"
+    ],
+    "rules": [
+      "BR-Q07",
+      "BR-A08",
+      "BR-A09",
+      "BR-C02"
+    ],
+    "risks": [
+      "RK08",
+      "RK09"
+    ],
+    "causes": [
+      "RC02"
+    ],
+    "advice": [
+      "AC04",
+      "AC05"
+    ]
   },
   "enums": {
     "productType": {

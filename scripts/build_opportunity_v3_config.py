@@ -73,6 +73,53 @@ FIELD_NAMES = {
 }
 
 
+# 投标部分暂时从本卡片删除（用户 2026-11-12 指示）：这些指标、规则、风险、根因和
+# 只对应被删根因的行动建议不进入运行配置，链路中对它们的引用一并摘除。
+# 投标表 LE09 的字段映射保留，运行时不再查询投标数据。
+EXCLUDED = {
+    "topic": "投标",
+    "reason": "投标部分暂时从销售额口径明细卡片删除（2026-11-12 用户指示）",
+    "metrics": ["R10", "R11", "C02", "S03"],
+    "rules": ["BR-Q07", "BR-A08", "BR-A09", "BR-C02"],
+    "risks": ["RK08", "RK09"],
+    "causes": ["RC02"],
+    "advice": ["AC04", "AC05"],
+}
+
+
+def apply_exclusion(sections, links):
+    """Drop the excluded items and every list reference to them."""
+    removed = set()
+    for kind in ("metrics", "rules", "risks", "causes", "advice"):
+        for code in EXCLUDED[kind]:
+            if code not in sections[kind]:
+                raise SystemExit(f"排除清单中的 {code} 不在本体 {kind} 中")
+            sections[kind].pop(code)
+            removed.add(code)
+
+    def keep(values):
+        return [value for value in values if not (isinstance(value, str) and value in removed)]
+
+    for items in sections.values():
+        for item in items.values():
+            for key, value in list(item.items()):
+                if isinstance(value, list):
+                    item[key] = keep(value)
+    for risk in list(links):
+        if risk in removed:
+            links.pop(risk)
+            continue
+        entry = links[risk]
+        entry["causes"] = keep(entry.get("causes") or [])
+        entry["advice"] = keep(entry.get("advice") or [])
+        if "rows" in entry:
+            entry["rows"] = [row for row in entry["rows"] if row.get("cause") not in removed]
+            for row in entry["rows"]:
+                if isinstance(row.get("advice"), list):
+                    row["advice"] = keep(row["advice"])
+    return dict(EXCLUDED)
+
+
 def rows(workbook, sheet):
     values = list(workbook[sheet].iter_rows(values_only=True))
     header = [str(value or "") for value in values[0]]
@@ -549,14 +596,6 @@ def build_config(workbook):
         "reason": "new_month*_power 实库为 MWh：2026 年合计 91,000.15，对应 91.0 GWh。"
                   "BR-Q11 标注 kWh 会得到 0.09 GWh，与业务目标不符，故按 MWh ÷ 1,000 换算。",
     }
-    bid_rule = build_rule_index(workbook).get("BR-Q07") or {}
-    bid_blob = " ".join(clean(bid_rule.get(key)) for key in ("规则描述", "判断或结果"))
-    bid_match = {
-        "strategy": clean(bid_rule.get("判断或结果")) or clean(bid_rule.get("规则描述")),
-        "idRelationAvailable": "名称" not in bid_blob,
-        "source": "BR-Q07",
-    }
-
     # User-approved corrections to a workbook statement.  They are kept
     # separate so the ontology-derived overrides never hide a manual decision.
     business_corrections = {
@@ -575,7 +614,6 @@ def build_config(workbook):
         "customerTier": customer_tier,
         "stage": stage_rules,
         "products": product_names,
-        "bidMatch": bid_match,
         "dynamicCycle": dynamic_cycle,
         "electricitySource": electricity_source,
         "targetEnergy": target_energy_source,
@@ -602,6 +640,8 @@ def build_config(workbook):
     # The resolved link table must already reflect the explicit business
     # overrides; the UI and task drafting never re-interpret the workbook.
     links["RK07"] = {"risk": "RK07", "causes": ["RC09"], "advice": ["AC02", "AC03"]}
+    excluded = apply_exclusion(
+        dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     config = dict(
         version="opportunity-v3-rules-4",
         ontology="商机获取节点 V3 精简关联版",
@@ -617,6 +657,7 @@ def build_config(workbook):
         links=links,
         overrides=overrides,
         businessCorrections=business_corrections,
+        excluded=excluded,
         enums=build_enums(workbook, dictionary, fields, customer_tier),
     )
     return config

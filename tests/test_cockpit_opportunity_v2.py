@@ -48,10 +48,11 @@ def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
     assert config_version() == 'opportunity-v3-rules-4'
     assert len(config_digest()) == 64
-    assert len(config['metrics']) == 55
-    assert len(config['risks']) == 10
-    assert len(config['causes']) == 9
-    assert len(config['advice']) == 12
+    # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) is excluded.
+    assert len(config['metrics']) == 51
+    assert len(config['risks']) == 8
+    assert len(config['causes']) == 8
+    assert len(config['advice']) == 10
     assert config['overrides']['customerTier']['strategic'] == ['1']
     assert config['overrides']['customerTier']['priority'] == ['2']
     assert config['overrides']['customerTier']['generalCatchAll'] is True
@@ -67,11 +68,11 @@ def test_result_exposes_the_full_ontology_trace():
     assert trace['ontology'] == '商机获取节点 V3 精简关联版'
     assert trace['version'] == 'opportunity-v3-rules-4'
     assert len(trace['digest']) == 12
-    assert len(trace['metrics']) == 55
-    assert len(trace['risks']) == 10
-    assert len(trace['causes']) == 9
-    assert len(trace['advice']) == 12
-    assert len(trace['rules']) == 35
+    assert len(trace['metrics']) == 51
+    assert len(trace['risks']) == 8
+    assert len(trace['causes']) == 8
+    assert len(trace['advice']) == 10
+    assert len(trace['rules']) == 31
     assert trace['risks'][0]['code'] == 'RK01' and trace['risks'][0]['name']
     assert trace['links']['RK07'] == {'risk': 'RK07', 'causes': ['RC09'],
                                       'advice': ['AC02', 'AC03']}
@@ -87,7 +88,7 @@ def test_result_exposes_rule_assessments_and_query_sql_for_evidence_details():
                                  status='ok', durationSeconds=0.01, rowCount=1)]
     value = evaluate(data)
     assessments = value['result']['riskAssessments']
-    assert len(assessments) == 10
+    assert len(assessments) == 8
     triggered = next(item for item in assessments if item['ruleStatus'] == 'triggered')
     assert triggered['rule'] and triggered['condition']
     assert triggered['metricCodes']
@@ -156,7 +157,6 @@ def test_dynamic_period_is_strict_and_excludes_invalid_times(monkeypatch):
     ]
     base.update(opportunities=rows, allOpportunities=deepcopy(rows))
     equal = evaluate(base, measured=measured)
-    assert equal['metrics']['R10']['count'] == 0
     assert 'RK10' not in {risk['code'] for risk in equal['risks']}
 
     import bi_agent.cockpit.opportunity_v2 as module
@@ -168,21 +168,35 @@ def test_dynamic_period_is_strict_and_excludes_invalid_times(monkeypatch):
     assert 'RK10' not in {risk['code'] for risk in evaluate(boundary, measured=measured)['risks']}
 
 
-def test_ambiguous_bid_name_never_becomes_not_bidding():
+def test_bid_part_is_removed_from_metrics_rules_risks_and_causes():
+    config = load_config()
+    removed = config['excluded']
+    assert removed['topic'] == '投标'
+    for kind in ('metrics', 'rules', 'risks', 'causes', 'advice'):
+        assert removed[kind] and not set(removed[kind]) & set(config[kind])
+    gone = {code for kind in ('metrics', 'rules', 'risks', 'causes', 'advice') for code in removed[kind]}
+    for link in config['links'].values():
+        assert not (set(link['causes']) | set(link['advice'])) & gone
+    for kind in ('metrics', 'risks', 'causes', 'advice'):
+        for item in config[kind].values():
+            assert not {value for value in item.values() if isinstance(value, list)
+                        for value in value if isinstance(value, str)} & gone
+    # Even with bid rows that used to raise RK09, no bid risk, cause or fact appears.
     opportunity = dict(id='opp-1', name='同名项目', accountId='account-1', tier='strategic',
                        productType='1', stage='11', status='0', contract='not_confirmed',
                        createdAt='2026-01-01', forecastAmount=10.0, forecastEnergy=5.0)
-    bids = [
-        dict(id='bid-1', name='同名项目', inputAt='2026-01-01', winnerAt=None,
-             cycleDays=10, inProgress=True),
-        dict(id='bid-2', name='同名项目', inputAt='2026-01-02', winnerAt=None,
-             cycleDays=11, inProgress=True),
-    ]
-    value = evaluate(_data(allOpportunities=[opportunity], bids=bids,
+    bids = [dict(id=f'bid-{n}', name=f'项目{n}', inputAt='2025-01-01', winnerAt=None,
+                 cycleDays=300 + n * 100, inProgress=True) for n in range(3)]
+    value = evaluate(_data(opportunities=[opportunity], allOpportunities=[deepcopy(opportunity)],
+                           bids=bids,
                            accounts=[dict(id='account-1', name='客户A', level='1', tier='strategic')]))
-    assert value['metrics']['bidAmbiguous'] == 1
-    assert value['metrics']['R10']['count'] == 0
-    assert 'RK08' not in {risk['code'] for risk in value['risks']}
+    assert not {'RK08', 'RK09'} & {risk['code'] for risk in value['risks']}
+    assert not {'RK08', 'RK09'} & {item['code'] for item in value['riskCandidates']}
+    assert 'RC02' not in value['causeOutcomes']
+    assert not {'R10', 'R11', 'S03', 'bidAmbiguous'} & set(value['metrics'])
+    fact_ids = {item['id'] for item in value['evidence']['facts']}
+    assert not {f'opp-v2:metric:{code}' for code in ('R10', 'R11', 'S03', 'S03-P1', 'S03-P2', 'BID-AMBIGUOUS')} & fact_ids
+    assert not any('投标' in item for item in value['result'].get('limitations') or [])
 
 
 def test_advice_is_inverted_from_cause_relations_and_keeps_risk_links():
@@ -232,7 +246,7 @@ def test_deadline_meta_keeps_original_text_instead_of_forcing_30_days():
     assert _deadline_meta('20 个工作日') == (20, 'days', '20 个工作日')
 
 
-def test_ac05_is_governance_investigation_and_ac10_uses_coverage_wording():
+def test_ac10_uses_coverage_wording():
     general = _opportunity(id='g1', accountId='a1', tier='general', stage='13',
                            contract='not_confirmed', forecastAmount=10.0, forecastEnergy=5.0)
     data = _data(opportunities=[general], allOpportunities=[deepcopy(general)],
@@ -241,17 +255,6 @@ def test_ac05_is_governance_investigation_and_ac10_uses_coverage_wording():
     ac10 = next(item for item in value['result']['recommendations']
                 if item['adviceCode'] == 'AC10')
     assert ac10['action'] == '将重点跟踪覆盖率提升至 70%（当前 0.0%）'
-
-    opportunity = _opportunity(accountId='account-1', stage='11', stage1End=None, bidding='no')
-    value = evaluate(_data(
-        opportunities=[opportunity], allOpportunities=[deepcopy(opportunity)],
-        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
-        progress={'opp-1': [dict(id='p1', description='客户要求补充资质文件',
-                                 startAt='2026-10-01')]},
-    ))
-    ac05 = next(item for item in value['adviceCandidates'] if item['code'] == 'AC05')
-    assert ac05['actionType'] == 'investigation'
-    assert ac05['governance'] is True
 
 
 def test_product_risk_uses_product_specific_signing_progress():
@@ -320,8 +323,9 @@ def test_build_card_reports_internal_steps_in_execution_order():
     assert phases.index('rules') < phases.index('analysing') and phases[-1] == 'publishing'
     assert set(phases[phases.index('analysing') + 1:-1]) <= {'judging'}
     fetch = [detail for phase, detail in events if phase == 'fetching']
-    assert fetch[-1]['completed'] == fetch[-1]['total'] == 10
-    assert len(card['result']['queryCatalog']) == 10
+    assert fetch[-1]['completed'] == fetch[-1]['total'] == 9
+    assert len(card['result']['queryCatalog']) == 9
+    assert '投标' not in {item['label'] for item in card['result']['queryCatalog']}
     assert any(item['label'] == '产品部销售缺口' for item in card['result']['queryCatalog'])
     assert all(item['sql'] for item in card['result']['queryCatalog'])
 
@@ -876,7 +880,7 @@ def test_collect_uses_three_snapshot_readers_and_reports_query_progress():
                    progress=lambda phase, **detail: events.append((phase, detail)))
     assert max_active >= 2
     fetch = [detail for phase, detail in events if phase == 'fetching']
-    assert fetch and fetch[-1]['completed'] == fetch[-1]['total'] == 10
+    assert fetch and fetch[-1]['completed'] == fetch[-1]['total'] == 9
     assert all('query' in detail and 'queryDurationSeconds' in detail for detail in fetch)
     assert data['queryStatus']['商机预测'] == 'ok'
 
@@ -900,7 +904,7 @@ def test_query_catalog_keeps_execution_record_and_result_snapshot():
     card = build_card('2026', database=Database(), measurement_date='2026-11-11',
                       judge=_judge_no)
     catalog = card['result']['queryCatalog']
-    assert len(catalog) == 10
+    assert len(catalog) == 9
     for item in catalog:
         assert item['executionId'] and len(item['executionId']) == 32
         assert item['startedAt'] and item['finishedAt']
@@ -1021,6 +1025,8 @@ def test_causes_follow_established_risks_and_advice_follows_established_causes()
 
     def judge(request):
         requests.append(request)
+        if request['kind'] == 'inference':
+            return dict(causes=[dict(title='推理根因', description='依据取数推理', dataGaps='')])
         return dict(established=request['kind'] == 'cause', reason='进展文本显示卡点')
     judged = _judged(value, judge)
     causes = {item['code']: item for item in judged['ontologyJudgement']['causes']
@@ -1056,7 +1062,7 @@ def test_every_item_is_listed_with_its_status_for_the_ontology_display():
     labels = {item['statusLabel'] for group in judgement.values() if isinstance(group, list)
               for item in group if isinstance(item, dict)}
     assert {'命中（规则判定）', '未命中（规则判定）', '未命中（模型判定）'} <= labels
-    assert judged['summary'].startswith('本轮 10 项本体风险中')
+    assert judged['summary'].startswith('本轮 8 项本体风险中')
 
 
 def test_model_answers_are_taken_without_a_validation_pass():
