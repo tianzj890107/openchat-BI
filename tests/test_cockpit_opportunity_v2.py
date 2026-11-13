@@ -425,6 +425,58 @@ def test_signing_follows_br_q02_order_linkage_not_the_contract_enum():
     assert 'statecode' not in order_sql
 
 
+def test_opportunity_queries_do_not_filter_on_approval_status_like_the_ontology():
+    # The ontology metric SQL keeps every opportunity created by the cutoff;
+    # the runtime SQL must not add new_approvalstatus = 3 on the opportunity
+    # or the monthly forecast.  Truncating the detail also runs the full
+    # aggregate, so all three opportunity queries are checked.
+    config = load_config()
+    seen = []
+
+    class Result:
+        def __init__(self, rows=(), truncated=False):
+            self.rows = list(rows)
+            self.truncated = truncated
+
+    detail_row = dict(
+        opportunity_id='o1', name='商机', account_id='a1', account_name='客户A', account_level='1',
+        product_type='1', process_stage='11', acneed_status='', demand_input='', opportunity_status='0',
+        contract_confirmation='0', created_at='2026-01-01', stage1_end=None, stage2_end=None,
+        stage3_end=None, stage4_end=None, stage5_end=None, owner_id='u1', amount_yuan=1e8,
+        forecast_amount_full_yuan=1e8, energy_gwh=1.0, month_rows=1, past_rows=0,
+        past_amount_rows=0, energy_rows=1)
+
+    class Reader:
+        def run(self, sql, params, timeout_ms=0):
+            seen.append(sql)
+            if 'agg.month_rows, agg.past_rows' in sql:
+                return Result([detail_row], truncated=True)
+            return Result()
+
+    class Snapshot:
+        def __enter__(self):
+            return Reader()
+
+        def __exit__(self, *args):
+            return False
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def snapshot(self, **kwargs):
+            return Snapshot()
+
+        def run(self, sql, params, timeout_ms=0):
+            return Reader().run(sql, params, timeout_ms)
+
+    collect('2026', database=Database(), config=config, measurement_date='2026-11-11')
+    opportunity_sql = [sql for sql in seen if 'AS contract_confirmation' in sql or 'AS contract_raw' in sql]
+    assert len(opportunity_sql) == 3
+    for sql in opportunity_sql:
+        assert 'new_approvalstatus =' not in sql and 'new_approvalstatus=' not in sql
+
+
 def test_local_model_uses_only_the_configured_route(monkeypatch):
     from bi_agent.llm import registry
     from bi_agent.cockpit import opportunity_v2 as module

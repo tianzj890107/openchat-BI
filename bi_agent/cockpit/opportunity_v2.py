@@ -419,7 +419,7 @@ _QUERY_AGGREGATION_NOTES = {
     "销售目标": "amount_yuan 按行求和 / 1e8 = 目标金额（亿元）；energy_kwh 按行求和 / 1e6 = 目标电量（GWh）。目标表按行求和，不按客户或产品去重。",
     "产品类型": "产品类型枚举映射：1=电芯，2=PACK，空或其他=其他；只用于维度归类，不参与金额汇总。",
     "商机预测": "按 new_oppmonthid 去重后按商机汇总；过去月份取 new_amt_rmb，当月及以后取 new_forecast_amt_rmb；电量按本体 BR-Q01 取 new_forecast_amt_rmb ÷ new_whprice（元/Wh）÷ 1e9。",
-    "全部商机": "审核通过（new_approvalstatus=3）且创建时间不晚于观察时点的商机全集；用于客户覆盖与阶段周期，不直接求和。",
+    "全部商机": "创建时间不晚于观察时点的商机全集（按本体，不限定审核状态）；用于客户覆盖与阶段周期，不直接求和。",
     "客户": "客户等级 1 为战略客户、2 为重点客户；0/3/4 归一般客户（本体 DR04~DR06），用于 R09/R10 客户覆盖判断。",
     "投标": "投标项目按输入时间不晚于观察时点过滤；同名多版本不擅自取最新，按样本记录标记。",
     "项目进展": "按商机取进展记录，用于原因文本证据；不做数值汇总。",
@@ -810,7 +810,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" {energy_rows_expr} AS energy_rows "
         f" FROM {month_table} m "
         f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
-        f" AND m.{mc['statecode']} = 0 AND m.{mc['new_approvalstatus']} = 3 "
+        f" AND m.{mc['statecode']} = 0 "
         f" GROUP BY 1"
         f") SELECT o.{oc['opportunityid']} AS opportunity_id, o.{oc['name']} AS name, "
         f" COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
@@ -830,7 +830,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" agg.month_rows, agg.past_rows, agg.past_amount_rows, agg.energy_rows "
         f" FROM {opp_table} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
         f" LEFT JOIN {account_table} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
-        f" WHERE o.{oc['new_approvalstatus']} = '3' AND o.{oc['createdon']} <= %s"
+        f" WHERE o.{oc['createdon']} <= %s"
     )
 
     all_opp_sql = (
@@ -845,7 +845,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"o.{oc['new_stage2enddate']} AS stage2_end, o.{oc['new_stage3enddate']} AS stage3_end, "
         f"o.{oc['new_stage4enddate']} AS stage4_end, o.{oc['new_stage5enddate']} AS stage5_end "
         f"FROM {opp_table} o LEFT JOIN {account_table} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
-        f"WHERE o.{oc['new_approvalstatus']} = '3' AND o.{oc['createdon']} <= %s"
+        f"WHERE o.{oc['createdon']} <= %s"
     )
 
     # Full aggregate fallback for truncated detail rows.  A truncated list can
@@ -864,7 +864,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" {energy_rows_expr} AS energy_rows "
         f" FROM {month_table} m "
         f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
-        f" AND m.{mc['statecode']} = 0 AND m.{mc['new_approvalstatus']} = 3 "
+        f" AND m.{mc['statecode']} = 0 "
         f" GROUP BY 1"
         f") SELECT {signed_expr} AS contract_raw, "
         f" COALESCE(NULLIF(a.{ac['new_accountlevel']}::text, ''), o.{oc['new_accountlevel']}, '') AS account_level, "
@@ -879,7 +879,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" SUM(agg.energy_rows) AS energy_rows "
         f" FROM {opp_table} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
         f" LEFT JOIN {account_table} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
-        f" WHERE o.{oc['new_approvalstatus']} = '3' AND o.{oc['createdon']} <= %s "
+        f" WHERE o.{oc['createdon']} <= %s "
         f" GROUP BY 1,2,3,4,5,6"
     )
 
@@ -1921,7 +1921,7 @@ def evaluate(data, config=None, measured=None):
         else "已历月份正式订单金额（覆盖不足，缺失部分不补预测）；全期间预测仅作参考"
     )
     f_b02_a = fact("B02-AMOUNT", "商机总预测（金额）", total_amount, "亿元",
-                   amount_basis_label + "；月度预测有效且审核通过", source=forecast_source)
+                   amount_basis_label + "；月度预测有效（不限定审核状态）", source=forecast_source)
     f_b02_e = fact("B02-ENERGY", "商机总预测（电量）", total_energy, "GWh",
                    "预测金额 ÷ new_whprice（元/Wh）÷ 10^9；本体 BR-Q01，new_forcastpower 实库为空",
                    source=forecast_source)
