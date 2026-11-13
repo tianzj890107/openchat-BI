@@ -826,6 +826,24 @@ def project_card(item, slot):
     result = out.get('result')
     if not isinstance(result, dict):
         return out
+    if isinstance(result.get('ontologyJudgement'), dict):
+        # Rule-first card: every risk, cause and advice is already settled by
+        # the ontology judgement.  The projection below was built for
+        # model-written cards (caps, re-ranking, rewording, filler dimensions)
+        # and would change those results, so the card is delivered as built.
+        findings = []
+        for finding in result.get('findings') or []:
+            finding = dict(finding)
+            key = 'opp-v2:' + str(finding.get('riskCode') or finding.get('id'))
+            finding.setdefault('riskKey', key)
+            finding.setdefault('dedupeKey', key)
+            findings.append(finding)
+        result['findings'] = findings
+        result['riskFindingCount'] = len(findings)
+        result['deliveryContract'] = CONTRACT_VERSION
+        result['slotQuestion'] = spec['question']
+        out['result'] = result
+        return out
     evidence = out.get('evidence') or {}
     result = normalize_delivery_contract(result, evidence)
     out['result'] = result

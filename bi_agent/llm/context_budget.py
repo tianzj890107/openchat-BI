@@ -176,14 +176,15 @@ def fit_request(messages, system_prompt, tool_schemas, *, limit: int, max_tokens
 def cockpit_context_limit() -> Optional[int]:
     """Total token budget for cockpit model calls (``None`` disables it).
 
-    The customer gateway allows 12,000 tokens of input plus output per
-    request; 11,999 keeps every cockpit call inside it.
+    Off by default.  Set ``COCKPIT_MODEL_CONTEXT_TOKENS`` to a value below a
+    gateway's real input + output cap (for example 11999 for a 12,000-token
+    gateway) to compress or refuse oversized requests before they are sent.
     """
     import os
     try:
-        value = int(os.environ.get("COCKPIT_MODEL_CONTEXT_TOKENS", "11999"))
+        value = int(os.environ.get("COCKPIT_MODEL_CONTEXT_TOKENS", "0"))
     except ValueError:
-        value = 11999
+        value = 0
     return value if value > 0 else None
 
 

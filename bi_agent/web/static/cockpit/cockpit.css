@@ -187,3 +187,5 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .stage-risk-analysis__judgement-row--error{border-left-color:var(--cockpit-warning)}
 .stage-risk-analysis__judgement-row--miss,.stage-risk-analysis__judgement-row--none{color:var(--cockpit-text-help)}
 .stage-risk-analysis__judgement-status{display:inline-block;margin-right:6px;font-weight:600}
+.stage-risk-analysis__decided{margin-left:4px;color:var(--cockpit-text-help);font-size:12px;font-weight:400}
+.stage-risk-analysis__judgement>summary{font-weight:600;color:var(--cockpit-text)}

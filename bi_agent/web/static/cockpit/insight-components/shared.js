@@ -451,7 +451,7 @@ export function createStageRiskComponent(options = {}) {
             <div v-if="riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
-              <div class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——<number-text :text="finding.description" /></template>
+              <div class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
                 <details v-if="traces[finding.id] && (traces[finding.id].rules.length || traces[finding.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ distinctEvidenceCount(finding) }} 条证据</summary>
                   <div class="stage-risk-analysis__trace-body">
@@ -622,18 +622,19 @@ export function createStageRiskComponent(options = {}) {
                 <div>原因库 {{ ontologyTrace.causes.length }} 类：{{ ontologyText(ontologyTrace.causes) }}</div>
                 <div>建议库 {{ ontologyTrace.advice.length }} 条：{{ ontologyText(ontologyTrace.advice) }}</div>
               </div>
-              <div v-if="judgementGroups.length" class="stage-risk-analysis__judgement">
-                <div class="stage-risk-analysis__judgement-head">本体判定明细（先规则函数，规则无法判定的逐条交给模型）</div>
-                <div v-for="group in judgementGroups" :key="group.kind" class="stage-risk-analysis__judgement-group">
-                  <div class="stage-risk-analysis__judgement-title">{{ group.title }}：命中 {{ group.hit }} / 共 {{ group.items.length }}</div>
-                  <div v-for="item in group.items" :key="group.kind + item.code"
-                       class="stage-risk-analysis__judgement-row" :class="'stage-risk-analysis__judgement-row--' + item.state">
-                    <span class="stage-risk-analysis__judgement-status">{{ item.statusLabel }}</span>
-                    <b>{{ item.code }} {{ item.name }}</b><template v-if="item.level"> · {{ item.level }}</template><template v-if="item.rule && item.rule.condition"> · 规则 {{ item.rule.code }}：{{ item.rule.condition }}</template><template v-if="item.reason"> · 依据：<number-text :text="item.reason" /></template><template v-if="item.error"> · {{ item.error }}</template>
-                  </div>
+              <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
+            </details>
+            <details v-if="judgementGroups.length" class="stage-risk-analysis__foot stage-risk-analysis__judgement">
+              <summary>本体判定明细：<template v-for="(group, index) in judgementGroups" :key="'sum-' + group.kind"><template v-if="index">，</template>{{ group.title }}命中 {{ group.hit }}/{{ group.items.length }}</template></summary>
+              <div class="stage-risk-analysis__judgement-head">先由规则函数判定；规则无法判定的条目逐条交给模型，失败的条目跳过。</div>
+              <div v-for="group in judgementGroups" :key="group.kind" class="stage-risk-analysis__judgement-group">
+                <div class="stage-risk-analysis__judgement-title">{{ group.title }}：命中 {{ group.hit }} / 共 {{ group.items.length }}</div>
+                <div v-for="item in group.items" :key="group.kind + item.code"
+                     class="stage-risk-analysis__judgement-row" :class="'stage-risk-analysis__judgement-row--' + item.state">
+                  <span class="stage-risk-analysis__judgement-status">{{ item.statusLabel }}</span>
+                  <b>{{ item.code }} {{ item.name }}</b><template v-if="item.level"> · {{ item.level }}</template><template v-if="item.rule && item.rule.condition"> · 规则 {{ item.rule.code }}：{{ item.rule.condition }}</template><template v-if="item.reason"> · 依据：<number-text :text="item.reason" /></template><template v-if="item.error"> · {{ item.error }}</template>
                 </div>
               </div>
-              <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>
           <task-order-dialog v-if="dialogOpen" :task="task" :busy="busy" :error="taskError"
                              :notice="taskNotice" :receipts="receipts" :task-status="taskStatus"

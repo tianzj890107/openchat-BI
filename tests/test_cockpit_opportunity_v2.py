@@ -1072,3 +1072,25 @@ def test_item_judge_sends_no_tools_and_reports_a_tool_call_as_its_error(monkeypa
     assert entry['decidedBy'] == 'none' and entry['established'] is None
     assert entry['error'].startswith('模型没有作答，而是发起了工具调用')
     assert entry['error'].endswith('已跳过')
+
+
+def test_rule_first_card_is_delivered_to_the_page_as_judged():
+    from bi_agent.cockpit.delivery import project_card, publication_payload
+    from bi_agent.cockpit.opportunity_judgement import judge_card
+    from bi_agent.cockpit.page_cache import compact_analysis
+    value = _strategic_value()
+    judged = judge_card(value, load_config(), judge=lambda request: dict(
+        established=True, level='中', reason='模型判定成立'))
+    item = dict(id='x', status='completed',
+                context=dict(stage='opportunity', slotId='opportunity-risk', period='2026'),
+                result=dict(value['result'], **judged, cardContract='cockpit-cards-v1'),
+                evidence=value['evidence'])
+    result = publication_payload(project_card(compact_analysis(item), 'opportunity-risk'))['result']
+    # Same risks, order, wording, level and decision source as the judgement.
+    assert [(f['riskCode'], f['title'], f['riskLevel'], f['decidedBy']) for f in result['findings']] == [
+        (f['riskCode'], f['title'], f['riskLevel'], f['decidedBy']) for f in judged['findings']]
+    assert len(result['findings']) > 4
+    assert [d['causeCode'] for d in result['analysisDimensions']] == [c['causeCode'] for c in judged['causes']]
+    assert [r['action'] for r in result['recommendations']] == [r['action'] for r in judged['recommendations']]
+    assert result['ontologyJudgement'] == judged['ontologyJudgement']
+    assert all(f['riskKey'] == 'opp-v2:' + f['riskCode'] for f in result['findings'])

@@ -63,3 +63,11 @@ test('each card section opens with the summary of its own displayed items', asyn
   assert.match(source, /<div v-if="causeSummary" class="stage-risk-analysis__summary"/);
   assert.match(source, /<div v-if="adviceSummary" class="stage-risk-analysis__summary"/);
 });
+
+test('rule-first risks show how each one was decided', async () => {
+  const source = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
+  assert.match(source, /finding\.decidedBy === 'rule' \? '规则判定' : '模型判定'/);
+  // The judgement list is its own expandable section, titled with hit counts.
+  assert.match(source, /<details v-if="judgementGroups\.length" class="stage-risk-analysis__foot stage-risk-analysis__judgement">/);
+  assert.match(source, /\{\{ group\.title \}\}命中 \{\{ group\.hit \}\}\/\{\{ group\.items\.length \}\}/);
+});

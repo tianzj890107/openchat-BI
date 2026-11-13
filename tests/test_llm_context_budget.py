@@ -99,7 +99,10 @@ def test_scoped_budget_validation_and_cockpit_default(monkeypatch):
     with request_config(context_limit=11999):
         assert scoped_context_budget() == (11999, 1999)
     assert scoped_context_budget() is None
+    # Off by default; a deployment opts in with the gateway's cap.
     monkeypatch.delenv('COCKPIT_MODEL_CONTEXT_TOKENS', raising=False)
+    assert cockpit_context_limit() is None
+    monkeypatch.setenv('COCKPIT_MODEL_CONTEXT_TOKENS', '11999')
     assert cockpit_context_limit() == 11999
     monkeypatch.setenv('COCKPIT_MODEL_CONTEXT_TOKENS', '0')
     assert cockpit_context_limit() is None
@@ -116,8 +119,13 @@ def test_cockpit_model_calls_run_under_the_budget(monkeypatch):
                                                   '"riskSummary": "", "causeSummary": "", "adviceSummary": ""}'),
                      dict(type='message_end', stop_reason='end_turn', usage={})])
 
-    monkeypatch.delenv('COCKPIT_MODEL_CONTEXT_TOKENS', raising=False)
     monkeypatch.setattr(provider, 'stream_message', fake_stream)
+    monkeypatch.delenv('COCKPIT_MODEL_CONTEXT_TOKENS', raising=False)
+    monkeypatch.setattr(opportunity_v2, '_model_candidate_keys', lambda: ['route-a'])
+    opportunity_judgement.default_item_judge(dict(kind='risk', code='RK01'))
+    assert budgets == [None]  # no budget unless configured
+    budgets.clear()
+    monkeypatch.setenv('COCKPIT_MODEL_CONTEXT_TOKENS', '11999')
     monkeypatch.setattr(opportunity_v2, '_model_candidate_keys', lambda: ['route-a'])
     opportunity_judgement.default_item_judge(dict(kind='risk', code='RK01'))
     section_summary._call_model(dict(risks=[]), timeout=30, max_tokens=1500)
