@@ -151,6 +151,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
         candidate = candidates.get(code) or {}
         status = candidate.get("ruleStatus") or "insufficient"
         entry = dict(kind="risk", code=code, name=_text(spec.get("name")) or code,
+                     indicators=_indicators(spec),
                      rule=rule_of(code, spec), ruleStatus=status,
                      observed=candidate.get("observed") or [],
                      missingEvidence=candidate.get("missingEvidence") or [],
@@ -296,7 +297,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
         classification=("confirmed" if entry.get("established") is True else
                         "not_applicable" if entry["ruleStatus"] == "not_applicable" else "insufficient"),
         description=entry.get("reason") or entry.get("error") or "",
-        metricCodes=[entry["code"]], evidenceIds=entry["evidenceIds"],
+        metricCodes=entry["indicators"] or [entry["code"]], evidenceIds=entry["evidenceIds"],
         observed=entry["observed"], missingEvidence=entry["missingEvidence"],
     ) for entry in risk_entries]
     judgement = dict(
@@ -312,6 +313,11 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
         riskCodes=[item["riskCode"] for item in findings],
         riskLevels={item["riskCode"]: item["riskLevel"] for item in findings},
         riskTotalCount=len(findings), includedRiskCount=len(findings))
+
+
+def _indicators(spec):
+    """Trigger metrics an ontology risk names, e.g. "R01、B01、B02"."""
+    return [code for code in re.split(r"[、,，;；\s]+", _text(spec.get("indicators"))) if code]
 
 
 def _public(entry):

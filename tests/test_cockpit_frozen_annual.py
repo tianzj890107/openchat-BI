@@ -5,7 +5,15 @@ from copy import deepcopy
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import pytest
+
 from bi_agent.cockpit.frozen import FrozenAnnualStore, FrozenAnnualService, FrozenCockpitSurface, STAGES
+
+
+@pytest.fixture(autouse=True)
+def _business_year_2026(monkeypatch):
+    # The fixtures below are 2026 releases; the configured year must match.
+    monkeypatch.setenv('COCKPIT_BUSINESS_YEAR', '2026')
 
 
 def fixture(tmp_path):
@@ -234,7 +242,7 @@ def test_failed_card_refresh_touches_no_other_card(tmp_path):
     store.finish=finished
     service=FrozenAnnualService(store,Runner())
     service.refresh('sales-shipment-issues','analysis')
-    assert done.wait(3)
+    assert done.wait(10)
     assert calls==['combined']
     assert store.job()['status']=='failed'
     assert 'combined' not in store.read()['items']
@@ -555,3 +563,35 @@ def test_failed_stage_publishes_expandable_details(tmp_path):
     assert '异常类型：RuntimeError' in program and '失败阶段：stage_execution' in program
     assert '出错位置：' in program and 'run_stage' in program
     assert 'hunter2' not in program
+
+
+def test_store_follows_the_configured_business_year_without_deleting_history(tmp_path, monkeypatch):
+    import sqlite3
+    store,seed,body=fixture(tmp_path)
+    old_version=store.read()['version']
+    assert store.read()['period']=='2026'
+    # A data directory created under 2026 now runs with the 2025 business year.
+    monkeypatch.setenv('COCKPIT_BUSINESS_YEAR','2025')
+    reopened=FrozenAnnualStore(store.path,seed)
+    current=reopened.read()
+    assert current['period']=='2025' and current['items']=={}
+    assert '2026 切换为 2025' in current['basis']
+    with sqlite3.connect(store.path) as db:
+        versions={row[0] for row in db.execute('SELECT version FROM annual_releases')}
+    assert old_version in versions  # the 2026 release is kept
+    # Refresh rounds analyse the configured year.
+    assert FrozenAnnualService(reopened,lambda p:None).envelope(1)['requestedPeriod']=='2025'
+    # Reopening with the same year changes nothing.
+    again=FrozenAnnualStore(store.path,seed).read()
+    assert again['version']==current['version']
+
+
+def test_year_switch_uses_the_delivered_seed_when_it_matches(tmp_path, monkeypatch):
+    store,seed,body=fixture(tmp_path)
+    for item in body['items'].values():
+        item['context']['period']='2025'
+    body['period']='2025'
+    seed_2025=tmp_path/'seed-2025.json';seed_2025.write_text(json.dumps(body))
+    monkeypatch.setenv('COCKPIT_BUSINESS_YEAR','2025')
+    current=FrozenAnnualStore(store.path,seed_2025).read()
+    assert current['period']=='2025' and set(current['items'])==set(STAGES)

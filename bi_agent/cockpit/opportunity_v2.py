@@ -496,7 +496,30 @@ def _ontology_metric_sql(config, code, year, measured, schema="ded_public"):
                       f"TIMESTAMP '{measured.isoformat()} 23:59:59'", 1)
     if schema and schema != "ded_public" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema):
         sql = sql.replace("ded_public.", f"{schema}.")
-    return sql.rstrip().rstrip(";").rstrip()
+    # The read-only guard requires the statement to start with SELECT/WITH,
+    # and the workbook SQL opens with "--" comment lines.  Comments carry no
+    # logic, so they are removed (outside string literals) before execution.
+    return _strip_sql_comments(sql).strip().rstrip(";").rstrip()
+
+
+def _strip_sql_comments(sql):
+    """Remove ``--`` line comments that are not inside a quoted literal."""
+    lines = []
+    for line in sql.split("\n"):
+        quoted, cut = False, None
+        index = 0
+        while index < len(line):
+            char = line[index]
+            if char == "'":
+                quoted = not quoted
+            elif not quoted and line.startswith("--", index):
+                cut = index
+                break
+            index += 1
+        kept = line if cut is None else line[:cut]
+        if kept.strip():
+            lines.append(kept.rstrip())
+    return "\n".join(lines)
 
 
 def collect(period, measurement_date=None, database=None, config=None, progress=None,

@@ -119,6 +119,41 @@ class FrozenAnnualStore:
                 from .periods import default_period
                 self.publish(dict(period=default_period()[:4], createdAt=time.time(),
                                   basis=UNSEEDED_BASIS, items={}), partial=True)
+        self._align_business_year(seed)
+
+    def _align_business_year(self, seed):
+        """Follow the configured business year (``COCKPIT_BUSINESS_YEAR``).
+
+        The annual release keeps the year it was first created with; a data
+        directory initialised under another year would otherwise analyse and
+        show that year forever, whatever the image or configuration says.
+        On a mismatch a release for the configured year becomes current: the
+        delivered seed when it is for that year, otherwise an empty release
+        whose cards are produced by manual analysis.  Earlier releases stay in
+        ``annual_releases``; nothing is deleted.
+        """
+        from .periods import default_period
+        wanted = default_period()[:4]
+        try:
+            current = str(self.read().get('period') or '')
+        except RuntimeError:
+            return
+        if current == wanted:
+            return
+        body = None
+        if seed and Path(seed).is_file():
+            candidate = json.loads(Path(seed).read_text(encoding='utf-8'))
+            if str(candidate.get('period')) == wanted:
+                body = candidate
+        if body is not None:
+            self.publish(body)
+        else:
+            self.publish(dict(period=wanted, createdAt=time.time(), items={},
+                              basis=f'业务年度由 {current} 切换为 {wanted}；各环节需点击“分析”重新生成。'),
+                         partial=True)
+        import logging
+        logging.getLogger(__name__).warning(
+            'cockpit_annual_year_switched from=%s to=%s seeded=%s', current, wanted, body is not None)
 
     @contextmanager
     def db(self):

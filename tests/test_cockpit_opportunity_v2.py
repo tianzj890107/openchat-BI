@@ -419,7 +419,7 @@ def test_target_rows_are_summed_not_distincted_by_customer_or_product():
 
         def run(self, sql, params, timeout_ms=0):
             # The ontology C05 query also reads the target table; it is not the target read.
-            if 'new_target_esb' in sql and '指标 C05' not in sql:
+            if 'new_target_esb' in sql and "'C05'::text" not in sql:
                 self.target_calls += 1
                 return Result([
                     dict(product_type_id='1', account_id='a', amount_yuan=100_000_000,
@@ -1094,3 +1094,25 @@ def test_rule_first_card_is_delivered_to_the_page_as_judged():
     assert [r['action'] for r in result['recommendations']] == [r['action'] for r in judged['recommendations']]
     assert result['ontologyJudgement'] == judged['ontologyJudgement']
     assert all(f['riskKey'] == 'opp-v2:' + f['riskCode'] for f in result['findings'])
+
+
+def test_ontology_sql_passes_the_read_only_guard():
+    from bi_agent.cockpit.opportunity_v2 import _ontology_metric_sql
+    from bi_agent.process360.db import ensure_read_only
+    sql = _ontology_metric_sql(load_config(), 'C05', 2025, date(2025, 12, 31))
+    # The workbook SQL opens with "--" comments; the guard needs SELECT/WITH first.
+    assert sql.startswith('WITH') and '--' not in sql
+    ensure_read_only(sql)
+
+
+def test_risk_trace_resolves_rule_ontology_and_metrics():
+    from bi_agent.cockpit.opportunity_judgement import judge_card
+    judged = judge_card(_strategic_value(), load_config(), judge=_judge_no)
+    config = load_config()
+    metric_codes = set(config['metrics'])
+    rule_codes = {item['code'] for item in config['rules'].values()}
+    for item in judged['riskAssessments']:
+        assert item['rule'] in rule_codes
+        assert item['metricCodes'] and set(item['metricCodes']) <= metric_codes
+    rk01 = next(item for item in judged['riskAssessments'] if item['code'] == 'RK01')
+    assert rk01['metricCodes'] == ['R01', 'B01', 'B02']
