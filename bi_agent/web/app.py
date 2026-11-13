@@ -4428,6 +4428,13 @@ app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd()
 COCKPIT_PAGES = frozenset({"overview", "operations", "analysis"})
 
 
+def _cockpit_business_year() -> str:
+    # The page's first-paint year comes from the server configuration
+    # (COCKPIT_BUSINESS_YEAR / COCKPIT_ACTIVE_PERIOD), never the browser clock.
+    from ..cockpit.periods import default_period
+    return default_period()[:4]
+
+
 def _cockpit_html(page: str) -> HTMLResponse:
     html = (STATIC_DIR / "cockpit" / "index.html").read_text(encoding="utf-8")
     cockpit = STATIC_DIR / "cockpit"
@@ -4440,6 +4447,11 @@ def _cockpit_html(page: str) -> HTMLResponse:
         cockpit / "page-client.js",
         cockpit / "insight-components" / "index.js",
         cockpit / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json",
+        # Card components change on their own; without them a browser keeps
+        # serving an old component under an unchanged asset version.
+        *sorted((cockpit / "insight-components").rglob("*.js")),
+        *sorted((cockpit / "insight-components").rglob("*.css")),
+        cockpit / "cockpit.css",
     ]
     try:
         asset_version = str(int(max(path.stat().st_mtime for path in version_sources)))
@@ -4449,6 +4461,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
         html.replace("@@APP_ROOT_PATH@@", APP_ROOT_PATH)
         .replace("@@COCKPIT_PAGE@@", page)
         .replace("@@COCKPIT_VERSION@@", asset_version)
+        .replace("@@COCKPIT_BUSINESS_YEAR@@", _cockpit_business_year())
     )
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 

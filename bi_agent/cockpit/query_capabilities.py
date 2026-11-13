@@ -7,7 +7,7 @@ from pathlib import Path
 
 @lru_cache(maxsize=1)
 def registry():
-    return json.loads((Path(__file__).parent/'assets/ap-query-capabilities.json').read_text())
+    return json.loads((Path(__file__).parent/'assets/ap-query-capabilities.json').read_text(encoding='utf-8'))
 
 
 def _signature(payload):

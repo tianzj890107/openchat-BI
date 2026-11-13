@@ -23,7 +23,10 @@
   const baselineId = params.get('baseline') || '';
   let baselineItem = null;
   const identityId = ['1', '2'].includes(params.get('id')) ? params.get('id') : '1';
-  let defaultPeriod = String(new Date().getFullYear());
+  // The business year comes from the server, not the browser clock: a 2026
+  // wall clock must not put a 2025 delivery onto 2026 before /bootstrap loads.
+  const configuredYear = document.querySelector('meta[name="cockpit-business-year"]')?.content || '';
+  let defaultPeriod = /^\d{4}$/.test(configuredYear) ? configuredYear : String(new Date().getFullYear());
   let activePeriod = defaultPeriod;
   let preheatPeriods = [defaultPeriod];
 
