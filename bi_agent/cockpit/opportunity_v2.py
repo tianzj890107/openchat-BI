@@ -38,7 +38,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-4"
+RULES_VERSION = "opportunity-v3-rules-5"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -487,19 +487,32 @@ def _ontology_metric_sql(config, code, year, measured, schema="ded_public"):
         if isinstance(config.get("metrics"), dict) else next(
             (item for item in config.get("metrics") or [] if item.get("code") == code), None)
     sql = _text((metric or {}).get("sql"))
-    period_literal = "DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive"
-    if not sql or sql.count(period_literal) != 1 or "%" in sql:
+    if not sql:
         return ""
-    sql = sql.replace(period_literal, f"DATE '{int(year)}-01-01' AS start_date, "
-                                      f"DATE '{int(year) + 1}-01-01' AS end_exclusive")
-    sql = sql.replace("CURRENT_TIMESTAMP::timestamp",
-                      f"TIMESTAMP '{measured.isoformat()} 23:59:59'", 1)
+    # The period may be written DATE '…' or CAST('…' AS DATE) depending on the
+    # workbook version; each bound must appear exactly once.
+    bounds = {"start_date": f"{int(year)}-01-01", "end_exclusive": f"{int(year) + 1}-01-01"}
+    for name, value in bounds.items():
+        pattern = (r"(?:DATE\s+'\d{4}-\d{2}-\d{2}'|CAST\(\s*'\d{4}-\d{2}-\d{2}'\s+AS\s+DATE\s*\))"
+                   r"\s+AS\s+" + name + r"\b")
+        sql, count = re.subn(pattern, f"DATE '{value}' AS {name}", sql, flags=re.I)
+        if count != 1:
+            return ""
+    observed = f"TIMESTAMP '{measured.isoformat()} 23:59:59'"
+    sql = re.sub(r"CAST\(\s*CURRENT_TIMESTAMP\s+AS\s+TIMESTAMP\s*\)|CURRENT_TIMESTAMP::timestamp",
+                 observed, sql, flags=re.I)
+    if re.search(r"\bCURRENT_TIMESTAMP\b", sql, flags=re.I):
+        return ""
     if schema and schema != "ded_public" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema):
         sql = sql.replace("ded_public.", f"{schema}.")
     # The read-only guard requires the statement to start with SELECT/WITH,
     # and the workbook SQL opens with "--" comment lines.  Comments carry no
     # logic, so they are removed (outside string literals) before execution.
-    return _strip_sql_comments(sql).strip().rstrip(";").rstrip()
+    sql = _strip_sql_comments(sql).strip().rstrip(";").rstrip()
+    # The SQL runs with an (empty) parameter tuple, so psycopg reads every "%"
+    # as a placeholder; text such as "超过平均周期 50%" or LIKE 'PHASE_%' is
+    # doubled so the database receives it unchanged.
+    return sql.replace("%", "%%")
 
 
 def _strip_sql_comments(sql):
@@ -930,16 +943,20 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"WHERE a.{ac['new_accountlevel']}::text IN ({strategic_level_slots})"
     )
 
-    bid_table = _table(config, "LE09")
-    bid_cols = _columns(config, "LE09")
-    bid_sql = (
-        f"SELECT b.{bid_cols['seq_no']} AS seq_no, b.{bid_cols['project_name']} AS project_name, "
-        f"b.{bid_cols['input_time']} AS input_time, b.{bid_cols['bid_open_time']} AS bid_open_time, "
-        f"b.{bid_cols['winner_announce_time']} AS winner_time, b.{bid_cols['is_awarded']} AS is_awarded, "
-        f"COALESCE(b.{bid_cols['bid_open_result']}, '') AS bid_open_result, "
-        f"b.{bid_cols['bid_amount']} AS bid_amount, b.{bid_cols['energy_mwh']} AS energy_mwh "
-        f"FROM {bid_table} b WHERE b.{bid_cols['input_time']} <= %s"
-    )
+    # Bid data is read only while the ontology still carries a bid risk; the
+    # current ontology has neither the risks nor the LE09 bid table.
+    bid_query = bool({"RK08", "RK09"} & set(config.get("risks") or {}))
+    if bid_query:
+        bid_table = _table(config, "LE09")
+        bid_cols = _columns(config, "LE09")
+        bid_sql = (
+            f"SELECT b.{bid_cols['seq_no']} AS seq_no, b.{bid_cols['project_name']} AS project_name, "
+            f"b.{bid_cols['input_time']} AS input_time, b.{bid_cols['bid_open_time']} AS bid_open_time, "
+            f"b.{bid_cols['winner_announce_time']} AS winner_time, b.{bid_cols['is_awarded']} AS is_awarded, "
+            f"COALESCE(b.{bid_cols['bid_open_result']}, '') AS bid_open_result, "
+            f"b.{bid_cols['bid_amount']} AS bid_amount, b.{bid_cols['energy_mwh']} AS energy_mwh "
+            f"FROM {bid_table} b WHERE b.{bid_cols['input_time']} <= %s"
+        )
 
     progress_table = _table(config, "LE04")
     pc = _columns(config, "LE04")
@@ -992,7 +1009,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         ("订单关联", order_sql, []),
         ("产品团队", team_sql, []),
     ]
-    if {"RK08", "RK09"} & set(config.get("risks") or {}):
+    if bid_query:
         specs.insert(4, ("投标", bid_sql, [measured]))
     # RC04 is judged on the ontology's own C05 query (product team actual
     # sales minus annual target); it is not a core query.

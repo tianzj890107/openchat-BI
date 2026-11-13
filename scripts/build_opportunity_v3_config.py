@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_精简关联版.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_无投标_周期红字同步版.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -63,20 +63,16 @@ FIELD_NAMES = {
     ],
     "LE07": ["salesorderid", "new_contract_num", "new_contract_amt", "statecode", "statuscode"],
     "LE08": ["salesorderdetailid", "salesorderid", "new_opportunity_id", "new_product_type", "quantity"],
-    "LE09": [
-        "seq_no", "project_name", "input_time", "bid_open_time",
-        "winner_announce_time", "is_awarded", "bid_open_result", "bid_amount",
-        "energy_mwh", "power_mw", "tenderee_full_name",
-    ],
     "LE10": ["teamid", "name"],
     "LE11": ["teamid", "systemuserid"],
     "LE12": ["new_product_typeid", "new_accproducttype", "new_name", "new_product_type_code"],
 }
 
 
-# 投标部分暂时从本卡片删除（用户 2026-11-12 指示）：这些指标、规则、风险、根因和
+# 投标部分不进入本卡片（用户 2026-11-12 指示）：这些指标、规则、风险、根因和
 # 只对应被删根因的行动建议不进入运行配置，链路中对它们的引用一并摘除。
-# 投标表 LE09 的字段映射保留，运行时不再查询投标数据。
+# 自“无投标·周期红字同步版”起本体已不含这些条目和投标表 LE09；清单继续
+# 保留，既记录排除范围，也防止旧版本体重新带入。
 EXCLUDED = {
     "topic": "投标",
     "reason": "投标部分暂时从销售额口径明细卡片删除（2026-11-12 用户指示）",
@@ -91,12 +87,14 @@ EXCLUDED = {
 def apply_exclusion(sections, links):
     """Drop the excluded items and every list reference to them."""
     removed = set()
+    absent = []
     for kind in ("metrics", "rules", "risks", "causes", "advice"):
         for code in EXCLUDED[kind]:
-            if code not in sections[kind]:
-                raise SystemExit(f"排除清单中的 {code} 不在本体 {kind} 中")
-            sections[kind].pop(code)
             removed.add(code)
+            if code in sections[kind]:
+                sections[kind].pop(code)
+            else:
+                absent.append(code)
 
     def keep(values):
         return [value for value in values if not (isinstance(value, str) and value in removed)]
@@ -118,7 +116,9 @@ def apply_exclusion(sections, links):
             for row in entry["rows"]:
                 if isinstance(row.get("advice"), list):
                     row["advice"] = keep(row["advice"])
-    return dict(EXCLUDED)
+    result = dict(EXCLUDED)
+    result["absentInOntology"] = absent
+    return result
 
 
 def rows(workbook, sheet):
@@ -644,8 +644,8 @@ def build_config(workbook):
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     config = dict(
-        version="opportunity-v3-rules-4",
-        ontology="商机获取节点 V3 精简关联版",
+        version="opportunity-v3-rules-5",
+        ontology="商机获取节点 V3 无投标·周期红字同步版",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,

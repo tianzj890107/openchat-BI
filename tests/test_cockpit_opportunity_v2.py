@@ -47,7 +47,7 @@ def _judge_no(request):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-4'
+    assert config_version() == 'opportunity-v3-rules-5'
     assert len(config_digest()) == 64
     # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) is excluded.
     assert len(config['metrics']) == 51
@@ -66,8 +66,8 @@ def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
 def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
-    assert trace['ontology'] == '商机获取节点 V3 精简关联版'
-    assert trace['version'] == 'opportunity-v3-rules-4'
+    assert trace['ontology'] == '商机获取节点 V3 无投标·周期红字同步版'
+    assert trace['version'] == 'opportunity-v3-rules-5'
     assert len(trace['digest']) == 12
     assert len(trace['metrics']) == 51
     assert len(trace['risks']) == 8
@@ -538,7 +538,7 @@ def test_target_rows_are_summed_not_distincted_by_customer_or_product():
 
         def run(self, sql, params, timeout_ms=0):
             # The ontology C05 query also reads the target table; it is not the target read.
-            if 'new_target_esb' in sql and "'C05'::text" not in sql:
+            if 'new_target_esb' in sql and "'C05'" not in sql:
                 self.target_calls += 1
                 return Result([
                     dict(product_type_id='1', account_id='a', amount_yuan=100_000_000,
@@ -1238,12 +1238,36 @@ def test_rc04_rule_uses_the_product_team_gap_query():
 def test_ontology_metric_sql_is_bound_to_the_period_and_measurement_date():
     from bi_agent.cockpit.opportunity_v2 import _ontology_metric_sql
     sql = _ontology_metric_sql(load_config(), 'C05', 2026, date(2026, 11, 11))
-    assert "DATE '2026-01-01' AS start_date, DATE '2027-01-01' AS end_exclusive" in sql
+    assert "DATE '2026-01-01' AS start_date" in sql and "DATE '2027-01-01' AS end_exclusive" in sql
+    assert "'2025-01-01'" not in sql
     assert "TIMESTAMP '2026-11-11 23:59:59'" in sql and 'CURRENT_TIMESTAMP' not in sql
     assert not sql.endswith(';') and '%' not in sql
     other = _ontology_metric_sql(load_config(), 'C05', 2026, date(2026, 11, 11), schema='crm_copy')
     assert 'crm_copy.' in other and 'ded_public.' not in other
     assert _ontology_metric_sql(load_config(), 'NOPE', 2026, date(2026, 11, 11)) == ''
+
+
+def test_every_ontology_metric_sql_binds_in_either_period_format():
+    from bi_agent.cockpit.opportunity_v2 import _ontology_metric_sql
+    config = load_config()
+    for code, metric in config['metrics'].items():
+        sql = _ontology_metric_sql(config, code, 2025, date(2025, 12, 31))
+        assert sql.startswith('WITH'), code
+        assert "DATE '2025-01-01' AS start_date" in sql and "DATE '2026-01-01' AS end_exclusive" in sql, code
+        assert 'CURRENT_TIMESTAMP' not in sql.upper(), code
+    # A literal "%" reaches the database unchanged: psycopg turns "%%" back into "%".
+    from psycopg._queries import PostgresQuery
+    from psycopg.adapt import Transformer
+    c07 = _ontology_metric_sql(config, 'C07', 2025, date(2025, 12, 31))
+    query = PostgresQuery(Transformer())
+    query.convert(c07, ())
+    assert '超平均周期 50% 的未签单商机' in query.query.decode('utf-8')
+    # The older DATE '…' layout still binds.
+    old = dict(config, metrics={'X': dict(code='X', sql=(
+        "WITH parameters AS (SELECT DATE '2025-01-01' AS start_date, DATE '2026-01-01' AS end_exclusive, "
+        "CURRENT_TIMESTAMP::timestamp AS observed_at) SELECT * FROM parameters"))})
+    bound = _ontology_metric_sql(old, 'X', 2024, date(2024, 6, 30))
+    assert "DATE '2024-01-01' AS start_date" in bound and "TIMESTAMP '2024-06-30 23:59:59'" in bound
 
 
 def test_item_judge_sends_no_tools_and_reports_a_tool_call_as_its_error(monkeypatch):
