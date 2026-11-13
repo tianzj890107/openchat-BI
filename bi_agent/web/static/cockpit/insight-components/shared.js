@@ -97,7 +97,8 @@ export function useInsight(props, emit) {
     const publicationKey=slot.publicationKey||slot.stage;
     return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(publicationKey)}/evidence?id=${slot.identityId}&format=html&analysisId=${encodeURIComponent(props.analysis.id)}`;
   })
-  const findings = computed(() => (result.value?.findings || []).slice(0,4))
+  // Every established risk is shown; the server decides what is established.
+  const findings = computed(() => result.value?.findings || [])
   const causes = computed(() => (result.value?.causes || []).map(cause=>({...cause,title:String(cause.title||'').replace(/^\[(待验证假设|结构定位|异常表现|数据缺口|记录支持)\]\s*/, '')})))
   const analysisDimensions = computed(() => riskDimensionLinks(result.value?.analysisDimensions || [],findings.value))
   const ontologyTrace = computed(() => result.value?.ontologyTrace || null)
@@ -115,7 +116,18 @@ export function useInsight(props, emit) {
   // Each section opens with the model's summary of the items it displays.
   // Without one, the risk section keeps the card's overall summary.
   const sectionSummaries = computed(() => result.value?.sectionSummaries || {})
-  const riskSummary = computed(() => (findings.value.length && sectionSummaries.value.riskSummary) || summary.value)
+  // No fallback: a section without its own summary shows none.
+  const riskSummary = computed(() => (findings.value.length && sectionSummaries.value.riskSummary) || '')
+  const ontologyJudgement = computed(() => result.value?.ontologyJudgement || null)
+  const judgementGroups = computed(() => {
+    const value = ontologyJudgement.value
+    if (!value) return []
+    return [['risks', '风险'], ['causes', '根因'], ['advice', '建议']].map(([kind, title]) => {
+      const items = (value[kind] || []).map(item => ({...item,
+        state: item.error ? 'error' : item.established === true ? 'hit' : item.established === false ? 'miss' : 'none'}))
+      return {kind, title, items, hit: items.filter(item => item.state === 'hit').length}
+    })
+  })
   const causeSummary = computed(() => sectionSummaries.value.causeSummary || '')
   const adviceSummary = computed(() => sectionSummaries.value.adviceSummary || '')
   const hasResult = computed(() => Boolean(result.value))
@@ -359,6 +371,8 @@ export function useInsight(props, emit) {
     limitations,
     summary,
     riskSummary,
+    ontologyJudgement,
+    judgementGroups,
     causeSummary,
     adviceSummary,
     hasResult,
@@ -434,7 +448,7 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【风险】</span>
               {{ displayStage }}当前风险判断
             </div>
-            <div class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
+            <div v-if="riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——<number-text :text="finding.description" /></template>
@@ -607,6 +621,17 @@ export function createStageRiskComponent(options = {}) {
                 <div>风险规则 {{ ontologyTrace.risks.length }} 条：{{ ontologyText(ontologyTrace.risks) }}</div>
                 <div>原因库 {{ ontologyTrace.causes.length }} 类：{{ ontologyText(ontologyTrace.causes) }}</div>
                 <div>建议库 {{ ontologyTrace.advice.length }} 条：{{ ontologyText(ontologyTrace.advice) }}</div>
+              </div>
+              <div v-if="judgementGroups.length" class="stage-risk-analysis__judgement">
+                <div class="stage-risk-analysis__judgement-head">本体判定明细（先规则函数，规则无法判定的逐条交给模型）</div>
+                <div v-for="group in judgementGroups" :key="group.kind" class="stage-risk-analysis__judgement-group">
+                  <div class="stage-risk-analysis__judgement-title">{{ group.title }}：命中 {{ group.hit }} / 共 {{ group.items.length }}</div>
+                  <div v-for="item in group.items" :key="group.kind + item.code"
+                       class="stage-risk-analysis__judgement-row" :class="'stage-risk-analysis__judgement-row--' + item.state">
+                    <span class="stage-risk-analysis__judgement-status">{{ item.statusLabel }}</span>
+                    <b>{{ item.code }} {{ item.name }}</b><template v-if="item.level"> · {{ item.level }}</template><template v-if="item.rule && item.rule.condition"> · 规则 {{ item.rule.code }}：{{ item.rule.condition }}</template><template v-if="item.reason"> · 依据：<number-text :text="item.reason" /></template><template v-if="item.error"> · {{ item.error }}</template>
+                  </div>
+                </div>
               </div>
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>

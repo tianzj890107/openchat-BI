@@ -100,7 +100,8 @@ test('combined card keeps its own evidence scope and renders the prototype dimen
 
 test('risk panels render individual findings instead of reducing them to summary', async () => {
   const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
-  assert.match(shared, /findings = computed\(\(\) => \(result.value\?\.findings \|\| \[\]\)\.slice\(0,4\)\)/);
+  // Every established risk is rendered; there is no display limit.
+  assert.match(shared, /findings = computed\(\(\) => result\.value\?\.findings \|\| \[\]\)/);
   assert.match(shared, /v-for="\(finding,index\) in findings"/);
   assert.match(shared, /finding\.title/);
   assert.match(shared, /finding\.description/);

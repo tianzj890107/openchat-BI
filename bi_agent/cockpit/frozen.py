@@ -896,7 +896,8 @@ def recompute_from_router(app, cwd):
 
         def _analyse_slot(self, period, stage):
             if stage == 'opportunity-risk':
-                from .opportunity_v2 import build_card, default_ap_supplement, default_text_interpreter
+                from .opportunity_v2 import build_card, default_ap_supplement
+                from .opportunity_judgement import default_item_judge
                 from .store import Store
                 enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
                 supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
@@ -906,7 +907,7 @@ def recompute_from_router(app, cwd):
                     return record_query_failure(
                         diagnostic_store, identity=1, stage='opportunity-risk', **entry)
 
-                return build_card(period, text_interpreter=default_text_interpreter if enabled else None,
+                return build_card(period, judge=default_item_judge if enabled else None,
                                   supplement=default_ap_supplement if supplement_enabled else None,
                                   progress=self._progress_callback,
                                   diagnostic_reporter=report_diagnostic)

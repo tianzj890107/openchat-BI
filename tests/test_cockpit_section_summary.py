@@ -14,8 +14,8 @@ def _result():
 
 def test_only_displayed_items_are_sent_for_summary():
     items = displayed_items(_result())
-    # The card shows the first four risks; hidden ones never reach the model.
-    assert [item['title'] for item in items['risks']] == ['风险1', '风险2', '风险3', '风险4']
+    # The card shows every established risk, so every one is summarised.
+    assert [item['title'] for item in items['risks']] == [f'风险{i}' for i in range(1, 7)]
     assert items['causes'] == [dict(title='需求确认未落实', description='4 条战略客户商机需求未确认')]
     assert items['advice'] == [dict(action='逐户补齐需求确认', ownerRole='销售负责人',
                                     deadline='10 个工作日', acceptance='形成逐项核查清单')]
@@ -32,15 +32,15 @@ def test_each_section_is_summarised_from_its_own_items():
     value = summarize_sections(_result(), stage_name='商机获取', call_model=call)
     assert value['status'] == 'completed' and value['modelCalls'] == 1 and value['issues'] == []
     assert value['riskSummary'].startswith('四项风险')
-    assert value['basis'] == dict(risks=4, causes=1, advice=1)
+    assert value['basis'] == dict(risks=6, causes=1, advice=1)
     assert set(seen[0]) == {'stage', 'risks', 'causes', 'advice'}
-    assert len(seen[0]['risks']) == 4
+    assert len(seen[0]['risks']) == 6
 
 
 def test_numbers_from_another_section_are_rejected_and_repaired_once():
     answers = [
-        # 50 亿元 belongs to a hidden risk; 7 appears in no displayed risk.
-        dict(riskSummary='风险涉及 50 亿元和 7 条商机。', causeSummary='4 条商机需求未确认。',
+        # 90 and 7 appear in no displayed risk.
+        dict(riskSummary='风险涉及 90 亿元和 7 条商机。', causeSummary='4 条商机需求未确认。',
              adviceSummary='10 个工作日内补齐。'),
         dict(riskSummary='风险涉及预测金额 10 亿元。', causeSummary='4 条商机需求未确认。',
              adviceSummary='10 个工作日内补齐。'),
@@ -54,8 +54,8 @@ def test_numbers_from_another_section_are_rejected_and_repaired_once():
     assert value['status'] == 'completed' and value['modelCalls'] == 2
     assert value['riskSummary'] == '风险涉及预测金额 10 亿元。'
     feedback = seen[1]['validationFeedback']
-    assert feedback['issues'] == ['风险总结（riskSummary）：含本组条目中不存在的数字 50、7']
-    assert feedback['previousAnswer']['riskSummary'].startswith('风险涉及 50')
+    assert feedback['issues'] == ['风险总结（riskSummary）：含本组条目中不存在的数字 7、90']
+    assert feedback['previousAnswer']['riskSummary'].startswith('风险涉及 90')
 
 
 def test_unusable_summaries_are_dropped_without_failing_the_card():

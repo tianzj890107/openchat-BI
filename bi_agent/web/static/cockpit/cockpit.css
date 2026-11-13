@@ -178,3 +178,12 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .cockpit-dialog__copy{padding:4px 12px;border:1px solid var(--cockpit-input-border);border-radius:4px;background:var(--cockpit-surface);color:var(--cockpit-primary);font-size:13px;line-height:20px;cursor:pointer}
 .cockpit-dialog__copy:focus-visible{outline:2px solid var(--cockpit-primary-40);outline-offset:2px}
 .cockpit-dialog__copied{color:var(--cockpit-text-help);font-size:12px}
+.stage-risk-analysis__judgement{margin-top:8px;padding-top:8px;border-top:1px dashed var(--cockpit-divider)}
+.stage-risk-analysis__judgement-head{font-weight:600;color:var(--cockpit-text)}
+.stage-risk-analysis__judgement-group{margin-top:6px}
+.stage-risk-analysis__judgement-title{color:var(--cockpit-text-secondary);font-weight:600}
+.stage-risk-analysis__judgement-row{padding:2px 0 2px 8px;border-left:2px solid var(--cockpit-divider);overflow-wrap:anywhere}
+.stage-risk-analysis__judgement-row--hit{border-left-color:var(--cockpit-error)}
+.stage-risk-analysis__judgement-row--error{border-left-color:var(--cockpit-warning)}
+.stage-risk-analysis__judgement-row--miss,.stage-risk-analysis__judgement-row--none{color:var(--cockpit-text-help)}
+.stage-risk-analysis__judgement-status{display:inline-block;margin-right:6px;font-weight:600}

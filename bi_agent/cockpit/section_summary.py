@@ -15,9 +15,9 @@ import os
 import re
 import time
 
-# What the card component renders: findings.slice(0, 4), every analysis
-# dimension (the server delivers at most four) and every recommendation.
-DISPLAY_LIMITS = dict(risks=4, causes=4, advice=8)
+# The card renders every risk, analysis dimension and recommendation it is
+# given, so every displayed item is summarised.
+DISPLAY_LIMITS = dict(risks=None, causes=None, advice=None)
 SUMMARY_LIMIT = 160
 SECTION_FIELDS = dict(risks="riskSummary", causes="causeSummary", advice="adviceSummary")
 SECTION_LABELS = dict(risks="风险", causes="原因", advice="建议")

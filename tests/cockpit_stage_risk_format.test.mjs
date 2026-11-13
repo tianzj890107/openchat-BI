@@ -52,9 +52,14 @@ test('shared stage risk component highlights text and keeps the display owner ro
 
 test('each card section opens with the summary of its own displayed items', async () => {
   const source = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
-  // The risk section falls back to the card summary only when no section summary exists.
-  assert.match(source, /riskSummary = computed\(\(\) => \(findings\.value\.length && sectionSummaries\.value\.riskSummary\) \|\| summary\.value\)/);
-  assert.match(source, /<number-text :text="riskSummary" \/>/);
+  // No fallback: without its own summary a section shows none.
+  assert.match(source, /riskSummary = computed\(\(\) => \(findings\.value\.length && sectionSummaries\.value\.riskSummary\) \|\| ''\)/);
+  assert.match(source, /<div v-if="riskSummary" class="stage-risk-analysis__summary"/);
+  // Every established risk is shown, and the ontology display lists every judgement.
+  assert.match(source, /const findings = computed\(\(\) => result\.value\?\.findings \|\| \[\]\)/);
+  assert.doesNotMatch(source, /findings \|\| \[\]\)\.slice\(0,\s*4\)/);
+  assert.match(source, /本体判定明细/);
+  assert.match(source, /v-for="item in group\.items"/);
   assert.match(source, /<div v-if="causeSummary" class="stage-risk-analysis__summary"/);
   assert.match(source, /<div v-if="adviceSummary" class="stage-risk-analysis__summary"/);
 });
