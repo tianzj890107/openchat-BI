@@ -3,7 +3,7 @@
   "ontology": "商机获取节点 V3 已签覆盖率按商机预测总额修订",
   "source": {
     "path": "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_已签覆盖率按商机预测总额修订.xlsx",
-    "sha256": "f2df00b9d24e8b683568b277a5c1c0ed5b71a920f27e18dca959328709462c8a"
+    "sha256": "9a02b85f6e5d3152b2a8f31d7296413e3d5bc4772083bdb8cb589e53e07db22e"
   },
   "dictionary": {
     "path": "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx",
@@ -3287,63 +3287,63 @@
     },
     "BR-A03": {
       "code": "BR-A03",
-      "name": "重点跟踪未签单商机判定",
+      "name": "战略及重点客户存在缺口判定",
       "description": "战略、重点客户仍有未签单商机且总预测存在缺口",
       "trigger": "指标计算完成后检测",
       "result": "R01 > 0 且 R04 商机数 > 0、预测金额或电量 > 0；等级：战略客户 高；重点客户 中",
       "action": "生成指标异常并登记风险实例",
       "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK03 重点跟踪未签单商机\n判定指标：R04、R01"
+      "relatedElements": "风险：RK03 战略及重点客户存在缺口\n判定指标：R04、R01"
     },
     "BR-A04": {
       "code": "BR-A04",
-      "name": "电芯类待签商机风险判定",
+      "name": "电芯类签单存在缺口判定",
       "description": "电芯类待签预测 > 0，且该类预测不足或签单进度落后",
       "trigger": "指标计算完成后检测",
       "result": "R05 > 0 且（电芯总预测 < 电芯目标 或 按 R03 电芯签单进度落后）；等级：待签 ≥ 30 亿元 高；10~30 中",
       "action": "生成指标异常并登记风险实例",
       "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK04 电芯类待签商机风险\n判定指标：R05、B01、B02、R03"
+      "relatedElements": "风险：RK04 电芯类签单存在缺口\n判定指标：R05、B01、B02、R03"
     },
     "BR-A05": {
       "code": "BR-A05",
-      "name": "PACK 类待签商机风险判定",
+      "name": "PACK类签单存在缺口判定",
       "description": "PACK 类待签预测 > 0，且该类预测不足或签单进度落后",
       "trigger": "指标计算完成后检测",
       "result": "R06 > 0 且（PACK 总预测 < PACK 目标 或 按 R03 PACK 签单进度落后）；等级：待签 ≥ 30 亿元 高；10~30 中",
       "action": "生成指标异常并登记风险实例",
       "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK05 PACK 类待签商机风险\n判定指标：R06、B01、B02、R03"
+      "relatedElements": "风险：RK05 PACK类签单存在缺口\n判定指标：R06、B01、B02、R03"
     },
     "BR-A06": {
       "code": "BR-A06",
-      "name": "客户预测不足判定",
+      "name": "客户预测不足存在缺口判定",
       "description": "有商机客户的预测低于客户目标",
       "trigger": "指标计算完成后检测",
       "result": "有商机且 R08 缺口 > 0；等级：战略客户 高；其他 中",
       "action": "生成指标异常并登记风险实例",
       "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK06 客户预测不足\n判定指标：R08"
+      "relatedElements": "风险：RK06 客户预测不足存在缺口\n判定指标：R08"
     },
     "BR-A07": {
       "code": "BR-A07",
-      "name": "战略客户待突破（无商机）判定",
+      "name": "战略客户签单存在缺口，且较多待突破（无商机）判定",
       "description": "战略客户名单内无任何商机",
       "trigger": "指标计算完成后检测",
       "result": "R09 > 0；等级：存在即高",
       "action": "生成指标异常并登记风险实例",
       "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK07 战略客户待突破（无商机）\n判定指标：R09"
+      "relatedElements": "风险：RK07 战略客户签单存在缺口，且较多待突破（无商机）\n判定指标：R09"
     },
     "BR-A10": {
       "code": "BR-A10",
-      "name": "商机获取阶段超期判定",
-      "description": "商机获取阶段单笔周期超过动态平均周期 1.5 倍",
+      "name": "商机获取阶段超期较多，影响签单判定",
+      "description": "商机获取阶段单笔周期超过平均周期 1.5 倍",
       "trigger": "指标计算完成后检测",
       "result": "单笔周期 > P0-01 × 1.5（严格大于）；等级：影响预测 ≥ 10 亿元 高；其他 中",
       "action": "生成指标异常并登记风险实例",
       "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK10 商机获取阶段超期\n判定指标：P0-01、P0-02"
+      "relatedElements": "风险：RK10 商机获取阶段超期较多，影响签单\n判定指标：P0-01、P0-02"
     },
     "BR-C01": {
       "code": "BR-C01",
