@@ -47,7 +47,7 @@ def _judge_no(request):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-6'
+    assert config_version() == 'opportunity-v3-rules-7'
     assert len(config_digest()) == 64
     # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) is excluded.
     assert len(config['metrics']) == 51
@@ -67,7 +67,7 @@ def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
     assert trace['ontology'] == '商机获取节点 V3 已签覆盖率按商机预测总额修订'
-    assert trace['version'] == 'opportunity-v3-rules-6'
+    assert trace['version'] == 'opportunity-v3-rules-7'
     assert len(trace['digest']) == 12
     assert len(trace['metrics']) == 51
     assert len(trace['risks']) == 8
@@ -1710,3 +1710,20 @@ def test_each_risk_and_cause_lists_only_the_queries_its_evidence_came_from():
     assert result['analysisDimensions'][0]['queryIds'] == ['q-account']
     from bi_agent.cockpit.opportunity_v2 import _QUERY_METRICS
     assert _QUERY_METRICS['订单关联'] == [] and _QUERY_METRICS['全部商机'] == []
+
+
+def test_risk_rows_take_their_names_from_the_ontology_risk_sheet():
+    config = load_config()
+    assert config['risks']['RK03']['name'] == '战略及重点客户存在缺口'
+    assert config['risks']['RK07']['name'] == '战略客户签单存在缺口，且较多待突破（无商机）'
+    assert config['risks']['RK10']['description'] == '商机获取阶段单笔周期超过平均周期 1.5 倍'
+    findings = _strategic_value()['result']['findings']
+    assert findings
+    for finding in findings:
+        name = config['risks'][finding['riskCode']]['name']
+        assert finding['title'].startswith(f"{finding['riskCode']} {name}")
+    # A renamed risk in the ontology renames the card's row.
+    renamed = load_config()
+    renamed['risks']['RK03'] = dict(renamed['risks']['RK03'], name='改名后的风险')
+    from bi_agent.cockpit.opportunity_v2 import _risk_name
+    assert _risk_name(renamed, 'RK03') == '改名后的风险'

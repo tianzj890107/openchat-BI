@@ -38,7 +38,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-6"
+RULES_VERSION = "opportunity-v3-rules-7"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -1375,6 +1375,11 @@ def _level_for_gap(rate, thresholds):
     return "低"
 
 
+def _risk_name(config, code, fallback=""):
+    """The risk's name as the ontology's 风险 sheet states it."""
+    return _text(((config.get("risks") or {}).get(code) or {}).get("name")) or fallback
+
+
 def _risk(code, name, level, title, description, metric_codes, evidence_ids, impact, objects):
     return dict(code=code, name=name, level=level, levelRank=_LEVEL_RANK.get(level, 9),
                 title=title, description=description, metricCodes=list(dict.fromkeys(metric_codes)),
@@ -2009,7 +2014,7 @@ def evaluate(data, config=None, measured=None):
     f_s03_p2 = fact("S03-P2", "PACK 类投标平均周期", bid_average_by_product.get("2"), "天", "按关联商机产品类型拆分")
     f_p0 = fact("P0-01", "商机获取阶段平均周期", overall_p0, "天", "创建至阶段一结束或测量日；按电芯/PACK 分别计算")
     f_p2 = fact("P2-01", "方案推动阶段平均周期", overall_p2, "天", "阶段三结束或测量日 − 阶段二结束；按电芯/PACK 分别计算")
-    f_rk10 = fact("P0-02", "商机获取阶段超期商机数", len(late_p0), "条", "单笔周期严格大于同阶段同产品动态均值 × 1.5")
+    f_rk10 = fact("P0-02", "商机获取阶段超期商机数", len(late_p0), "条", "单笔周期严格大于同阶段同产品平均周期 × 1.5")
     f_bid_amb = fact("BID-AMBIGUOUS", "投标同名歧义项目数", len(ambiguous_bid_names), "个", "同名多条投标记录；不据此判断未投标")
 
     risks = []
@@ -2030,7 +2035,8 @@ def evaluate(data, config=None, measured=None):
         if gap_energy is not None and gap_energy > 0:
             parts.append(f"电量缺口 {gap_energy:.2f} GWh（目标 {target_energy:.2f} GWh、预测 {total_energy:.2f} GWh）。")
         evidence = [f_b01_a, f_b01_e, f_b02_a, f_b02_e, f_r01_a, f_r01_e, f_gap_rate_a, f_gap_rate_e]
-        risks.append(_risk("RK01", "商机预测覆盖不足", level, "RK01 商机预测覆盖不足",
+        name = _risk_name(config, "RK01", "商机预测覆盖不足")
+        risks.append(_risk("RK01", name, level, f"RK01 {name}",
                            "".join(parts), ["RK01", "R01", "B01", "B02"], evidence,
                            dict(amount=gap_amount, energy=gap_energy, count=None), []))
 
@@ -2052,7 +2058,8 @@ def evaluate(data, config=None, measured=None):
             parts.append(f"第 {quarter} 季度未签单商机预测占比超过 {quarter_window * 100:.0f}% 窗口阈值。")
         evidence = [f_r03, f_r03_e, f_r02_a, f_r02_e, f_r02_unknown_a, f_r02_unknown_e,
                     f_b02_a, f_b02_e]
-        risks.append(_risk("RK02", "签单进度滞后", level, "RK02 签单进度滞后（已签单覆盖率口径）",
+        name = _risk_name(config, "RK02", "签单进度滞后")
+        risks.append(_risk("RK02", name, level, f"RK02 {name}（已签单覆盖率口径）",
                            "".join(parts), ["RK02", "R03", "R02", "B02"], evidence,
                            dict(amount=unsigned_amount, energy=unsigned_energy, count=None), []))
 
@@ -2065,7 +2072,8 @@ def evaluate(data, config=None, measured=None):
         if focus_energy:
             parts.append(f"涉及预测电量 {focus_energy:.2f} GWh")
         evidence = [f_r04_count, f_r04_a, f_r04_e, f_r01_a, f_r01_e]
-        risks.append(_risk("RK03", "重点跟踪未签单商机", level, "RK03 重点跟踪未签单商机",
+        name = _risk_name(config, "RK03", "战略及重点客户存在缺口")
+        risks.append(_risk("RK03", name, level, f"RK03 {name}",
                            "，".join(parts) + "；尚未关联订单。", ["RK03", "R04", "R01"], evidence,
                            dict(amount=focus_amount, energy=focus_energy, count=focus_count), []))
 
@@ -2098,8 +2106,8 @@ def evaluate(data, config=None, measured=None):
         if lagged and product_lags:
             parts.append(f"该类已签单覆盖率落后时间进度 {max(product_lags):.1f} 个百分点")
         evidence = [f_r05_a if key == "1" else f_r06_a, f_r05_e if key == "1" else f_r06_e]
-        risks.append(_risk(code, "电芯类待签商机风险" if key == "1" else "PACK 类待签商机风险",
-                           level, f"{code} {'电芯' if key == '1' else 'PACK'} 类待签商机风险",
+        name = _risk_name(config, code, "电芯类签单存在缺口" if key == "1" else "PACK类签单存在缺口")
+        risks.append(_risk(code, name, level, f"{code} {name}",
                            "，".join(parts) + "；按 BR-Q02 订单关联口径判断。",
                            [code, "R05" if key == "1" else "R06", "B01", "B02"], evidence,
                            dict(amount=pending_amount, energy=pending_energy, count=bucket["pending_count"]), []))
@@ -2123,7 +2131,8 @@ def evaluate(data, config=None, measured=None):
                                        amount=_round(gap.get("amount"), 4),
                                        quantity=_round(gap.get("energy"), 4),
                                        unit="亿元/GWh", value=account_id, name=gap.get("accountName")))
-        risks.append(_risk("RK06", "客户预测不足", level, "RK06 客户预测不足",
+        name = _risk_name(config, "RK06", "客户预测不足存在缺口")
+        risks.append(_risk("RK06", name, level, f"RK06 {name}",
                            "，".join(parts) + "。", ["RK06", "R08"], evidence,
                            dict(amount=_round(amount_total, 4), energy=_round(energy_total, 4),
                                 count=len(gap_accounts)), []))
@@ -2137,7 +2146,8 @@ def evaluate(data, config=None, measured=None):
                                    value=account.get("id"), name=account.get("name")))
         description = (f"战略客户中有 {no_opportunity_count} 家没有任何关联商机。"
                        if accounts else f"AP 补充口径显示有 {no_opportunity_count} 家无商机战略客户；客户明细未取得，不能归因。")
-        risks.append(_risk("RK07", "战略客户待突破（无商机）", "高", "RK07 战略客户待突破（无商机）",
+        name = _risk_name(config, "RK07", "战略客户签单存在缺口，且较多待突破（无商机）")
+        risks.append(_risk("RK07", name, "高", f"RK07 {name}",
                            description, ["RK07", "R09"], evidence, dict(count=no_opportunity_count), []))
 
     # RK08
@@ -2187,8 +2197,9 @@ def evaluate(data, config=None, measured=None):
         level = "高" if (affected_amount or 0) >= 10 else "中"
         evidence = [f_p0, f_rk10]
         evidence.extend(top_opps(late_p0))
-        risks.append(_risk("RK10", "商机获取阶段超期", level, "RK10 商机获取阶段超期",
-                           f"{len(late_p0)} 条商机单笔周期超过同产品动态均值 1.5 倍；平均周期 {overall_p0:.1f} 天。",
+        name = _risk_name(config, "RK10", "商机获取阶段超期较多，影响签单")
+        risks.append(_risk("RK10", name, level, f"RK10 {name}",
+                           f"{len(late_p0)} 条商机单笔周期超过同阶段同产品平均周期 1.5 倍；平均周期 {overall_p0:.1f} 天。",
                            ["RK10", "P0-01", "P0-02"], evidence,
                            dict(count=len(late_p0), amount=affected_amount, energy=affected_energy),
                            [opp.get("id") for opp in late_p0]))

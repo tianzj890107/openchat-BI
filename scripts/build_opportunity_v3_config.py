@@ -662,7 +662,7 @@ def build_config(workbook):
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     config = dict(
-        version="opportunity-v3-rules-6",
+        version="opportunity-v3-rules-7",
         ontology="商机获取节点 V3 已签覆盖率按商机预测总额修订",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),

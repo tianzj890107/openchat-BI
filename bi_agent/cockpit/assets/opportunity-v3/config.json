@@ -1,9 +1,9 @@
 {
-  "version": "opportunity-v3-rules-6",
+  "version": "opportunity-v3-rules-7",
   "ontology": "商机获取节点 V3 已签覆盖率按商机预测总额修订",
   "source": {
     "path": "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_已签覆盖率按商机预测总额修订.xlsx",
-    "sha256": "9fc0a19c73b8a846a4f9bea28d39c45a28a234dda4998a74b0dbf0d0481c9749"
+    "sha256": "f2df00b9d24e8b683568b277a5c1c0ed5b71a920f27e18dca959328709462c8a"
   },
   "dictionary": {
     "path": "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx",
@@ -3501,7 +3501,7 @@
     },
     "RK03": {
       "code": "RK03",
-      "name": "重点跟踪未签单商机",
+      "name": "战略及重点客户存在缺口",
       "description": "战略、重点客户仍有未签单商机且总预测存在缺口",
       "indicators": "R04、R01",
       "rule": "BR-A03",
@@ -3515,7 +3515,7 @@
     },
     "RK04": {
       "code": "RK04",
-      "name": "电芯类待签商机风险",
+      "name": "电芯类签单存在缺口",
       "description": "电芯类待签预测 > 0，且该类预测不足或签单进度落后",
       "indicators": "R05、B01、B02、R03",
       "rule": "BR-A04",
@@ -3530,7 +3530,7 @@
     },
     "RK05": {
       "code": "RK05",
-      "name": "PACK 类待签商机风险",
+      "name": "PACK类签单存在缺口",
       "description": "PACK 类待签预测 > 0，且该类预测不足或签单进度落后",
       "indicators": "R06、B01、B02、R03",
       "rule": "BR-A05",
@@ -3545,7 +3545,7 @@
     },
     "RK06": {
       "code": "RK06",
-      "name": "客户预测不足",
+      "name": "客户预测不足存在缺口",
       "description": "有商机客户的预测低于客户目标",
       "indicators": "R08",
       "rule": "BR-A06",
@@ -3558,7 +3558,7 @@
     },
     "RK07": {
       "code": "RK07",
-      "name": "战略客户待突破（无商机）",
+      "name": "战略客户签单存在缺口，且较多待突破（无商机）",
       "description": "战略客户名单内无任何商机",
       "indicators": "R09",
       "rule": "BR-A07",
@@ -3572,8 +3572,8 @@
     },
     "RK10": {
       "code": "RK10",
-      "name": "商机获取阶段超期",
-      "description": "商机获取阶段单笔周期超过动态平均周期 1.5 倍",
+      "name": "商机获取阶段超期较多，影响签单",
+      "description": "商机获取阶段单笔周期超过平均周期 1.5 倍",
       "indicators": "P0-01、P0-02",
       "rule": "BR-A10",
       "condition": "单笔周期 > P0-01 × 1.5（严格大于）",
