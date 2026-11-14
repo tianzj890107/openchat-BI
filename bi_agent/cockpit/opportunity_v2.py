@@ -736,9 +736,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     energy_pattern = _text(target_energy_cfg.get("fieldPattern")) or "new_month{i}_quantity"
     quantities = [target_cols[energy_pattern.replace("{i}", str(i))]
                   for i in range(1, 13)]
+    # B01 / BR-Q11: units per GWh come from the ontology SQL parameter
+    # target_power_units_per_gwh (kWh ÷ 10^6), not from a hand-written unit.
     target_energy_unit = _text(target_energy_cfg.get("nativeUnit")) or "kWh"
-    target_energy_divisor = {"kWh": 1_000_000.0, "MWh": 1_000.0,
-                             "GWh": 1.0}.get(target_energy_unit)
+    units_per_gwh = _number(target_energy_cfg.get("unitsPerGwh"))
+    target_energy_divisor = (float(units_per_gwh) if units_per_gwh and units_per_gwh > 0 else
+                             {"kWh": 1_000_000.0, "MWh": 1_000.0, "GWh": 1.0}.get(target_energy_unit))
     if target_energy_divisor is None:
         raise OpportunityV2Unavailable("本体 B01 电量单位无法换算：" + target_energy_unit)
     amount_count = "+".join(f"COUNT(t.{col})" for col in months)

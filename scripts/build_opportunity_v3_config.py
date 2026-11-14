@@ -586,16 +586,34 @@ def build_config(workbook):
                   "new_whprice（元/Wh）÷ 10^9（GWh）；new_forcastpower 实库为空，"
                   "new_orderforecast_qty 是预测订单出货数，不能作为电量。",
     }
+    # B01 / BR-Q11: the target energy comes from new_month1_power..12_power and
+    # is converted with the ontology SQL's own parameter
+    # target_power_units_per_gwh (kWh ÷ 10^6).  The value is read from the
+    # workbook, never written here, and every target metric must agree.
+    units = {}
+    for code, metric in metrics.items():
+        sql = metric.get("sql") or ""
+        if "target_power_units_per_gwh" not in sql:
+            continue
+        found = re.findall(
+            r"(?:CAST\(\s*(\d+)\s+AS\s+(?:DECIMAL|NUMERIC)\s*\)|(\d+)\s*::\s*numeric)\s+AS\s+target_power_units_per_gwh",
+            sql, flags=re.I)
+        values = {int(a or b) for a, b in found}
+        if len(values) != 1:
+            raise SystemExit(f"本体 {code} 的 target_power_units_per_gwh 无法解析：{sorted(values)}")
+        units[code] = values.pop()
+    if "B01" not in units or len(set(units.values())) != 1:
+        raise SystemExit(f"本体目标电量换算系数缺失或不一致：{units}")
+    if "new_month1_power" not in (metrics["B01"].get("sql") or ""):
+        raise SystemExit("本体 B01 未使用 new_month*_power 作为目标电量")
+    units_per_gwh = units["B01"]
     target_energy_source = {
-        # BR-Q11 writes "kWh ÷ 10^6", but the customer column is MWh: the 2026
-        # target sums to 91,000.15 and 91.0 GWh is the confirmed business
-        # target.  Treating it as kWh would produce 0.09 GWh.
         "fieldPattern": "new_month{i}_power",
-        "nativeUnit": "MWh",
+        "unitsPerGwh": units_per_gwh,
+        "nativeUnit": {1_000_000: "kWh", 1_000: "MWh", 1: "GWh"}.get(units_per_gwh, ""),
         "outputUnit": "GWh",
-        "source": "B01 / BR-Q11（单位按实库修正）",
-        "reason": "new_month*_power 实库为 MWh：2026 年合计 91,000.15，对应 91.0 GWh。"
-                  "BR-Q11 标注 kWh 会得到 0.09 GWh，与业务目标不符，故按 MWh ÷ 1,000 换算。",
+        "source": "B01 调用SQL parameters.target_power_units_per_gwh / BR-Q11",
+        "metrics": sorted(units),
     }
     # User-approved corrections to a workbook statement.  They are kept
     # separate so the ontology-derived overrides never hide a manual decision.

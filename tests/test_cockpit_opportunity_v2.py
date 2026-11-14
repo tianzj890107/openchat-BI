@@ -552,9 +552,21 @@ def test_target_rows_are_summed_not_distincted_by_customer_or_product():
     data = collect('2026', database=database, config=config, measurement_date='2026-11-11')
     assert database.target_calls == 1
     assert data['targets']['amount'] == 3.0
-    # B01 energy now reads new_month*_power (MWh), so the same row values are
-    # converted with the MWh divisor.
-    assert data['targets']['energy'] == 30_000.0
+    # B01 energy reads new_month*_power and converts it with the ontology's
+    # target_power_units_per_gwh (kWh ÷ 10^6): 30,000,000 kWh = 30 GWh.
+    assert data['targets']['energy'] == 30.0
+
+
+def test_target_energy_conversion_comes_from_the_ontology_sql():
+    import re
+    config = load_config()
+    energy = config['overrides']['targetEnergy']
+    b01 = config['metrics']['B01']['sql']
+    declared = int(re.search(r"CAST\((\d+) AS DECIMAL\) AS target_power_units_per_gwh", b01).group(1))
+    assert declared == 1_000_000  # BR-Q11: kWh ÷ 10^6
+    assert energy['unitsPerGwh'] == declared and energy['nativeUnit'] == 'kWh'
+    assert energy['fieldPattern'] == 'new_month{i}_power'
+    assert {'B01', 'R01', 'R08', 'C03'} <= set(energy['metrics'])
 
 
 def test_all_null_target_is_missing_not_zero_and_truncation_is_preserved():
