@@ -38,7 +38,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-7"
+RULES_VERSION = "opportunity-v3-rules-8"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -438,7 +438,7 @@ _QUERY_AGGREGATION_NOTES = {
     "产品类型": "产品类型枚举映射：1=电芯，2=PACK，空或其他=其他；只用于维度归类，不参与金额汇总。",
     "商机预测": "BR-Q01：所选年度内同商机同月取最新一版月度预测后按商机汇总；金额只用 new_forecast_amt_rmb，不混入已历月份实绩；电量 = new_forecast_amt_rmb ÷ new_whprice（元/Wh）÷ 1e9；不限定审核或业务状态。",
     "全部商机": "每个商机 ID 取最新一行，创建时间不晚于观察日结束（创建时间为空也保留）；不限定审核或业务状态；用于阶段周期，不直接求和。",
-    "客户": "每个客户 ID 取最新一行；客户等级 1 为战略客户（本体 DR04）；opportunity_count 为该客户全部关联商机数（R09 不按年份或状态筛选）。",
+    "客户": "每个客户 ID 取最新一行；客户等级 1 为战略客户（本体 DR04）；本体启用 BR-Q04 时只保留储能客户名单内的客户（商机负责人→团队→团队人员→客户负责人）；opportunity_count 为该客户全部关联商机数（R09 不按年份或状态筛选）。",
     "投标": "投标项目按输入时间不晚于观察时点过滤；同名多版本不擅自取最新，按样本记录标记。",
     "项目进展": "按商机取进展记录，用于原因文本证据；不做数值汇总。",
     "订单关联": "BR-Q02：按订单明细关联商机，去重订单数 ≥ 1 为已签单；不限定审批、取消状态或订单日期。",
@@ -859,6 +859,39 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     detail_table = _table(config, "LE08")
     order_cols = _columns(config, "LE07")
     detail_cols = _columns(config, "LE08")
+    # BR-Q04 储能客户范围: latest opportunity owners → their teams → every member
+    # of those teams → customers owned by one of those members.  A customer
+    # needs no opportunity of its own and no creation-year filter applies.
+    storage_cfg = (config.get("overrides") or {}).get("storageCustomerScope") or {}
+    storage_scope = bool(storage_cfg.get("enabled"))
+    storage_flag = storage_join = storage_account_filter = ""
+    if storage_scope:
+        st = _columns(config, "LE10")
+        sm = _columns(config, "LE11")
+        owner_field = _text(storage_cfg.get("ownerField"))
+        account_owner_field = _text(storage_cfg.get("accountOwnerField"))
+        if owner_field not in oc or account_owner_field not in ac or not {"teamid"} <= set(st) \
+                or not {"teamid", "systemuserid"} <= set(sm):
+            raise OpportunityV2Unavailable("本体 BR-Q04 储能客户范围缺少字段映射")
+        storage_sql = (
+            f"(SELECT sa.{ac['accountid']}::text AS account_id FROM {account_src} sa "
+            f"WHERE sa.{ac[account_owner_field]}::text IN ("
+            f"SELECT su.{sm['systemuserid']}::text FROM {_table(config, 'LE11')} su "
+            f"WHERE NULLIF(BTRIM(su.{sm['systemuserid']}::text), '') IS NOT NULL "
+            f"AND su.{sm['teamid']}::text IN ("
+            f"SELECT stm.{sm['teamid']}::text FROM {_table(config, 'LE11')} stm "
+            f"JOIN {_table(config, 'LE10')} stt ON stt.{st['teamid']} = stm.{sm['teamid']} "
+            f"WHERE NULLIF(BTRIM(stm.{sm['teamid']}::text), '') IS NOT NULL "
+            f"AND stm.{sm['systemuserid']}::text IN ("
+            f"SELECT sow.{oc[owner_field]}::text FROM {opp_src} sow "
+            f"WHERE NULLIF(BTRIM(sow.{oc[owner_field]}::text), '') IS NOT NULL))))"
+        )
+        storage_flag = " (sc.account_id IS NOT NULL) AS storage_customer,"
+        storage_join = f" LEFT JOIN {storage_sql} sc ON sc.account_id = o.{oc['parentaccountid']}::text"
+        storage_account_filter = f" AND a.{ac['accountid']}::text IN (SELECT account_id FROM {storage_sql} sc)"
+        # R08: the customer × product target carries whether the customer is in scope.
+        target_sql = (f"SELECT q.*, (q.account_id::text IN (SELECT account_id FROM {storage_sql} sc)) "
+                      f"AS storage_customer FROM ({target_sql}) q")
     signed_expr = (
         f"(CASE WHEN EXISTS (SELECT 1 FROM {detail_table} sd "
         f"JOIN {order_table} so ON so.{order_cols['salesorderid']} = sd.{detail_cols['salesorderid']} "
@@ -870,6 +903,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
         f" COALESCE(a.{ac['name']}, '') AS account_name, "
         f" COALESCE(a.{ac['new_accountlevel']}::text, '') AS account_level, "
+        f"{storage_flag}"
         f" COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
         f" COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
         f" COALESCE(o.{oc['new_approvalstatus_acneed']}, '') AS acneed_status, "
@@ -884,6 +918,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" agg.month_rows, agg.energy_rows "
         f" FROM {opp_src} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
         f" LEFT JOIN {account_src} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
+        f"{storage_join}"
         f" WHERE {created_ok}"
     )
 
@@ -911,14 +946,16 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
         f" COALESCE(a.{ac['name']}, '') AS account_name, "
         f" COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
+        f" {'(sc.account_id IS NOT NULL)' if storage_scope else 'NULL::boolean'} AS storage_customer, "
         f" COUNT(*) AS opportunity_count, "
         f" SUM(agg.amount_yuan) AS amount_yuan, SUM(agg.forecast_amount_full_yuan) AS forecast_amount_full_yuan, "
         f" SUM(agg.energy_gwh) AS energy_gwh, SUM(agg.month_rows) AS month_rows, "
         f" SUM(agg.energy_rows) AS energy_rows "
         f" FROM {opp_src} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
         f" LEFT JOIN {account_src} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
+        f"{storage_join}"
         f" WHERE {created_ok} "
-        f" GROUP BY 1,2,3,4,5,6"
+        f" GROUP BY 1,2,3,4,5,6,7"
     )
 
     strategic_ok, strategic_reason = _strategic_scope(config)
@@ -963,6 +1000,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f"           WHERE p.{lead_progress_created} <= %s AND l.{lead_account} IS NOT NULL "
         f"           GROUP BY 1) lp ON lp.account_id = a.{ac['accountid']} "
         f"WHERE a.{ac['new_accountlevel']}::text IN ({strategic_level_slots})"
+        f"{storage_account_filter}"
     )
 
     # Bid data is read only while the ontology still carries a bid risk; the
@@ -1117,6 +1155,8 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             pair = targets["byAccountProduct"].setdefault(
                 f"{account_id}|{key}", dict(accountId=account_id, productType=key,
                                             amount=None, energy=None))
+            if row.get("storage_customer") is not None:
+                pair["storageCustomer"] = bool(row.get("storage_customer"))
             if amount is not None:
                 pair["amount"] = (pair["amount"] or 0.0) + amount
             if energy is not None:
@@ -1152,6 +1192,8 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             accountId=_text(row.get("account_id")),
             accountName=_text(row.get("account_name")),
             stage=_text(row.get("process_stage")),
+            storageCustomer=(bool(row.get("storage_customer"))
+                             if row.get("storage_customer") is not None else None),
             count=int(_number(row.get("opportunity_count")) or 0),
             amount=(_round(_number(row.get("amount_yuan")) / 100_000_000.0, 6)
                     if row.get("amount_yuan") is not None else None),
@@ -1182,6 +1224,8 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             accountName=_text(row.get("account_name")),
             accountLevel=level,
             tier=tier,
+            storageCustomer=(bool(row.get("storage_customer"))
+                             if row.get("storage_customer") is not None else None),
             productType=_product_key(product),
             productName=_product_name(_product_key(product), config),
             stage=stage,
@@ -1338,6 +1382,21 @@ def _product_key(value):
     """Ontology product mapping: '1'/'电芯' → 1, '2'/'PACK' → 2, else unknown."""
     text = _text(value)
     return "1" if text in {"1", "电芯"} else "2" if text in {"2", "PACK"} else "unknown"
+
+
+def _in_storage(item):
+    """BR-Q04: inside the 储能客户名单 unless the query said otherwise.
+
+    Inputs collected without the scope (no flag) are not narrowed.
+    """
+    return item.get("storageCustomer") is not False
+
+
+def _stage_completed(start, finish, measured):
+    """BR-Q06 completed_days: a real start and a real end not before it."""
+    if not start or start > measured or not finish or finish < start:
+        return None
+    return (finish - start).days
 
 
 def _stage_elapsed(start, finish, measured):
@@ -1691,7 +1750,8 @@ def evaluate(data, config=None, measured=None):
     quarter = (measured.month - 1) // 3 + 1
     quarter_window = _number((thresholds.get("quarterWindows") or {}).get(str(quarter)))
 
-    focus = [opp for opp in unsigned if opp.get("tier") in {"strategic", "priority"}]
+    # R04: 战略 + 重点 unsigned opportunities of customers in the 储能客户名单 (BR-Q04).
+    focus = [opp for opp in unsigned if opp.get("tier") in {"strategic", "priority"} and _in_storage(opp)]
     if not strategic_ok:
         # R04 is "战略 + 重点"; without an authoritative strategic list the
         # value would silently collapse to priority-only, so it stays unknown.
@@ -1700,13 +1760,14 @@ def evaluate(data, config=None, measured=None):
         focus_has_strategic = False
     elif aggregate_ready:
         focus_predicate = lambda row: (row.get("contract") == "not_confirmed"
-                                       and row.get("tier") in {"strategic", "priority"})
+                                       and row.get("tier") in {"strategic", "priority"}
+                                       and _in_storage(row))
         focus_amount = aggregate_measure("amount", focus_predicate)
         focus_energy = aggregate_measure("energy", focus_predicate)
         focus_count = aggregate_count(focus_predicate)
         focus_has_strategic = bool(aggregate_rows(
             lambda row: row.get("contract") == "not_confirmed"
-            and row.get("tier") == "strategic"))
+            and row.get("tier") == "strategic" and _in_storage(row)))
     elif aggregate_mode:
         focus_amount = focus_energy = None
         focus_count = 0
@@ -1819,6 +1880,8 @@ def evaluate(data, config=None, measured=None):
     customer_gaps = []
     for key in sorted(set(target_pairs) & set(forecast_pairs)):
         goal, forecast = target_pairs[key], forecast_pairs[key]
+        if not _in_storage(goal):
+            continue  # R08 covers the 储能客户名单 only (BR-Q04)
         amount_gap = (_number(goal.get("amount")) - forecast["amount"]
                       if _number(goal.get("amount")) is not None and forecast["amount"] is not None else None)
         energy_gap = (_number(goal.get("energy")) - forecast["energy"]
@@ -1919,24 +1982,37 @@ def evaluate(data, config=None, measured=None):
         start = _day(opp.get("createdAt")) if stage == "P0" else _day(opp.get("stage2End"))
         return bool(start and start.year == measured.year and start <= measured)
 
+    # BR-Q06: with completedOnly the mean counts only stages with a real start
+    # and end; an unfinished stage keeps its elapsed time (p0Cycle / p2Cycle)
+    # for the overdue comparison but is never averaged in.
+    completed_only = bool(cycle_config.get("completedOnly"))
+
+    def mean_sample(opp, stage, elapsed):
+        if not completed_only:
+            return elapsed
+        if stage == "P0":
+            return _stage_completed(_day(opp.get("createdAt")), _day(opp.get("stage1End")), measured)
+        return _stage_completed(_day(opp.get("stage2End")), _day(opp.get("stage3End")), measured)
+
     stage_samples = defaultdict(lambda: defaultdict(list))
+    overall_samples = dict(P0=[], P2=[])
     for opp in opps:
         p0 = _p0_cycle(opp, measured) if detail_complete else None
         p2 = _p2_cycle(opp, measured) if detail_complete else None
         opp["p0Cycle"] = p0
         opp["p2Cycle"] = p2
-        if detail_complete and p0 is not None and entered_this_year(opp, "P0"):
-            stage_samples[opp.get("productType", "unknown")]["P0"].append(p0)
-        if detail_complete and p2 is not None and entered_this_year(opp, "P2"):
-            stage_samples[opp.get("productType", "unknown")]["P2"].append(p2)
+        for stage, elapsed in (("P0", p0), ("P2", p2)):
+            if not detail_complete or elapsed is None or not entered_this_year(opp, stage):
+                continue
+            sample = mean_sample(opp, stage, elapsed)
+            if sample is not None:
+                stage_samples[opp.get("productType", "unknown")][stage].append(sample)
+                overall_samples[stage].append(sample)
     stage_average = {product: {stage: _avg(values) for stage, values in groups.items()}
                      for product, groups in stage_samples.items()}
-    overall_p0 = (_avg([opp.get("p0Cycle") for opp in opps
-                        if opp.get("p0Cycle") is not None and entered_this_year(opp, "P0")])
-                  if detail_complete else None)
-    overall_p2 = (_avg([opp.get("p2Cycle") for opp in opps
-                        if opp.get("p2Cycle") is not None and entered_this_year(opp, "P2")])
-                  if detail_complete else None)
+    overall_p0 = _avg(overall_samples["P0"]) if detail_complete else None
+    overall_p2 = _avg(overall_samples["P2"]) if detail_complete else None
+    cycle_basis = "已结束样本" if completed_only else "含在途样本"
 
     def multiplier(product, stage):
         value = stage_average.get(product, {}).get(stage)
@@ -1981,7 +2057,10 @@ def evaluate(data, config=None, measured=None):
                  "已签单覆盖率 = 已签单商机预测金额 ÷ 商机预测总金额；总预测为空或为 0 时不计算")
     f_r03_e = fact("R03-LAG-ENERGY", "已签单覆盖率落后时间进度（电量）", lag_energy, "百分点",
                    "已签单覆盖率 = 已签单商机预测电量 ÷ 商机预测总电量；总预测为空或为 0 时不计算")
-    f_r04_count = fact("R04-COUNT", "重点跟踪未签单商机数", focus_count, "条")
+    storage_on = bool(((config.get("overrides") or {}).get("storageCustomerScope") or {}).get("enabled"))
+    storage_note = "储能客户名单内（BR-Q04）；" if storage_on else ""
+    f_r04_count = fact("R04-COUNT", "重点跟踪未签单商机数", focus_count, "条",
+                       storage_note + "战略、重点客户的未签单商机，按商机 ID 去重")
     f_r04_a = fact("R04-AMOUNT", "重点跟踪未签单预测（金额）", focus_amount, "亿元")
     f_r04_e = fact("R04-ENERGY", "重点跟踪未签单预测（电量）", focus_energy, "GWh")
     f_r05_a = fact("R05-AMOUNT", "电芯类未签单预测（金额）", products["1"]["pending_amount"], "亿元")
@@ -1989,7 +2068,7 @@ def evaluate(data, config=None, measured=None):
     f_r06_a = fact("R06-AMOUNT", "PACK 类未签单预测（金额）", products["2"]["pending_amount"], "亿元")
     f_r06_e = fact("R06-ENERGY", "PACK 类未签单预测（电量）", products["2"]["pending_energy"], "GWh")
     f_r08 = fact("R08", "客户预测缺口客户数", len(gap_accounts), "家",
-                 "按客户＋产品类型分别计算目标 − 商机预测；任一侧缺值不计缺口；金额或电量缺口大于 0")
+                 storage_note + "按客户＋产品类型分别计算目标 − 商机预测；任一侧缺值不计缺口；金额或电量缺口大于 0")
     supplement_r09 = (_number((supplement.get("R09") or {}).get("count"))
                       if strategic_ok and isinstance(supplement.get("R09"), dict) else None)
     if strategic_ok:
@@ -2002,7 +2081,7 @@ def evaluate(data, config=None, measured=None):
         no_opportunity_count = None
         r09_source = "本体未提供战略客户名单"
     f_r09 = fact("R09", "无商机战略客户数", no_opportunity_count, "家",
-                 "战略客户中关联商机数为 0 的客户（客户.accountid = 商机.parentaccountid）；"
+                 storage_note + "战略客户中关联商机数为 0 的客户（客户.accountid = 商机.parentaccountid）；"
                  "不按创建年份、审批或业务状态筛选", source=r09_source)
     f_r10 = fact("R10", "有商机未投标战略客户数",
                  len(no_bidding) if strategic_ok else None, "家",
@@ -2012,8 +2091,12 @@ def evaluate(data, config=None, measured=None):
     f_s03 = fact("S03", "投标平均周期", bid_average, "天", "中标公布时间或测量日 − 录入时间；全部有效投标")
     f_s03_p1 = fact("S03-P1", "电芯类投标平均周期", bid_average_by_product.get("1"), "天", "按关联商机产品类型拆分")
     f_s03_p2 = fact("S03-P2", "PACK 类投标平均周期", bid_average_by_product.get("2"), "天", "按关联商机产品类型拆分")
-    f_p0 = fact("P0-01", "商机获取阶段平均周期", overall_p0, "天", "创建至阶段一结束或测量日；按电芯/PACK 分别计算")
-    f_p2 = fact("P2-01", "方案推动阶段平均周期", overall_p2, "天", "阶段三结束或测量日 − 阶段二结束；按电芯/PACK 分别计算")
+    f_p0 = fact("P0-01", "商机获取阶段平均周期", overall_p0, "天",
+                ("创建至阶段一结束；仅统计完整有效起止的已结束样本，在途不计入均值；按电芯/PACK 分别计算"
+                 if completed_only else "创建至阶段一结束或测量日；按电芯/PACK 分别计算"))
+    f_p2 = fact("P2-01", "方案推动阶段平均周期", overall_p2, "天",
+                ("阶段三结束 − 阶段二结束；仅统计完整有效起止的已结束样本，在途不计入均值；按电芯/PACK 分别计算"
+                 if completed_only else "阶段三结束或测量日 − 阶段二结束；按电芯/PACK 分别计算"))
     f_rk10 = fact("P0-02", "商机获取阶段超期商机数", len(late_p0), "条", "单笔周期严格大于同阶段同产品平均周期 × 1.5")
     f_bid_amb = fact("BID-AMBIGUOUS", "投标同名歧义项目数", len(ambiguous_bid_names), "个", "同名多条投标记录；不据此判断未投标")
 
@@ -2199,7 +2282,8 @@ def evaluate(data, config=None, measured=None):
         evidence.extend(top_opps(late_p0))
         name = _risk_name(config, "RK10", "商机获取阶段超期较多，影响签单")
         risks.append(_risk("RK10", name, level, f"RK10 {name}",
-                           f"{len(late_p0)} 条商机单笔周期超过同阶段同产品平均周期 1.5 倍；平均周期 {overall_p0:.1f} 天。",
+                           f"{len(late_p0)} 条商机单笔周期超过同阶段同产品{cycle_basis}平均周期 1.5 倍；"
+                           f"平均周期 {overall_p0:.1f} 天。",
                            ["RK10", "P0-01", "P0-02"], evidence,
                            dict(count=len(late_p0), amount=affected_amount, energy=affected_energy),
                            [opp.get("id") for opp in late_p0]))
@@ -2301,14 +2385,15 @@ def evaluate(data, config=None, measured=None):
     # BR-C01: C01 no longer filters on demand confirmation (that is a drill-
     # down).  BR-C07: C06 is a non-focus, P0, unsigned opportunity whose
     # new_demandinput = 0; an empty value is not evidence either way.
-    strategic_p0 = [opp for opp in unsigned if opp.get("tier") == "strategic" and opp.get("stage") == "11"]
+    strategic_p0 = [opp for opp in unsigned if opp.get("tier") == "strategic" and opp.get("stage") == "11"
+                    and _in_storage(opp)]
     p2_late = [opp for opp in unsigned if opp.get("stage") == "13" and opp in late_p2]
     p2_late = list({opp.get("id"): opp for opp in p2_late if opp.get("id")}.values())
     focus_ratio = _div(focus_amount, unsigned_amount) if unsigned_amount else None
     rest_amount = (unsigned_amount - (focus_amount or 0)) if unsigned_amount is not None else None
     rest_ratio = _div(rest_amount, unsigned_amount) if unsigned_amount else None
     rest_p0 = [opp for opp in unsigned if opp.get("tier") not in {"strategic", "priority"}
-               and opp.get("stage") == "11" and opp.get("demandInput") == "0"]
+               and opp.get("stage") == "11" and opp.get("demandInput") == "0" and _in_storage(opp)]
     product_pending_ratio = {}
     for key in ("1", "2"):
         bucket = products[key]

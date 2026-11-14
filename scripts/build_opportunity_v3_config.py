@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_已签覆盖率按商机预测总额修订.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_储能客户口径修订.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -52,7 +52,7 @@ FIELD_NAMES = {
     "LE05": [
         "accountid", "name", "new_accountlevel", "createdon", "statecode",
         "new_lastapptime", "new_lastjgtime", "new_thelastest_updatetime",
-        "originatingleadid", "modifiedon",
+        "originatingleadid", "modifiedon", "owninguser",
     ],
     "LE06": [
         "new_targetid", "new_year", "new_account_id", "new_producttype_id",
@@ -261,8 +261,34 @@ def build_dynamic_cycle(workbook):
     return {
         "multiplier": multiplier,
         "strict": "严格大于" in blob,
+        # BR-Q06: the stage mean counts only samples with a real start and
+        # end; an unfinished stage is compared with it but never averaged in.
+        "completedOnly": "仅统计完整有效起止" in blob,
         "sample": clean(row.get("判断或结果")) or clean(row.get("规则描述")),
         "source": "BR-Q06",
+    }
+
+
+def build_storage_scope(workbook):
+    """BR-Q04 储能客户范围: which customers the customer metrics cover."""
+    rules = build_rule_index(workbook)
+    row = rules.get("BR-Q04") or {}
+    description = clean(row.get("规则描述"))
+    related = clean(row.get("关联本体元素"))
+    marker = "储能客户范围："
+    if marker not in description:
+        return {"enabled": False, "source": "BR-Q04"}
+    scope_line = _match(r"储能客户范围适用：([^\n。]+)", related, "BR-Q04 储能客户范围适用指标").group(1)
+    metrics = re.findall(r"[A-Z]\d{2}", scope_line)
+    if not metrics:
+        raise SystemExit("本体 BR-Q04 未列出储能客户范围适用指标")
+    return {
+        "enabled": True,
+        "rule": description[description.index(marker):],
+        "metrics": list(dict.fromkeys(metrics)),
+        "ownerField": "ownerid",
+        "accountOwnerField": "owninguser",
+        "source": "BR-Q04",
     }
 
 
@@ -634,6 +660,7 @@ def build_config(workbook):
         "stage": stage_rules,
         "products": product_names,
         "dynamicCycle": dynamic_cycle,
+        "storageCustomerScope": build_storage_scope(workbook),
         "electricitySource": electricity_source,
         "targetEnergy": target_energy_source,
         "recentActivity": {
@@ -662,8 +689,8 @@ def build_config(workbook):
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     config = dict(
-        version="opportunity-v3-rules-7",
-        ontology="商机获取节点 V3 已签覆盖率按商机预测总额修订",
+        version="opportunity-v3-rules-8",
+        ontology="商机获取节点 V3 储能客户口径修订",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,

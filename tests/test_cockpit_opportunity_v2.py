@@ -47,7 +47,7 @@ def _judge_no(request):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-7'
+    assert config_version() == 'opportunity-v3-rules-8'
     assert len(config_digest()) == 64
     # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) is excluded.
     assert len(config['metrics']) == 51
@@ -66,8 +66,8 @@ def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
 def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
-    assert trace['ontology'] == '商机获取节点 V3 已签覆盖率按商机预测总额修订'
-    assert trace['version'] == 'opportunity-v3-rules-7'
+    assert trace['ontology'] == '商机获取节点 V3 储能客户口径修订'
+    assert trace['version'] == 'opportunity-v3-rules-8'
     assert len(trace['digest']) == 12
     assert len(trace['metrics']) == 51
     assert len(trace['risks']) == 8
@@ -1727,3 +1727,75 @@ def test_risk_rows_take_their_names_from_the_ontology_risk_sheet():
     renamed['risks']['RK03'] = dict(renamed['risks']['RK03'], name='改名后的风险')
     from bi_agent.cockpit.opportunity_v2 import _risk_name
     assert _risk_name(renamed, 'RK03') == '改名后的风险'
+
+
+def test_the_ontology_storage_customer_scope_is_configured_from_br_q04():
+    config = load_config()
+    scope = config['overrides']['storageCustomerScope']
+    assert scope['enabled'] is True and scope['source'] == 'BR-Q04'
+    assert scope['rule'].startswith('储能客户范围：最新商机负责人ownerid→团队人员systemuserid→团队teamid')
+    assert set(scope['metrics']) == {'R04', 'R08', 'R09', 'C01', 'C06', 'C08', 'C09'}
+    assert config['fields']['LE05']['owninguser']['column'] == 'owninguser'
+    assert config['overrides']['dynamicCycle']['completedOnly'] is True
+    assert config['risks']['RK07']['description'].startswith('仅储能客户名单内。')
+
+
+def test_focus_tracking_counts_only_storage_customers():
+    inside = _opportunity(id='in', storageCustomer=True)
+    outside = _opportunity(id='out', accountId='account-2', storageCustomer=False)
+    value = evaluate(_data(opportunities=[inside, outside],
+                           allOpportunities=[deepcopy(inside), deepcopy(outside)],
+                           accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')]))
+    facts = {f['id']: f for f in value['evidence']['facts']}
+    # R04 keeps the customer in the 储能客户名单 only; B02 / R02 still cover every opportunity.
+    assert facts['opp-v2:metric:R04-COUNT']['value'] == 1
+    assert facts['opp-v2:metric:R04-AMOUNT']['value'] == 10.0
+    assert facts['opp-v2:metric:B02-AMOUNT']['value'] == 20.0
+    assert facts['opp-v2:metric:R04-COUNT']['definition'].startswith('储能客户名单内（BR-Q04）')
+    # Inputs collected without the scope flag are not narrowed.
+    legacy = evaluate(_data(opportunities=[_opportunity(id='a'), _opportunity(id='b')],
+                            allOpportunities=[_opportunity(id='a'), _opportunity(id='b')]))
+    legacy_facts = {f['id']: f for f in legacy['evidence']['facts']}
+    assert legacy_facts['opp-v2:metric:R04-COUNT']['value'] == 2
+
+
+def test_customer_gap_ignores_customers_outside_the_storage_list():
+    def run(flag):
+        pair = dict(accountId='account-1', productType='1', amount=50.0, energy=None)
+        if flag is not None:
+            pair['storageCustomer'] = flag
+        return evaluate(_data(
+            targets=dict(amount=100.0, energy=100.0, byProduct={}, byAccount={},
+                         byAccountProduct={'account-1|1': pair}),
+            opportunities=[_opportunity(monthRows=1)], allOpportunities=[_opportunity()]))
+    facts = lambda value: {f['id']: f for f in value['evidence']['facts']}
+    assert facts(run(True))['opp-v2:metric:R08']['value'] == 1
+    assert facts(run(False))['opp-v2:metric:R08']['value'] == 0
+    assert 'RK06' not in {f['riskCode'] for f in run(False)['result']['findings']}
+    assert facts(run(None))['opp-v2:metric:R08']['value'] == 1
+
+
+def test_stage_mean_counts_only_completed_samples():
+    # Two finished P0 stages (10 and 20 days) and one still running for 300 days.
+    done_a = _opportunity(id='a', stage='11', createdAt='2026-01-01', stage1End='2026-01-11', stage2End=None, stage3End=None)
+    done_b = _opportunity(id='b', stage='11', createdAt='2026-01-01', stage1End='2026-01-21', stage2End=None, stage3End=None)
+    running = _opportunity(id='c', stage='11', createdAt='2026-01-15', stage1End=None, stage2End=None, stage3End=None)
+    value = evaluate(_data(opportunities=[done_a, done_b, running],
+                           allOpportunities=[deepcopy(done_a), deepcopy(done_b), deepcopy(running)]))
+    facts = {f['id']: f for f in value['evidence']['facts']}
+    assert facts['opp-v2:metric:P0-01']['value'] == 15.0
+    assert '在途不计入均值' in facts['opp-v2:metric:P0-01']['definition']
+    # The running stage is still compared with that mean and is overdue.
+    assert facts['opp-v2:metric:P0-02']['value'] == 1
+    rk10 = next(r for r in value['risks'] if r['code'] == 'RK10')
+    assert '已结束样本平均周期 1.5 倍' in rk10['description'] and '平均周期 15.0 天' in rk10['description']
+
+
+def test_storage_scope_sql_follows_owner_team_member_customer():
+    source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/opportunity_v2.py').read_text(encoding='utf-8')
+    for fragment in ("sa.{ac[account_owner_field]}::text IN (", "su.{sm['teamid']}::text IN (",
+                     "stm.{sm['systemuserid']}::text IN (", "sow.{oc[owner_field]}::text FROM {opp_src} sow",
+                     "(sc.account_id IS NOT NULL) AS storage_customer",
+                     "AND a.{ac['accountid']}::text IN (SELECT account_id FROM {storage_sql} sc)",
+                     "GROUP BY 1,2,3,4,5,6,7"):
+        assert fragment in source, fragment
