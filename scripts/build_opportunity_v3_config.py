@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_无投标_周期红字同步版.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_已签覆盖率按商机预测总额修订.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -662,8 +662,8 @@ def build_config(workbook):
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     config = dict(
-        version="opportunity-v3-rules-5",
-        ontology="商机获取节点 V3 无投标·周期红字同步版",
+        version="opportunity-v3-rules-6",
+        ontology="商机获取节点 V3 已签覆盖率按商机预测总额修订",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,

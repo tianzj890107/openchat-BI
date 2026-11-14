@@ -38,7 +38,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-5"
+RULES_VERSION = "opportunity-v3-rules-6"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -59,7 +59,7 @@ _RISK_FACT_CODES = {
     "RK01": ("B01-AMOUNT", "B01-ENERGY", "B02-AMOUNT", "B02-ENERGY",
              "R01-AMOUNT", "R01-ENERGY", "R01-RATE-AMOUNT", "R01-RATE-ENERGY"),
     "RK02": ("R03-LAG", "R03-LAG-ENERGY", "R02-AMOUNT", "R02-ENERGY",
-             "R02-CONFIRMED-AMOUNT", "R02-CONFIRMED-ENERGY", "R01-AMOUNT", "R01-ENERGY"),
+             "R02-CONFIRMED-AMOUNT", "R02-CONFIRMED-ENERGY", "B02-AMOUNT", "B02-ENERGY"),
     "RK03": ("R04-COUNT", "R04-AMOUNT", "R04-ENERGY", "R01-AMOUNT", "R01-ENERGY"),
     "RK04": ("R05-AMOUNT", "R05-ENERGY", "B01-AMOUNT", "B01-ENERGY",
              "B02-AMOUNT", "B02-ENERGY", "R03-LAG", "R03-LAG-ENERGY"),
@@ -1650,10 +1650,15 @@ def evaluate(data, config=None, measured=None):
     # A contract whose state is unknown is neither signed nor explicitly
     # unsigned.  It therefore stays out of both the pending/quarter window and
     # the confirmed signing coverage.
-    unsigned_ratio_amount = _div((unsigned_amount or 0) + max(gap_amount or 0, 0), target_amount) if target_amount else None
-    unsigned_ratio_energy = _div((unsigned_energy or 0) + max(gap_energy or 0, 0), target_energy) if target_energy else None
-    sign_progress_amount = _div(confirmed_amount, target_amount)
-    sign_progress_energy = _div(confirmed_energy, target_energy)
+    # R03 / BR-A02 (ontology 2026-11-14): signed coverage = signed forecast ÷
+    # total opportunity forecast, unsigned share = unsigned forecast ÷ total
+    # forecast; amount and energy separately.  The annual target is not the
+    # denominator and its gap is not added.  A total that is empty or 0
+    # leaves the ratio NULL.
+    unsigned_ratio_amount = _div(unsigned_amount, total_amount)
+    unsigned_ratio_energy = _div(unsigned_energy, total_energy)
+    sign_progress_amount = _div(confirmed_amount, total_amount)
+    sign_progress_energy = _div(confirmed_energy, total_energy)
     year_start = date(measured.year, 1, 1)
     year_end = date(measured.year, 12, 31)
     time_progress = ((measured - year_start).days + 1) / ((year_end - year_start).days + 1)
@@ -1727,14 +1732,10 @@ def evaluate(data, config=None, measured=None):
                               if product_target_amount is not None and product_total_amount is not None else None)
         product_gap_energy = (product_target_energy - product_total_energy
                               if product_target_energy is not None and product_total_energy is not None else None)
-        product_unsigned_ratio_amount = _div(
-            (pending_amount or 0) + max(product_gap_amount or 0, 0), product_target_amount
-        ) if product_target_amount else None
-        product_unsigned_ratio_energy = _div(
-            (pending_energy or 0) + max(product_gap_energy or 0, 0), product_target_energy
-        ) if product_target_energy else None
-        product_sign_progress_amount = _div(confirmed_product_amount, product_target_amount)
-        product_sign_progress_energy = _div(confirmed_product_energy, product_target_energy)
+        # R05 / R06 condition ② uses the same product's signed forecast ÷ its
+        # total forecast; condition ① (forecast below target) keeps the target.
+        product_sign_progress_amount = _div(confirmed_product_amount, product_total_amount)
+        product_sign_progress_energy = _div(confirmed_product_energy, product_total_energy)
         products[key] = dict(
             pending=subset,
             pending_count=pending_count,
@@ -1953,9 +1954,9 @@ def evaluate(data, config=None, measured=None):
     f_r02_confirmed_a = fact("R02-CONFIRMED-AMOUNT", "已签单商机预测（金额）", confirmed_amount, "亿元", "BR-Q02：已关联至少 1 张订单")
     f_r02_confirmed_e = fact("R02-CONFIRMED-ENERGY", "已签单商机预测（电量）", confirmed_energy, "GWh", "BR-Q02：已关联至少 1 张订单")
     f_r03 = fact("R03-LAG", "已签单覆盖率落后时间进度（金额）", lag_amount, "百分点",
-                 "已签单覆盖率 = 已签单商机预测金额 ÷ 目标金额；签单状态未知不计入已签或未签")
+                 "已签单覆盖率 = 已签单商机预测金额 ÷ 商机预测总金额；总预测为空或为 0 时不计算")
     f_r03_e = fact("R03-LAG-ENERGY", "已签单覆盖率落后时间进度（电量）", lag_energy, "百分点",
-                   "已签单覆盖率 = 已签单商机预测电量 ÷ 目标电量；签单状态未知不计入已签或未签")
+                   "已签单覆盖率 = 已签单商机预测电量 ÷ 商机预测总电量；总预测为空或为 0 时不计算")
     f_r04_count = fact("R04-COUNT", "重点跟踪未签单商机数", focus_count, "条")
     f_r04_a = fact("R04-AMOUNT", "重点跟踪未签单预测（金额）", focus_amount, "亿元")
     f_r04_e = fact("R04-ENERGY", "重点跟踪未签单预测（电量）", focus_energy, "GWh")
@@ -2029,11 +2030,11 @@ def evaluate(data, config=None, measured=None):
         if lag_energy is not None:
             parts.append(f"电量口径已签单覆盖率 {sign_progress_energy * 100:.1f}%，落后 {lag_energy:.1f} 个百分点。")
         if quarterly:
-            parts.append(f"第 {quarter} 季度待签及缺口占比超过 {quarter_window * 100:.0f}% 窗口阈值。")
+            parts.append(f"第 {quarter} 季度未签单商机预测占比超过 {quarter_window * 100:.0f}% 窗口阈值。")
         evidence = [f_r03, f_r03_e, f_r02_a, f_r02_e, f_r02_unknown_a, f_r02_unknown_e,
-                    f_r01_a, f_r01_e]
+                    f_b02_a, f_b02_e]
         risks.append(_risk("RK02", "签单进度滞后", level, "RK02 签单进度滞后（已签单覆盖率口径）",
-                           "".join(parts), ["RK02", "R03", "R02", "R01"], evidence,
+                           "".join(parts), ["RK02", "R03", "R02", "B02"], evidence,
                            dict(amount=unsigned_amount, energy=unsigned_energy, count=None), []))
 
     # RK03
@@ -2657,7 +2658,7 @@ def evaluate(data, config=None, measured=None):
         data_issues.append("投标明细达到行数上限；投标周期和投标中项目相关规则未判定。")
     caliber_notes.extend([
         "签单按本体 BR-Q02 判断：商机经订单明细关联到订单即已签单，否则未签单。",
-        "签单进度按已签单覆盖率计算（已签单商机预测 ÷ 目标）；签单状态未知不计入已签或未签，也不单独触发进度滞后。",
+        "签单进度按已签单覆盖率计算（已签单商机预测 ÷ 商机预测总额，金额、电量分别计算）；年度目标只用于预测缺口。",
         "目标按本体 B01：同一商机（商机为空时按目标 ID）同一年度只取最新一条，再按客户、产品汇总。",
         f"预测电量按本体 B02 使用 {energy_field}"
         + ("（预测金额 ÷ 瓦时单价）" if _text(energy_cfg.get("mode")) == "amount_div_price" else f"（{energy_unit}）")

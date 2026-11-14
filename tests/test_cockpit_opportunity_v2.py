@@ -47,7 +47,7 @@ def _judge_no(request):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-5'
+    assert config_version() == 'opportunity-v3-rules-6'
     assert len(config_digest()) == 64
     # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) is excluded.
     assert len(config['metrics']) == 51
@@ -66,8 +66,8 @@ def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
 def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
-    assert trace['ontology'] == '商机获取节点 V3 无投标·周期红字同步版'
-    assert trace['version'] == 'opportunity-v3-rules-5'
+    assert trace['ontology'] == '商机获取节点 V3 已签覆盖率按商机预测总额修订'
+    assert trace['version'] == 'opportunity-v3-rules-6'
     assert len(trace['digest']) == 12
     assert len(trace['metrics']) == 51
     assert len(trace['risks']) == 8
@@ -285,25 +285,55 @@ def test_product_risk_uses_product_specific_signing_progress():
     assert 'RK04' not in codes
 
 
-def test_unknown_contract_does_not_reduce_confirmed_signing_coverage():
-    confirmed = _opportunity(
-        id='confirmed-1', contract='confirmed', forecastAmount=100.0, forecastEnergy=100.0,
+def test_signed_coverage_is_over_the_forecast_total_not_the_target():
+    # Ontology 2026-11-14 (R03 / BR-A02): coverage = signed forecast ÷ total
+    # opportunity forecast, amount and energy separately; the target is not
+    # the denominator, so a target far above the forecast does not lower it.
+    signed = _opportunity(
+        id='signed-1', contract='confirmed', forecastAmount=90.0, forecastEnergy=60.0,
         stage='14', createdAt='2026-01-01')
-    unknown = _opportunity(
-        id='unknown-1', contract='unknown', forecastAmount=20.0, forecastEnergy=20.0,
+    unsigned = _opportunity(
+        id='unsigned-1', contract='not_confirmed', forecastAmount=10.0, forecastEnergy=40.0,
         stage='14', createdAt='2026-01-01')
     data = _data(
-        targets=dict(amount=100.0, energy=100.0,
-                     byProduct={'1': dict(amount=100.0, energy=100.0)}, byAccount={}),
-        opportunities=[confirmed, unknown],
-        allOpportunities=[deepcopy(confirmed), deepcopy(unknown)],
+        targets=dict(amount=1000.0, energy=1000.0,
+                     byProduct={'1': dict(amount=1000.0, energy=1000.0)}, byAccount={}),
+        opportunities=[signed, unsigned],
+        allOpportunities=[deepcopy(signed), deepcopy(unsigned)],
     )
     value = evaluate(data, measured=date(2026, 11, 11))
-    assert value['metrics']['R03']['signProgressAmount'] == 1.0
-    assert value['metrics']['R03']['signProgressEnergy'] == 1.0
-    assert value['metrics']['R02']['unknownAmount'] == 20.0
+    r03 = value['metrics']['R03']
+    assert r03['signProgressAmount'] == 0.9 and r03['signProgressEnergy'] == 0.6
+    # Amount coverage 90% is ahead of time progress (~86%), energy 60% is behind.
+    assert r03['lagAmount'] < 0 < r03['lagEnergy']
+    rk02 = next(risk for risk in value['risks'] if risk['code'] == 'RK02')
+    assert '电量口径已签单覆盖率 60.0%' in rk02['description']
+    assert '缺口' not in rk02['description']
+    assert any('商机预测总额' in item for item in value['result']['limitations'])
+
+
+def test_signed_coverage_and_unsigned_share_are_null_without_a_forecast_total():
+    unsigned = _opportunity(id='u1', contract='not_confirmed', forecastAmount=0.0, forecastEnergy=None,
+                            stage='14', createdAt='2026-01-01')
+    value = evaluate(_data(opportunities=[unsigned], allOpportunities=[deepcopy(unsigned)]),
+                     measured=date(2026, 11, 11))
+    assert value['metrics']['R03']['signProgressAmount'] is None
+    assert value['metrics']['R03']['signProgressEnergy'] is None
     assert 'RK02' not in {risk['code'] for risk in value['risks']}
-    assert any('签单状态未知不计入已签或未签' in item for item in value['result']['limitations'])
+
+
+def test_quarter_window_uses_the_unsigned_share_of_the_forecast_total():
+    # Q4 window 25%: 30 unsigned of 100 forecast → 30% > 25%, while the
+    # target gap (target 1000) must not be added to the share.
+    signed = _opportunity(id='s', contract='confirmed', forecastAmount=70.0, forecastEnergy=99.0,
+                          stage='14', createdAt='2026-01-01')
+    unsigned = _opportunity(id='u', contract='not_confirmed', forecastAmount=30.0, forecastEnergy=1.0,
+                            stage='14', createdAt='2026-01-01')
+    data = _data(targets=dict(amount=1000.0, energy=1000.0, byProduct={}, byAccount={}),
+                 opportunities=[signed, unsigned], allOpportunities=[deepcopy(signed), deepcopy(unsigned)])
+    value = evaluate(data, measured=date(2026, 10, 2))
+    rk02 = next(risk for risk in value['risks'] if risk['code'] == 'RK02')
+    assert '第 4 季度未签单商机预测占比超过 25% 窗口阈值' in rk02['description']
 
 
 def test_build_card_reports_internal_steps_in_execution_order():
@@ -1523,3 +1553,18 @@ def test_every_card_model_call_starts_with_the_sales_operations_role(monkeypatch
 def test_only_the_opportunity_card_summaries_use_the_role():
     source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/frozen.py').read_text(encoding='utf-8')
     assert "if stage == 'opportunity-risk':" in source and 'role=role)' in source
+
+
+def test_product_signing_lag_uses_the_products_forecast_total():
+    # R05 condition ②: 电芯 forecast 100 is above its target 50 (condition ①
+    # does not hold); 50 signed of 100 is 50% coverage, behind ~86% time
+    # progress, so RK04 holds.  Over the target it would read 100%.
+    signed = _opportunity(id='s', contract='confirmed', productType='1', forecastAmount=50.0,
+                          forecastEnergy=50.0, stage='14', createdAt='2026-01-01')
+    pending = _opportunity(id='p', contract='not_confirmed', productType='1', forecastAmount=50.0,
+                           forecastEnergy=50.0, stage='14', createdAt='2026-01-01')
+    data = _data(targets=dict(amount=50.0, energy=50.0,
+                              byProduct={'1': dict(amount=50.0, energy=50.0)}, byAccount={}),
+                 opportunities=[signed, pending], allOpportunities=[deepcopy(signed), deepcopy(pending)])
+    value = evaluate(data, measured=date(2026, 11, 11))
+    assert 'RK04' in {risk['code'] for risk in value['risks']}
