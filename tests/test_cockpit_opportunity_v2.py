@@ -1162,7 +1162,8 @@ def test_every_item_is_listed_with_its_status_for_the_ontology_display():
     assert [item['code'] for item in judgement['advice']] == list(config['advice'])
     labels = {item['statusLabel'] for group in judgement.values() if isinstance(group, list)
               for item in group if isinstance(item, dict)}
-    assert {'命中（规则判定）', '未命中（规则判定）', '未命中（模型判定）'} <= labels
+    # The model's "no" on items whose inputs are missing reads as undecided.
+    assert {'命中（规则判定）', '未命中（规则判定）', '无法判定（模型）'} <= labels
     assert judged['summary'].startswith('本轮 8 项本体风险中')
 
 
@@ -1550,9 +1551,11 @@ def test_every_card_model_call_starts_with_the_sales_operations_role(monkeypatch
     assert judgement.role_prompt() == role
 
 
-def test_only_the_opportunity_card_summaries_use_the_role():
+def test_the_opportunity_card_has_no_section_summaries_but_semantic_control():
+    from bi_agent.cockpit import frozen
+    assert 'opportunity-risk' not in frozen.SECTION_SUMMARY_STAGES
     source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/frozen.py').read_text(encoding='utf-8')
-    assert "if stage == 'opportunity-risk':" in source and 'role=role)' in source
+    assert 'semantic=semantic_rewriter if (enabled and semantic) else None' in source
 
 
 def test_product_signing_lag_uses_the_products_forecast_total():
@@ -1639,3 +1642,71 @@ def test_every_query_names_the_metrics_it_feeds():
     assert all(set(codes) <= metrics for codes in _QUERY_METRICS.values())
     source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/opportunity_v2.py').read_text(encoding='utf-8')
     assert 'metricCodes=list(_QUERY_METRICS.get(label, []))' in source
+
+
+def test_a_model_no_on_missing_inputs_is_recorded_as_undecided():
+    from bi_agent.cockpit.opportunity_judgement import _ask
+    missing = _ask(lambda request: dict(established=False, reason='没有拜访记录'),
+                   dict(kind='cause', code='RC09', data=dict(missingInputs=['近期线索', '拜访'])), None, '1/1')
+    assert missing['established'] is None
+    assert missing['reason'].startswith('判定所需数据缺失（近期线索、拜访），按无法判定处理')
+    complete = _ask(lambda request: dict(established=False, reason='数据显示不成立'),
+                    dict(kind='cause', code='RC04', data=dict(missingInputs=[])), None, '1/1')
+    assert complete['established'] is False
+    held = _ask(lambda request: dict(established=True, reason='成立'),
+                dict(kind='cause', code='RC09', data=dict(missingInputs=['拜访'])), None, '1/1')
+    assert held['established'] is True
+
+
+def test_semantic_control_rewords_rows_but_never_their_numbers():
+    from bi_agent.cockpit.opportunity_judgement import control_risk_rows
+    rows = [dict(riskCode='RK01', title='商机预测覆盖不足', riskLevel='高', decidedBy='rule',
+                 description='金额缺口 12.30 亿元（目标 100.00 亿元、预测 87.70 亿元）。'),
+            dict(riskCode='RK07', title='战略客户待突破（无商机）', riskLevel='高', decidedBy='rule',
+                 description='战略客户中有 30 家没有任何关联商机。')]
+    seen = []
+
+    def rewrite(payload):
+        seen.append(payload)
+        return dict(items=[
+            dict(code='RK01', description='商机预测较年度目标 100 亿元少 12.3 亿元（预测 87.7 亿元），覆盖不足。'),
+            dict(code='RK07', description='31 家战略客户尚无商机。')])
+    report = control_risk_rows(rows, load_config(), rewrite)
+    # Same numbers, reworded: taken.  A changed number: the rule row stays.
+    assert rows[0]['description'].startswith('商机预测较年度目标 100 亿元')
+    assert rows[0]['ruleDescription'] == '金额缺口 12.30 亿元（目标 100.00 亿元、预测 87.70 亿元）。'
+    assert rows[0]['semanticControl'] == 'model'
+    assert rows[1]['description'] == '战略客户中有 30 家没有任何关联商机。' and rows[1]['semanticControl'] == 'kept'
+    assert report['status'] == 'partial' and report['issues'] == ['RK07：数字与原句不一致，保留规则原句']
+    # The model sees every row and each risk's ontology definition and rule.
+    assert [item['code'] for item in seen[0]['items']] == ['RK01', 'RK07']
+    assert seen[0]['ontology'][0]['definition'] and seen[0]['ontology'][0]['rule']
+
+    def broken(payload):
+        raise TimeoutError('slow')
+    rows2 = [dict(rows[1])]
+    failed = control_risk_rows(rows2, load_config(), broken)
+    assert failed['status'] == 'failed' and rows2[0]['semanticControl'] == 'kept'
+    assert control_risk_rows(rows2, load_config(), None)['status'] == 'skipped'
+
+
+def test_each_risk_and_cause_lists_only_the_queries_its_evidence_came_from():
+    from bi_agent.cockpit.opportunity_judgement import link_queries
+    catalog = [dict(executionId='q-target', label='销售目标', metricCodes=['B01', 'R01', 'R05', 'R06', 'R08']),
+               dict(executionId='q-opp', label='商机预测', metricCodes=['B02', 'R01', 'R08', 'P0-01', 'P0-02']),
+               dict(executionId='q-account', label='客户', metricCodes=['R09']),
+               dict(executionId='q-orders', label='订单关联', metricCodes=[])]
+    result = dict(queryCatalog=catalog, findings=[
+        dict(riskCode='RK07', evidenceIds=['opp-v2:metric:R09', 'opp-v2:account:a1'], metricCodes=['RK07', 'R09']),
+        dict(riskCode='RK06', evidenceIds=['opp-v2:metric:R08'], metricCodes=['RK06', 'R08']),
+        dict(riskCode='RK10', evidenceIds=['opp-v2:metric:P0-01', 'opp-v2:metric:P0-02'], metricCodes=['RK10'])],
+        causes=[dict(causeCode='RC09', evidenceIds=['opp-v2:metric:R09']),
+                dict(causeCode='RK07-AI1', inferred=True, evidenceIds=['opp-v2:metric:R09'])],
+        analysisDimensions=[dict(causeCode='RC09', evidenceIds=['opp-v2:metric:R09'])])
+    link_queries(result, load_config())
+    findings = {f['riskCode']: f['queryIds'] for f in result['findings']}
+    assert findings == dict(RK07=['q-account'], RK06=['q-target', 'q-opp'], RK10=['q-opp'])
+    assert [c['queryIds'] for c in result['causes']] == [['q-account'], []]
+    assert result['analysisDimensions'][0]['queryIds'] == ['q-account']
+    from bi_agent.cockpit.opportunity_v2 import _QUERY_METRICS
+    assert _QUERY_METRICS['订单关联'] == [] and _QUERY_METRICS['全部商机'] == []

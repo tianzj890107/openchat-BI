@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import opportunity_v2 as v2
-from .opportunity_judgement import ONTOLOGY_RULES, judge_card, make_item_judge
+from .opportunity_judgement import ONTOLOGY_RULES, judge_card, link_queries, make_item_judge
 
 SLOT_ID = "sales-shipment-issues"
 STAGE = "combined"
@@ -720,6 +720,7 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
         analysisAssembly=dict(cardWriter="rules", modelContract="item-judgement-v1",
                               modelCalls=judged["ontologyJudgement"]["modelCalls"], modelFailures=len(failures)),
     )
+    link_queries(result, view)
     v2._report_progress(progress, "publishing", message="发布卡片")
     fingerprint = hashlib.sha256(json.dumps(dict(period=str(period), measured=measured.isoformat(),
                                                  metrics=evaluated["metrics"]), ensure_ascii=False,

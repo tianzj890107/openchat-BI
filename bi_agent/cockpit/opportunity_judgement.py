@@ -88,8 +88,103 @@ INFER_PROMPT = (
 )
 
 
+SEMANTIC_PROMPT = (
+    "风险行语义控制。输入 items 是本卡片已经判定成立的全部风险行（code、title、level、decidedBy、"
+    "description），ontology 给出每个风险在本体中的定义与判定规则。请逐行改写 description："
+    "统一使用本体中的术语与指标名称，说明影响对象以及实际值与目标或阈值的差距，语言客观、简洁，"
+    "同一卡片内各行措辞风格一致、互不重复。只能改写表述，不得新增、删除或改动任何事实与数字："
+    "原 description 中的每个数字及其单位都必须原样保留，不得引入原行没有的数字，不得改变风险结论与等级。"
+    "每行不超过160字。"
+    '只返回 JSON：{"items": [{"code": "风险编码", "description": "改写后的描述"}]}，不要输出其他内容。'
+)
+
+
 def _text(value):
     return "" if value is None else str(value).strip()
+
+
+def _numbers(text):
+    """Every number written in a sentence, as values (12.30 and 12.3 are the same)."""
+    values = []
+    for token in re.findall(r"-?\d+(?:,\d{3})*(?:\.\d+)?", _text(text)):
+        try:
+            values.append(round(float(token.replace(",", "")), 6))
+        except ValueError:
+            continue
+    return sorted(values)
+
+
+def semantic_rewriter(payload):
+    """One model call that rewrites the card's established risk rows."""
+    from ..llm import provider
+    from . import opportunity_v2 as v2
+
+    key = v2._model_candidate_keys()[0]
+    messages = [dict(role="user", content=json.dumps(payload, ensure_ascii=False, default=str))]
+    try:
+        timeout = int(os.environ.get("COCKPIT_OPPORTUNITY_JUDGE_TIMEOUT_SECONDS", "90"))
+    except ValueError:
+        timeout = 90
+    timeout = max(15, min(timeout, 180))
+    started = time.monotonic()
+    try:
+        text, _, _ = v2._read_model_stream(provider, messages, system_prompt(SEMANTIC_PROMPT), key,
+                                           max_tokens=2000, timeout=timeout, step="风险行语义控制")
+        answer = v2._decode_model_json(text)
+    except Exception as exc:  # noqa: BLE001 - annotated, the caller keeps the rule rows
+        v2._annotate_model_error(exc, key, messages, started, timeout, 2000)
+        raise
+    return dict(answer, _model=v2._model_route_name(key))
+
+
+def control_risk_rows(findings, config, rewrite, progress=None):
+    """Let the model word every established risk row consistently, numbers untouched.
+
+    A rewritten row is kept only when it carries exactly the numbers of the
+    rule-written row; otherwise, or when the call fails, the row stays as the
+    rule wrote it.  Returns a report for the card's diagnostics.
+    """
+    if rewrite is None or not findings:
+        return dict(status="skipped", rewritten=0, kept=len(findings or []), issues=[])
+    if progress is not None:
+        progress("judging", message=f"模型对 {len(findings)} 条风险行做语义控制")
+    specs = config.get("risks") or {}
+    rules = config.get("rules") or {}
+    payload = dict(items=[dict(code=f["riskCode"], title=f["title"], level=f.get("riskLevel") or "",
+                               decidedBy=f.get("decidedBy") or "", description=f.get("description") or "")
+                          for f in findings],
+                   ontology=[dict(code=f["riskCode"],
+                                  definition=_text((specs.get(f["riskCode"]) or {}).get("description")),
+                                  rule=_text((rules.get(_text((specs.get(f["riskCode"]) or {}).get("rule"))) or {})
+                                             .get("description")))
+                             for f in findings])
+    try:
+        answer = rewrite(payload)
+    except Exception as exc:  # noqa: BLE001 - the card keeps its rule-written rows
+        for finding in findings:
+            finding["semanticControl"] = "kept"
+        return dict(status="failed", rewritten=0, kept=len(findings), issues=[_model_error(exc)])
+    rows = {(_text(item.get("code"))): _text(item.get("description"))
+            for item in (answer.get("items") if isinstance(answer, dict) else None) or []
+            if isinstance(item, dict)}
+    issues, rewritten = [], 0
+    for finding in findings:
+        original = finding.get("description") or ""
+        candidate = rows.get(finding["riskCode"], "")
+        problem = ("未返回该行" if not candidate else
+                   "超过 160 字" if len(candidate) > 160 else
+                   "数字与原句不一致" if _numbers(candidate) != _numbers(original) else "")
+        if problem:
+            finding["semanticControl"] = "kept"
+            issues.append(f"{finding['riskCode']}：{problem}，保留规则原句")
+            continue
+        finding["ruleDescription"] = original
+        finding["description"] = candidate
+        finding["semanticControl"] = "model"
+        rewritten += 1
+    return dict(status="completed" if not issues else "partial", rewritten=rewritten,
+                kept=len(findings) - rewritten, issues=issues,
+                model=_text(answer.get("_model")) if isinstance(answer, dict) else "")
 
 
 def _metric_code_of(fact_id, codes):
@@ -213,9 +308,18 @@ def _ask(judge, request, progress, position):
         return dict(decidedBy="none", established=None, error=_model_error(exc) + "，已跳过")
     if not isinstance(answer, dict):
         return dict(decidedBy="none", established=None, error="模型返回的不是 JSON 对象，已跳过")
-    return dict(decidedBy="model", established=_established(answer.get("established")),
+    established = _established(answer.get("established"))
+    reason = _text(answer.get("reason"))[:400]
+    missing = [item for item in ((request.get("data") or {}).get("missingInputs") or []) if _text(item)]
+    if established is False and missing:
+        # Missing inputs leave the item undecided: "not established" would
+        # claim a fact the data cannot show.
+        established = None
+        reason = (f"判定所需数据缺失（{'、'.join(map(str, missing))}），按无法判定处理"
+                  + (f"；模型说明：{reason}" if reason else "。"))[:400]
+    return dict(decidedBy="model", established=established,
                 level=_text(answer.get("level"))[:4] if _text(answer.get("level")) in _LEVEL_RANK else "",
-                reason=_text(answer.get("reason"))[:400], model=_text(answer.get("_model")),
+                reason=reason, model=_text(answer.get("_model")),
                 elapsedSeconds=answer.get("_elapsed"))
 
 
@@ -556,6 +660,38 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
         riskCodes=[item["riskCode"] for item in findings],
         riskLevels={item["riskCode"]: item["riskLevel"] for item in findings},
         riskTotalCount=len(findings), includedRiskCount=len(findings))
+
+
+def link_queries(result, config):
+    """Attach to each risk and cause the queries its own evidence was read from.
+
+    An item's metrics are those of its evidence facts; a query supports it
+    when the query feeds one of those metrics.  An item no query supports
+    (e.g. a model-inferred cause) gets an empty list and shows no SQL.
+    """
+    catalog = result.get("queryCatalog") or []
+    codes = list((config.get("metrics") or {}))
+
+    def item_metrics(item):
+        found = set()
+        for value in list(item.get("evidenceIds") or []) + list(item.get("metricCodes") or []):
+            code = _metric_code_of(value if "metric:" in str(value) else f"metric:{value}", codes)
+            if code:
+                found.add(code)
+        return found
+
+    def ids_for(item):
+        if item.get("inferred"):
+            return []
+        metrics = item_metrics(item)
+        return [query["executionId"] for query in catalog
+                if query.get("executionId") and set(query.get("metricCodes") or []) & metrics]
+
+    for key in ("findings", "causes", "analysisDimensions"):
+        for item in result.get(key) or []:
+            if isinstance(item, dict):
+                item["queryIds"] = ids_for(item)
+    return result
 
 
 def _indicators(spec):

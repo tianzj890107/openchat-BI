@@ -50,18 +50,19 @@ test('shared stage risk component highlights text and keeps the display owner ro
   assert.match(css, /\.stage-risk-analysis__trace-table\{/);
 });
 
-test('each card section opens with the summary of its own displayed items', async () => {
+test('a card section opens with the summary of its own displayed items when the card keeps them', async () => {
   const source = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
   // No fallback: without its own summary a section shows none.
   assert.match(source, /riskSummary = computed\(\(\) => \(findings\.value\.length && sectionSummaries\.value\.riskSummary\) \|\| ''\)/);
-  assert.match(source, /<div v-if="riskSummary" class="stage-risk-analysis__summary"/);
+  // The 商机获取 card turns them off (sectionSummaries: false) and lists rows only.
+  assert.match(source, /<div v-if="showSectionSummaries && riskSummary" class="stage-risk-analysis__summary"/);
   // Every established risk is shown, and the ontology display lists every judgement.
   assert.match(source, /const findings = computed\(\(\) => result\.value\?\.findings \|\| \[\]\)/);
   assert.doesNotMatch(source, /findings \|\| \[\]\)\.slice\(0,\s*4\)/);
   assert.match(source, /本体判定明细/);
   assert.match(source, /v-for="item in group\.items"/);
-  assert.match(source, /<div v-if="causeSummary" class="stage-risk-analysis__summary"/);
-  assert.match(source, /<div v-if="adviceSummary" class="stage-risk-analysis__summary"/);
+  assert.match(source, /<div v-if="showSectionSummaries && causeSummary" class="stage-risk-analysis__summary"/);
+  assert.match(source, /<div v-if="showSectionSummaries && adviceSummary" class="stage-risk-analysis__summary"/);
 });
 
 test('rule-first risks show how each one was decided', async () => {

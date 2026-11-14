@@ -415,20 +415,21 @@ def _query_failure(exc, label, duration):
     )
 
 
-# Which ontology metrics each query feeds; the page lists, under each risk or
-# cause, only the queries behind its metrics.
+# Which ontology metrics each query's rows are computed into; each risk or
+# cause lists only the queries behind the metrics of its own evidence.
 _QUERY_METRICS = {
     "销售目标": ["B01", "R01", "R05", "R06", "R08"],
     "产品类型": ["R05", "R06"],
     "商机预测": ["B02", "R01", "R02", "R03", "R04", "R05", "R06", "R08", "C01", "C06", "C07", "C08",
                  "C09", "P0-01", "P0-02", "P2-01", "P2-02"],
     "商机聚合": ["B02", "R01", "R02", "R03", "R04", "R05", "R06", "R08"],
-    "全部商机": ["R09", "P0-01", "P0-02", "P2-01", "P2-02"],
+    # Read for display or as a legacy fallback only; no rule is computed from them.
+    "全部商机": [],
     "客户": ["R09"],
     "投标": [],
-    "项目进展": ["C07", "P2-01", "P2-02"],
-    "订单关联": ["R02", "R03", "R04", "R05", "R06", "C01", "C06", "C07", "C08", "C09"],
-    "产品团队": ["C05"],
+    "项目进展": [],
+    "订单关联": [],
+    "产品团队": [],
     "产品部销售缺口": ["C03", "C04", "C05"],
 }
 
@@ -3388,7 +3389,7 @@ def default_ap_supplement(data):
 
 
 def build_card(period, database=None, measurement_date=None, config=None, judge=None,
-               supplement=None, progress=None, diagnostic_reporter=None):
+               supplement=None, progress=None, diagnostic_reporter=None, semantic=None):
     """Build one complete ``opportunity-risk`` publication payload.
 
     Rules first: risks, causes and advice are settled by the ontology rule
@@ -3396,7 +3397,7 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     item per call (``judge``).  A failed model call skips that item.  A failed
     database read fails the card: nothing stands in for missing data.
     """
-    from .opportunity_judgement import judge_card
+    from .opportunity_judgement import control_risk_rows, judge_card, link_queries
 
     _report_progress(progress, "ontology", message="读取本体与规则配置")
     config = config or load_config()
@@ -3438,9 +3439,14 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     evaluated = evaluate(data, config, measured)
     _report_progress(progress, "analysing", message="逐条判定规则无法确定的风险与根因")
     judged = judge_card(evaluated, config, judge=judge, progress=progress)
+    # Once every risk is settled the model words all risk rows as one set;
+    # numbers must match the rule-written rows or the row is kept as is.
+    semantic_report = control_risk_rows(judged["findings"], config, semantic, progress=progress)
     fetched_at = time.time()
     result = evaluated["result"]
     result.update(judged)
+    result["semanticControl"] = semantic_report
+    link_queries(result, config)
     result["businessSummary"] = judged["summary"]
     result["cardContract"] = "cockpit-cards-v1"
     result["engine"] = "opportunity-v3-rules"
@@ -3451,6 +3457,7 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     )
     diagnostics = list(result.get("dataDiagnostics") or [])
     diagnostics += ["模型判断失败已跳过：" + item for item in judged["ontologyJudgement"]["failures"]]
+    diagnostics += ["风险行语义控制：" + item for item in semantic_report.get("issues") or []]
     if data.get("supplement"):
         diagnostics.append("部分目标/预测指标来自 AP 补充，已在对应指标来源中标明；明细级风险不据 AP 聚合值推导。")
     if supplement_errors:

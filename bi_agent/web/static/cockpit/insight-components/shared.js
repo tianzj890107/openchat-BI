@@ -232,8 +232,11 @@ export function useInsight(props, emit) {
       causes: [...causes].filter(code => shownCauses.has(code)).map(ontologyLabel),
       advice: [...advice].map(ontologyLabel),
       metrics: [...metrics].map(ontologyLabel),
-      sql: queryCatalog.value.filter(query => !Array.isArray(query.metricCodes)
-        || query.metricCodes.some(code => metrics.has(code))),
+      // The server names the queries that support this very item; none → no SQL.
+      sql: Array.isArray(item?.queryIds)
+        ? queryCatalog.value.filter(query => item.queryIds.includes(query.executionId))
+        : queryCatalog.value.filter(query => !Array.isArray(query.metricCodes)
+          || query.metricCodes.some(code => metrics.has(code))),
     }
   }
 
@@ -429,6 +432,8 @@ export function createStageRiskComponent(options = {}) {
       const analysisId = computed(() => String(props.analysis?.id || ''))
       // "风险" for the stage risk cards; the problem-driven 共同问题 card says "问题".
       const primaryLabel = options.primaryLabel || '风险'
+      // The 商机获取 card lists each row only: no per-section summary line.
+      const showSectionSummaries = options.sectionSummaries !== false
       const judgementGroups = computed(() => insight.judgementGroups.value.map(group => (
         group.kind === 'risks' ? {...group, title: primaryLabel} : group)))
       const analysisDimensions = computed(() => riskDimensionLinks(
@@ -442,7 +447,7 @@ export function createStageRiskComponent(options = {}) {
       // ontology path, the whole-card summary on the older path).
       const showOverallSummary = Boolean(options.showOverallSummary)
       return { ...insight, ...taskOrder, displayStage, primaryLabel, judgementGroups, analysisDimensions,
-               showOverallSummary }
+               showOverallSummary, showSectionSummaries }
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
@@ -460,7 +465,7 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【{{ primaryLabel }}】</span>
               {{ displayStage }}当前{{ primaryLabel }}判断
             </div>
-            <div v-if="riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
+            <div v-if="showSectionSummaries && riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">{{ primaryLabel }}{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ finding.issueType }}】</template>{{ finding.title }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
@@ -525,7 +530,7 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
               按 {{ analysisDimensions.length }} 个业务环节展开原因分析
             </div>
-            <div v-if="causeSummary" class="stage-risk-analysis__summary" :title="causeSummary"><number-text :text="causeSummary" /></div>
+            <div v-if="showSectionSummaries && causeSummary" class="stage-risk-analysis__summary" :title="causeSummary"><number-text :text="causeSummary" /></div>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ dimension.missingEvidence.join('；') }}</small>
@@ -598,7 +603,7 @@ export function createStageRiskComponent(options = {}) {
                         @click="openOrGenerate">{{ taskButtonLabel }}</button>
               </div>
             </div>
-            <div v-if="adviceSummary" class="stage-risk-analysis__summary" :title="adviceSummary"><number-text :text="adviceSummary" /></div>
+            <div v-if="showSectionSummaries && adviceSummary" class="stage-risk-analysis__summary" :title="adviceSummary"><number-text :text="adviceSummary" /></div>
             <div v-if="task" class="stage-risk-analysis__task-state" :class="{'stage-risk-analysis__task-state--warn': !taskMatchesSelection}">
               {{ taskStatus }} · {{ task.id }}<template v-if="!taskMatchesSelection"> · 对应上次选择的建议</template>
             </div>

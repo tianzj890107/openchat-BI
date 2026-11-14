@@ -43,3 +43,15 @@ test('combined analysis uses the prototype typography and divider', async () => 
   assert.match(css, /\.sales-shipment-issues__num\s*\{[^}]*color:\s*var\(--cockpit-primary,\s*#165dff\)/s);
   assert.match(css, /\.sales-shipment-issues__num\s*\{[^}]*font-weight:\s*600/s);
 });
+
+test('the 商机获取 card shows its rows only, without per-section summaries', () => {
+  assert.match(opportunity, /sectionSummaries: false/);
+  assert.match(shared, /const showSectionSummaries = options\.sectionSummaries !== false/);
+  for (const name of ['riskSummary', 'causeSummary', 'adviceSummary']) {
+    assert.ok(shared.includes(`v-if="showSectionSummaries && ${name}"`), name);
+  }
+});
+
+test('evidence SQL is the queries the server linked to that very item', () => {
+  assert.match(shared, /Array\.isArray\(item\?\.queryIds\)\s*\?\s*queryCatalog\.value\.filter\(query => item\.queryIds\.includes\(query\.executionId\)\)/);
+});

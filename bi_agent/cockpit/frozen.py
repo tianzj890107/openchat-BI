@@ -30,10 +30,10 @@ from .risk import summarize_risk_counts
 from .targets import REGISTRY_VERSION, slot_registry
 
 STAGES = ('opportunity', 'order', 'shipment', 'quotation', 'bid', 'combined')
-# Publication keys behind the three 销售额口径明细 node cards (商机获取 risk
-# card, 订单接收, 发货) and the 销售额／出货量共同问题分析 card: their sections
-# get model summaries of displayed items.
-SECTION_SUMMARY_STAGES = ('opportunity-risk', 'order', 'shipment', 'combined')
+# Publication keys whose sections get model summaries of displayed items.
+# The 商机获取 risk card shows its rows only: its risk rows get one semantic
+# control pass instead (see opportunity_judgement.control_risk_rows).
+SECTION_SUMMARY_STAGES = ('order', 'shipment', 'combined')
 INDEPENDENT_ITEMS = ('opportunity-risk',)
 PUBLICATION_KEYS = STAGES + INDEPENDENT_ITEMS
 
@@ -941,11 +941,7 @@ def recompute_from_router(app, cwd):
                 # summary of the items that section displays.
                 from .section_summary import with_section_summaries
                 role = ''
-                if stage == 'opportunity-risk':
-                    # The 商机获取 card's model calls share one system role.
-                    from .opportunity_judgement import role_prompt
-                    role = role_prompt()
-                elif stage == 'combined' and _sales_shipment_ontology_enabled():
+                if stage == 'combined' and _sales_shipment_ontology_enabled():
                     from .sales_shipment import summary_role
                     role = summary_role()
                 item = with_section_summaries(item, stage_name=STAGE_LABELS.get(stage, stage),
@@ -970,7 +966,7 @@ def recompute_from_router(app, cwd):
                                             diagnostic_reporter=report_combined)
             if stage == 'opportunity-risk':
                 from .opportunity_v2 import build_card, default_ap_supplement
-                from .opportunity_judgement import default_item_judge
+                from .opportunity_judgement import default_item_judge, semantic_rewriter
                 from .store import Store
                 enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
                 supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '0').strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -980,10 +976,12 @@ def recompute_from_router(app, cwd):
                     return record_query_failure(
                         diagnostic_store, identity=1, stage='opportunity-risk', **_diagnostic_fields(entry))
 
+                semantic = os.getenv('COCKPIT_OPPORTUNITY_SEMANTIC_CONTROL', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
                 return build_card(period, judge=default_item_judge if enabled else None,
                                   supplement=default_ap_supplement if supplement_enabled else None,
                                   progress=self._progress_callback,
-                                  diagnostic_reporter=report_diagnostic)
+                                  diagnostic_reporter=report_diagnostic,
+                                  semantic=semantic_rewriter if (enabled and semantic) else None)
             return self.run_stage(period, stage)
 
         def run_stage(self, period, stage):
