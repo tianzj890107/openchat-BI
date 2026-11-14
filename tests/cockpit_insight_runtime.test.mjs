@@ -94,7 +94,8 @@ test('combined card keeps its own evidence scope and renders the prototype dimen
   assert.doesNotMatch(combinedInsight, /建议 ·/);
   assert.doesNotMatch(combinedInsight, /数据范围与限制/);
   assert.doesNotMatch(combinedInsight, /查看完整证据/);
-  assert.match(combinedInsight, /v-for="\(dimension,index\) in analysisDimensions"/);
+  // Causes are listed by the shared stage card layout (worded as problems).
+  assert.match(combinedInsight, /createStageRiskComponent\(\{/);
   assert.doesNotMatch(combinedInsight, /风险与待核实原因 · \{\{ displayCauses\.length \}\}/);
 });
 
@@ -109,7 +110,9 @@ test('risk panels render individual findings instead of reducing them to summary
 
 test('risk to cause links are numbered risk N — cause M', async () => {
   const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
-  assert.ok(shared.includes('label:`风险${riskIndex.get(id)}—原因${analysisNumber}`'));
+  // "风险N—原因M" by default; the problem-driven card says "问题N—原因M".
+  assert.ok(shared.includes("export function riskDimensionLinks(dimensions, findings, primaryLabel = '风险')"));
+  assert.ok(shared.includes('label:`${primaryLabel}${riskIndex.get(id)}—原因${analysisNumber}`'));
   assert.ok(shared.includes('原因{{ index+1 }}'));
   assert.ok(!shared.includes('—分析${analysisNumber}'));
   assert.match(shared, /【原因】/);

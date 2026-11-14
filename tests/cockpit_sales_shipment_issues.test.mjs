@@ -4,30 +4,32 @@ import {readFile} from 'node:fs/promises';
 
 const source = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/sales-shipment-issues/index.js', import.meta.url), 'utf8');
 
-test('sales and shipment card renders only the prototype summary and numbered business dimensions', () => {
-  assert.doesNotMatch(source, /sales-shipment-total-gap/);
-  assert.doesNotMatch(source, /sales-shipment-amount-gap/);
-  assert.doesNotMatch(source, /sales-shipment-dimension-gap/);
-  assert.doesNotMatch(source, /status: 'hypothesis'/);
-  assert.match(source, /v-for="\(dimension,index\) in analysisDimensions"/);
-  assert.doesNotMatch(source, /props\.slotProps\?\.riskCounts/);
-  assert.doesNotMatch(source, /销售额重点风险/);
-  assert.doesNotMatch(source, /出货量重点风险/);
-  assert.doesNotMatch(source, /重点风险 ·/);
-  assert.doesNotMatch(source, /原因分析 ·/);
-  assert.doesNotMatch(source, /建议 ·/);
-  assert.doesNotMatch(source, /数据范围与限制/);
-  assert.doesNotMatch(source, /查看完整证据/);
-  assert.match(source, /销售额／出货量共同问题分析：/);
-  assert.match(source, /<number-text :text="summary" \/>/);
-  assert.match(source, /【\{\{ dimension\.stageLabel \}\}】/);
+const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
+const opportunity = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/opportunity-risk/index.js', import.meta.url), 'utf8');
+
+test('the combined card is problem driven on the stage card layout', () => {
+  // 指标 → 问题 (not 指标 → 风险): the same layout as the stage cards, worded as problems.
+  assert.match(source, /createStageRiskComponent\(\{/);
+  assert.match(source, /primaryLabel: '问题'/);
+  assert.match(source, /showOverallSummary: true/);
+  assert.doesNotMatch(opportunity, /primaryLabel/);
 });
 
-test('combined analysis highlights every number with the prototype blue token', () => {
-  assert.match(source, /highlightNumbers \} = window\.InsightRuntime/);
-  assert.match(source, /<number-text v-if="dimension\.title !== dimension\.stageLabel" :text="dimension\.title" \/>/);
-  assert.match(source, /<number-text :text="dimension\.description" \/>/);
-  assert.match(source, /<span class="sales-shipment-issues__num">\{\{ index\+1 \}\}<\/span>）/);
+test('the shared card words its first layer by the primary label', () => {
+  assert.match(shared, /const primaryLabel = options\.primaryLabel \|\| '风险'/);
+  assert.match(shared, /【\{\{ primaryLabel \}\}】/);
+  assert.match(shared, /当前\{\{ primaryLabel \}\}判断/);
+  assert.match(shared, /\{\{ primaryLabel \}\}\{\{ index\+1 \}\}/);
+  assert.match(shared, /\{\{ primaryLabel \}\}规则 \{\{ ontologyTrace\.risks\.length \}\} 条/);
+  assert.match(shared, /<template v-if="finding\.issueType">【\{\{ finding\.issueType \}\}】<\/template>/);
+  assert.match(shared, /label:`\$\{primaryLabel\}\$\{riskIndex\.get\(id\)\}—原因\$\{analysisNumber\}`/);
+  assert.doesNotMatch(shared, /【风险】/);
+  assert.match(shared, /data:'数据质量'/);
+});
+
+test('evidence lists only the queries behind the item when queries name their metrics', () => {
+  assert.match(shared, /query\.metricCodes\.some\(code => metrics\.has\(code\)\)/);
+  assert.match(shared, /!Array\.isArray\(query\.metricCodes\)/);
 });
 
 test('combined analysis uses the prototype typography and divider', async () => {

@@ -60,13 +60,13 @@ function metricValue(metric) {
   return `${metric.value}${metric.unit ? ` ${metric.unit}` : ''}`
 }
 
-const BUSINESS_STAGES={overview:'经营概况',opportunity:'商机获取',quotation:'报价',bid:'投标',contract:'合同签订',order:'订单接收',shipment:'发货'}
+const BUSINESS_STAGES={overview:'经营概况',opportunity:'商机获取',quotation:'报价',bid:'投标',contract:'合同签订',order:'订单接收',shipment:'发货',data:'数据质量'}
 
-export function riskDimensionLinks(dimensions, findings) {
+export function riskDimensionLinks(dimensions, findings, primaryLabel = '风险') {
   const riskIndex=new Map(findings.map((f,i)=>[f.id,i+1])), counts=new Map()
   return dimensions.map(d=>({...d,stageLabel:BUSINESS_STAGES[d.stage]||'业务分析',riskLinks:[...new Set(d.findingIds||[])].filter(id=>riskIndex.has(id)).map(id=>{
     const analysisNumber=(counts.get(id)||0)+1;counts.set(id,analysisNumber)
-    return {riskId:id,riskNumber:riskIndex.get(id),analysisNumber,label:`风险${riskIndex.get(id)}—原因${analysisNumber}`}
+    return {riskId:id,riskNumber:riskIndex.get(id),analysisNumber,label:`${primaryLabel}${riskIndex.get(id)}—原因${analysisNumber}`}
   })}))
 }
 
@@ -232,7 +232,8 @@ export function useInsight(props, emit) {
       causes: [...causes].filter(code => shownCauses.has(code)).map(ontologyLabel),
       advice: [...advice].map(ontologyLabel),
       metrics: [...metrics].map(ontologyLabel),
-      sql: queryCatalog.value,
+      sql: queryCatalog.value.filter(query => !Array.isArray(query.metricCodes)
+        || query.metricCodes.some(code => metrics.has(code))),
     }
   }
 
@@ -426,12 +427,22 @@ export function createStageRiskComponent(options = {}) {
         return supplied === 2 ? 2 : supplied === 1 ? 1 : cockpitIdentityId()
       })
       const analysisId = computed(() => String(props.analysis?.id || ''))
+      // "风险" for the stage risk cards; the problem-driven 共同问题 card says "问题".
+      const primaryLabel = options.primaryLabel || '风险'
+      const judgementGroups = computed(() => insight.judgementGroups.value.map(group => (
+        group.kind === 'risks' ? {...group, title: primaryLabel} : group)))
+      const analysisDimensions = computed(() => riskDimensionLinks(
+        props.analysis?.result?.analysisDimensions || [], insight.findings.value, primaryLabel))
       ensureTaskOrderStyle()
       const taskOrder = createTaskOrderController({
         analysisId, insight, apiBase: () => taskApiBase.value,
         identityId: () => taskIdentityId.value,
       })
-      return { ...insight, ...taskOrder, displayStage }
+      // The 共同问题 card opens with its overall summary (rule tally on the
+      // ontology path, the whole-card summary on the older path).
+      const showOverallSummary = Boolean(options.showOverallSummary)
+      return { ...insight, ...taskOrder, displayStage, primaryLabel, judgementGroups, analysisDimensions,
+               showOverallSummary }
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
@@ -443,15 +454,16 @@ export function createStageRiskComponent(options = {}) {
           </div>
         </div>
         <template v-if="hasResult">
+          <div v-if="showOverallSummary && summary" class="stage-risk-analysis__overall" :title="summary"><number-text :text="summary" /></div>
           <article v-if="summary || findings.length" class="stage-risk-analysis__card stage-risk-analysis__card--risk stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
-              <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【风险】</span>
-              {{ displayStage }}当前风险判断
+              <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【{{ primaryLabel }}】</span>
+              {{ displayStage }}当前{{ primaryLabel }}判断
             </div>
             <div v-if="riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
-              <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
-              <div class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
+              <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">{{ primaryLabel }}{{ index+1 }}</span>
+              <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ finding.issueType }}】</template>{{ finding.title }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
                 <details v-if="traces[finding.id] && (traces[finding.id].rules.length || traces[finding.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ distinctEvidenceCount(finding) }} 条证据</summary>
                   <div class="stage-risk-analysis__trace-body">
@@ -460,7 +472,7 @@ export function createStageRiskComponent(options = {}) {
                       {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
                     </div>
                     <div class="stage-risk-analysis__trace-title">命中的本体</div>
-                    <div class="stage-risk-analysis__trace-line">风险：{{ traces[finding.id].risks.join('；') || '—' }}</div>
+                    <div class="stage-risk-analysis__trace-line">{{ primaryLabel }}：{{ traces[finding.id].risks.join('；') || '—' }}</div>
                     <div v-if="traces[finding.id].rulesOntology.length" class="stage-risk-analysis__trace-line">规则：{{ traces[finding.id].rulesOntology.join('；') }}</div>
                     <div v-if="traces[finding.id].causes.length" class="stage-risk-analysis__trace-line">原因：{{ traces[finding.id].causes.join('；') }}</div>
                     <div v-if="traces[finding.id].metrics.length" class="stage-risk-analysis__trace-line">指标：{{ traces[finding.id].metrics.join('；') }}</div>
@@ -526,7 +538,7 @@ export function createStageRiskComponent(options = {}) {
                       {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
                     </div>
                     <div class="stage-risk-analysis__trace-title">命中的本体</div>
-                    <div class="stage-risk-analysis__trace-line">风险：{{ traces[dimension.id].risks.join('；') || '—' }}</div>
+                    <div class="stage-risk-analysis__trace-line">{{ primaryLabel }}：{{ traces[dimension.id].risks.join('；') || '—' }}</div>
                     <div v-if="traces[dimension.id].rulesOntology.length" class="stage-risk-analysis__trace-line">规则：{{ traces[dimension.id].rulesOntology.join('；') }}</div>
                     <div v-if="traces[dimension.id].causes.length" class="stage-risk-analysis__trace-line">原因：{{ traces[dimension.id].causes.join('；') }}</div>
                     <div v-if="traces[dimension.id].metrics.length" class="stage-risk-analysis__trace-line">指标：{{ traces[dimension.id].metrics.join('；') }}</div>
@@ -618,7 +630,7 @@ export function createStageRiskComponent(options = {}) {
               <div v-if="ontologyTrace" class="stage-risk-analysis__ontology">
                 <div>调用本体：{{ ontologyTrace.ontology }}（{{ ontologyTrace.version }}，配置 {{ ontologyTrace.digest }}）</div>
                 <div>指标 {{ ontologyTrace.metrics.length }} 项：{{ ontologyText(ontologyTrace.metrics) }}</div>
-                <div>风险规则 {{ ontologyTrace.risks.length }} 条：{{ ontologyText(ontologyTrace.risks) }}</div>
+                <div>{{ primaryLabel }}规则 {{ ontologyTrace.risks.length }} 条：{{ ontologyText(ontologyTrace.risks) }}</div>
                 <div>原因库 {{ ontologyTrace.causes.length }} 类：{{ ontologyText(ontologyTrace.causes) }}</div>
                 <div>建议库 {{ ontologyTrace.advice.length }} 条：{{ ontologyText(ontologyTrace.advice) }}</div>
               </div>
@@ -626,7 +638,7 @@ export function createStageRiskComponent(options = {}) {
             </details>
             <details v-if="judgementGroups.length" class="stage-risk-analysis__foot stage-risk-analysis__judgement">
               <summary>本体判定明细：<template v-for="(group, index) in judgementGroups" :key="'sum-' + group.kind"><template v-if="index">，</template>{{ group.title }}命中 {{ group.hit }}/{{ group.items.length }}</template></summary>
-              <div class="stage-risk-analysis__judgement-head">先由规则函数判定；规则无法判定的条目逐条交给模型，失败的条目跳过；成立风险若没有命中任何本体根因，再由模型依据本轮数据推理根因。</div>
+              <div class="stage-risk-analysis__judgement-head">先由规则函数判定；规则无法判定的条目逐条交给模型，失败的条目跳过；成立{{ primaryLabel }}若没有命中任何本体根因，再由模型依据本轮数据推理根因。</div>
               <div v-for="group in judgementGroups" :key="group.kind" class="stage-risk-analysis__judgement-group">
                 <div class="stage-risk-analysis__judgement-title">{{ group.title }}：命中 {{ group.hit }} / 共 {{ group.items.length }}</div>
                 <div v-for="item in group.items" :key="group.kind + item.code"

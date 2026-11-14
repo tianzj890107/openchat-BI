@@ -22,7 +22,7 @@ try {
  console.log('PASS initial route, 3 visible AI modules, server-published complete page');
  // All layout/data must survive an upstream failure, even across a frame reload.
  await change({fail:true});await send('Page.reload',{ignoreCache:true});
- await wait('document.querySelector(".sales-shipment-issues__summary")?.innerText.includes("测试卡片 1")');
+ await wait('document.querySelector(".stage-risk-analysis__overall")?.innerText.includes("测试卡片 1")');
  await wait('document.querySelector("#app:not([v-cloak]) .cockpit-publication-state")?.innerText.includes("继续展示上次完整内容")');
  assert.equal(await evaluate('document.querySelectorAll(".insight-loading").length'),0);
  console.log('PASS AP failure retains full charts and cards');
@@ -37,8 +37,8 @@ try {
  assert.deepEqual(await evaluate('[...document.querySelectorAll(".pro-radio-button.is-active")].map(e=>e.innerText)'),['年度']);
  console.log('PASS returning to a cached filter keeps the correct selection');
  await change({revision:2});await send('Page.reload',{ignoreCache:true});
- await wait('document.querySelector(".sales-shipment-issues__summary")?.innerText.includes("测试卡片 1")');
- await wait('document.querySelector(".sales-shipment-issues__summary")?.innerText.includes("测试卡片 2")');
+ await wait('document.querySelector(".stage-risk-analysis__overall")?.innerText.includes("测试卡片 1")');
+ await wait('document.querySelector(".stage-risk-analysis__overall")?.innerText.includes("测试卡片 2")');
  await wait('!document.querySelector("#app:not([v-cloak]) .cockpit-publication-state")?.innerText.includes("正在后台更新")');
  assert.equal(await evaluate('document.querySelectorAll(".insight-loading").length'),0);
  console.log('PASS old-first/new-complete background replacement');

@@ -31,8 +31,9 @@ from .targets import REGISTRY_VERSION, slot_registry
 
 STAGES = ('opportunity', 'order', 'shipment', 'quotation', 'bid', 'combined')
 # Publication keys behind the three 销售额口径明细 node cards (商机获取 risk
-# card, 订单接收, 发货): their sections get model summaries of displayed items.
-SECTION_SUMMARY_STAGES = ('opportunity-risk', 'order', 'shipment')
+# card, 订单接收, 发货) and the 销售额／出货量共同问题分析 card: their sections
+# get model summaries of displayed items.
+SECTION_SUMMARY_STAGES = ('opportunity-risk', 'order', 'shipment', 'combined')
 INDEPENDENT_ITEMS = ('opportunity-risk',)
 PUBLICATION_KEYS = STAGES + INDEPENDENT_ITEMS
 
@@ -885,6 +886,20 @@ class FrozenCockpitSurface:
         await send({'type':'http.response.body','body':raw})
 
 
+def _diagnostic_fields(entry):
+    """Map a card's query-failure dict (camelCase) onto record_query_failure's keywords."""
+    entry = dict(entry or {})
+    return dict(phase=entry.get('phase') or 'database_query', query=entry.get('query') or '',
+                code=entry.get('code') or 'QUERY_FAILED', message=entry.get('message') or '',
+                upstream_code=entry.get('upstreamCode') or entry.get('upstream_code') or '',
+                duration_seconds=entry.get('durationSeconds') or entry.get('duration_seconds') or 0)
+
+
+def _sales_shipment_ontology_enabled():
+    """The 共同问题 card runs on its ontology unless explicitly switched back."""
+    return os.getenv('COCKPIT_SALES_SHIPMENT_ONTOLOGY_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+
+
 def recompute_from_router(app, cwd):
     """Reuse the registered main-service executor; never add another LLM route."""
     from .ap_gateway import get_gateway
@@ -930,11 +945,29 @@ def recompute_from_router(app, cwd):
                     # The 商机获取 card's model calls share one system role.
                     from .opportunity_judgement import role_prompt
                     role = role_prompt()
+                elif stage == 'combined' and _sales_shipment_ontology_enabled():
+                    from .sales_shipment import summary_role
+                    role = summary_role()
                 item = with_section_summaries(item, stage_name=STAGE_LABELS.get(stage, stage),
                                               progress=self._progress_callback, role=role)
             return item
 
         def _analyse_slot(self, period, stage):
+            if stage == 'combined' and _sales_shipment_ontology_enabled():
+                # 销售额／出货量共同问题分析: indicator → problem driven by its own
+                # ontology; reads the customer database directly.
+                from .sales_shipment import build_card as build_sales_shipment, item_judge
+                from .store import Store
+                enabled = os.getenv('COCKPIT_SALES_SHIPMENT_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+                diagnostic_store = Store(store.path.parent / 'history.sqlite3')
+
+                def report_combined(entry):
+                    return record_query_failure(diagnostic_store, identity=1, stage='combined',
+                                                **_diagnostic_fields(entry))
+
+                return build_sales_shipment(period, judge=item_judge if enabled else None,
+                                            progress=self._progress_callback,
+                                            diagnostic_reporter=report_combined)
             if stage == 'opportunity-risk':
                 from .opportunity_v2 import build_card, default_ap_supplement
                 from .opportunity_judgement import default_item_judge
@@ -945,7 +978,7 @@ def recompute_from_router(app, cwd):
 
                 def report_diagnostic(entry):
                     return record_query_failure(
-                        diagnostic_store, identity=1, stage='opportunity-risk', **entry)
+                        diagnostic_store, identity=1, stage='opportunity-risk', **_diagnostic_fields(entry))
 
                 return build_card(period, judge=default_item_judge if enabled else None,
                                   supplement=default_ap_supplement if supplement_enabled else None,

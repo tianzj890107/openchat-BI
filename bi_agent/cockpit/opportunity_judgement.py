@@ -29,7 +29,7 @@ import os
 import re
 import time
 
-KIND_LABELS = dict(risk="风险", cause="根因", advice="建议", inference="根因推理")
+KIND_LABELS = dict(risk="风险", issue="问题", cause="根因", advice="建议", inference="根因推理")
 INFERRED_RULE = dict(code="", name="模型推理", levelRule="",
                      condition="关联的本体根因均未命中，由模型依据本轮取数推理")
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
@@ -49,9 +49,13 @@ def role_prompt():
     return override or ROLE_PROMPT
 
 
-def system_prompt(task):
+def compose_system_prompt(role, task):
     """Role first, then the call's own task instructions."""
-    return f"{role_prompt()}\n\n本次任务：{task}"
+    return f"{role}\n\n本次任务：{task}"
+
+
+def system_prompt(task):
+    return compose_system_prompt(role_prompt(), task)
 
 
 JUDGE_PROMPT = (
@@ -92,8 +96,23 @@ def _established(value):
     return None
 
 
+def make_item_judge(role=None, infer_prompt=None):
+    """A per-item model judge with the card's own system role.
+
+    ``role`` returns the role text at call time (so an environment override
+    applies immediately); ``infer_prompt`` is the cause-inference task.
+    """
+    def judge(request):
+        return _item_judge(request, role or role_prompt, infer_prompt or INFER_PROMPT)
+    return judge
+
+
 def default_item_judge(request):
     """Ask the configured model about one item; raises on any call failure."""
+    return _item_judge(request, role_prompt, INFER_PROMPT)
+
+
+def _item_judge(request, role, infer_prompt):
     from ..llm import provider
     from . import opportunity_v2 as v2
 
@@ -107,7 +126,7 @@ def default_item_judge(request):
     started = time.monotonic()
     label = KIND_LABELS.get(request.get("kind"), "条目")
     inference = request.get("kind") == "inference"
-    prompt = system_prompt(INFER_PROMPT if inference else JUDGE_PROMPT.format(kind=label))
+    prompt = compose_system_prompt(role(), infer_prompt if inference else JUDGE_PROMPT.format(kind=label))
     max_tokens = 1200 if inference else 800
     step = f"{label} {request.get('code')}" if inference else f"判定{label} {request.get('code')}"
     try:
@@ -155,7 +174,7 @@ def _ask(judge, request, progress, position):
 def _infer(judge, request, progress, position):
     """One model call inferring causes for one risk; never raises."""
     if progress is not None:
-        progress("judging", message=f"模型推理风险 {request['code']} 的根因（{position}）")
+        progress("judging", message=f"模型推理{request.get('subjectLabel') or '风险'} {request['code']} 的根因（{position}）")
     if judge is None:
         return dict(error="未启用模型判断，已跳过")
     try:
@@ -191,9 +210,21 @@ def _status_label(entry):
     return "无法判定（模型）"
 
 
-def judge_card(evaluated, config, *, judge=None, progress=None):
-    """Settle risks, causes and advice; return the card fields and the trace."""
+def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", id_prefix="opp-v2",
+               cause_stage=None, advice_type=None):
+    """Settle risks (or problems), causes and advice; return the card fields and the trace.
+
+    ``primary`` names the first layer ("risk" for the stage cards, "issue" for
+    the problem-driven 销售额／出货量 card); it only changes the wording,
+    request kind and ids.  ``cause_stage`` maps a cause code to its business
+    stage and ``advice_type`` decides an advice's action type; both default
+    to the 商机获取 card's behaviour.
+    """
     from .opportunity_v2 import _CAUSE_STAGE, _advice_action_type, _deadline_meta
+
+    label = KIND_LABELS.get(primary, "风险")
+    stage_of = cause_stage or (lambda code: _CAUSE_STAGE.get(code, "opportunity"))
+    action_type = advice_type or _advice_action_type
 
     rules = {item.get("code"): item for item in (config.get("rules") or {}).values()} \
         if isinstance(config.get("rules"), dict) else {
@@ -219,7 +250,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
     for code, spec in risk_specs.items():
         candidate = candidates.get(code) or {}
         status = candidate.get("ruleStatus") or "insufficient"
-        entry = dict(kind="risk", code=code, name=_text(spec.get("name")) or code,
+        entry = dict(kind=primary, code=code, name=_text(spec.get("name")) or code,
                      indicators=_indicators(spec),
                      rule=rule_of(code, spec), ruleStatus=status,
                      observed=candidate.get("observed") or [],
@@ -233,7 +264,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
             entry.update(decidedBy="rule", established=False,
                          reason="规则条件不成立" if status == "not_triggered" else "本轮没有适用对象")
         else:
-            request = dict(kind="risk", code=code, name=entry["name"], period=period,
+            request = dict(kind=primary, code=code, name=entry["name"], period=period,
                            rule=entry["rule"], ontologyDescription=_text(spec.get("description")),
                            data=dict(observed=entry["observed"], missingInputs=entry["missingEvidence"],
                                      programNote="规则所需输入不完整，程序无法判定"))
@@ -262,7 +293,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
                      evidenceIds=list(outcome.get("evidenceIds") or [])[:20])
         if not related:
             entry.update(decidedBy="unevaluated", established=None,
-                         reason="未评估（关联风险均未成立）")
+                         reason=f"未评估（关联{label}均未成立）")
         elif outcome.get("ruleStatus") == "triggered":
             entry.update(decidedBy="rule", established=True,
                          reason=_text(outcome.get("description")) or _text(outcome.get("reason")))
@@ -290,7 +321,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
     for position, risk in enumerate(orphans, 1):
         linked = (links.get(risk["code"]) or {}).get("causes") or []
         request = dict(
-            kind="inference", code=risk["code"], name=risk["name"], period=period,
+            kind="inference", subjectLabel=label, code=risk["code"], name=risk["name"], period=period,
             risk=dict(code=risk["code"], name=risk["name"], level=risk.get("level") or "",
                       judgement=risk.get("reason") or "", rule=risk["rule"],
                       ontologyDescription=_text((risk_specs.get(risk["code"]) or {}).get("description")),
@@ -346,7 +377,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
     order = sorted(established_risks.values(),
                    key=lambda item: (_LEVEL_RANK.get(item.get("level") or "", 4), item["code"]))
     findings = [dict(
-        id=f"opp-v2:risk:{entry['code']}", kind="risk_fact", title=entry["name"],
+        id=f"{id_prefix}:{primary}:{entry['code']}", kind="risk_fact", title=entry["name"],
         description=entry.get("reason") or "", riskCode=entry["code"],
         riskLevel=entry.get("level") or "", decidedBy=entry["decidedBy"],
         metricCodes=[entry["code"]] + [item.get("id", "").split(":")[-1]
@@ -361,8 +392,8 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
         evidence = entry["evidenceIds"] or [e for risk_code in entry["linkedRisks"]
                                             for e in established_risks[risk_code]["evidenceIds"][:3]]
         causes.append(dict(
-            id=f"opp-v2:cause:{entry['code']}", causeCode=entry["code"],
-            stage=_CAUSE_STAGE.get(entry["code"], "opportunity"), title=entry["name"],
+            id=f"{id_prefix}:cause:{entry['code']}", causeCode=entry["code"],
+            stage=stage_of(entry["code"]), title=entry["name"],
             description=entry.get("reason") or "", decidedBy=entry["decidedBy"],
             kind="verified" if entry["decidedBy"] == "rule" else "hypothesis",
             status="supported" if entry["decidedBy"] == "rule" else "hypothesis",
@@ -380,8 +411,8 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
         linked = [cause_by_code[code] for code in entry["linkedCauses"] if code in cause_by_code]
         days, deadline_type, deadline_text = _deadline_meta(spec.get("deadline"))
         recommendations.append(dict(
-            id=f"opp-v2:advice:{entry['code']}", adviceCode=entry["code"],
-            actionType=_advice_action_type(entry["code"], spec, linked),
+            id=f"{id_prefix}:advice:{entry['code']}", adviceCode=entry["code"],
+            actionType=action_type(entry["code"], spec, linked),
             action=_text(spec.get("action") or spec.get("name"))[:120],
             detail=_text(spec.get("measure"))[:600], object=_text(spec.get("object"))[:200],
             ownerRole=_text(spec.get("owner")) or "待确认", deadline=deadline_text,
@@ -401,9 +432,9 @@ def judge_card(evaluated, config, *, judge=None, progress=None):
     inferred_count = sum(1 for item in causes if item["inferred"])
     failures = [entry for entry in entries if entry.get("error") and entry["kind"] != "advice"]
     by_rule = sum(1 for entry in order if entry["decidedBy"] == "rule")
-    summary = (f"本轮 {len(risk_entries)} 项本体风险中 {len(order)} 项成立"
+    summary = (f"本轮 {len(risk_entries)} 项本体{label}中 {len(order)} 项成立"
                f"（规则判定 {by_rule} 项，模型判定 {len(order) - by_rule} 项）"
-               + (f"，成立风险涉及 {len(causes)} 项根因、{len(recommendations)} 条建议" if order else "")
+               + (f"，成立{label}涉及 {len(causes)} 项根因、{len(recommendations)} 条建议" if order else "")
                + (f"（其中 {inferred_count} 项根因由模型在本体根因未命中时推理）" if inferred_count else "")
                + (f"；{len(failures)} 项模型判断失败已跳过" if failures else "") + "。")
     assessments = [dict(
