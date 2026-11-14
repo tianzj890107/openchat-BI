@@ -34,8 +34,28 @@ INFERRED_RULE = dict(code="", name="模型推理", levelRule="",
                      condition="关联的本体根因均未命中，由模型依据本轮取数推理")
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 
+# The system role every model call of the 销售额口径明细（商机获取） card
+# starts with.  COCKPIT_OPPORTUNITY_ROLE_PROMPT replaces it when set.
+ROLE_PROMPT = (
+    "你是储能业务销售运营分析师，请用客观、简洁的经营汇报用语：风险说明影响对象、"
+    "实际值与目标或阈值的差距，根因仅在证据充分时表述为已确认、证据不足时标注「待核实」，"
+    "建议写清责任角色、具体措施和复检指标。"
+)
+
+
+def role_prompt():
+    """The card's system role; an environment override wins when non-empty."""
+    override = os.environ.get("COCKPIT_OPPORTUNITY_ROLE_PROMPT", "").strip()
+    return override or ROLE_PROMPT
+
+
+def system_prompt(task):
+    """Role first, then the call's own task instructions."""
+    return f"{role_prompt()}\n\n本次任务：{task}"
+
+
 JUDGE_PROMPT = (
-    "你是本体规则判定助手。程序已按规则计算，但下面这一条{kind}无法只凭结构化数据判定是否成立。"
+    "本体规则判定。程序已按规则计算，但下面这一条{kind}无法只凭结构化数据判定是否成立。"
     "请严格依据 rule 中的判定规则，结合 data 中本轮的取数结果作出判断，不得编造输入以外的数据。"
     "数据确实不足以判断时，established 返回 null，并在 reason 中写明缺少什么。"
     '只返回 JSON：{{"established": true 或 false 或 null, "level": "极高/高/中/低 或空字符串", '
@@ -44,11 +64,12 @@ JUDGE_PROMPT = (
 
 
 INFER_PROMPT = (
-    "你是商机获取环节的根因分析助手。下面这条风险已经成立，但本体中与它关联的根因规则都没有命中。"
+    "商机获取环节根因推理。下面这条风险已经成立，但本体中与它关联的根因规则都没有命中。"
     "请只依据 risk（风险及其判定数据）、ontologyCauses（各本体候选根因的判定结果和原因）"
     "和 data（本轮取数的指标结果）推理最可能导致该风险的根因，不得编造输入以外的数据；"
     "不要重复已判定未命中的本体根因，除非 data 中有相反证据。最多给出 3 条，按可能性从高到低排列；"
     "数据不足以推理时 causes 返回空数组，并在 note 中写明缺少什么。"
+    "推理出的根因都未经规则确认，description 以「待核实」开头。"
     '只返回 JSON：{"causes": [{"title": "不超过20字的根因名称", '
     '"description": "不超过160字的推理依据，引用 data 中的具体数值", '
     '"dataGaps": "需要补充核实的数据，没有则为空字符串"}], "note": ""}，不要输出其他内容。'
@@ -86,7 +107,7 @@ def default_item_judge(request):
     started = time.monotonic()
     label = KIND_LABELS.get(request.get("kind"), "条目")
     inference = request.get("kind") == "inference"
-    prompt = INFER_PROMPT if inference else JUDGE_PROMPT.format(kind=label)
+    prompt = system_prompt(INFER_PROMPT if inference else JUDGE_PROMPT.format(kind=label))
     max_tokens = 1200 if inference else 800
     step = f"{label} {request.get('code')}" if inference else f"判定{label} {request.get('code')}"
     try:

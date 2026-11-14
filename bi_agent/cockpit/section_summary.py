@@ -22,8 +22,9 @@ SUMMARY_LIMIT = 160
 SECTION_FIELDS = dict(risks="riskSummary", causes="causeSummary", advice="adviceSummary")
 SECTION_LABELS = dict(risks="风险", causes="原因", advice="建议")
 
-SYSTEM_PROMPT = (
-    "你是经营分析卡片的摘要助手。输入的 risks、causes、advice 是卡片上已经显示的条目。"
+SUMMARY_IDENTITY = "你是经营分析卡片的摘要助手。"
+SUMMARY_TASK = (
+    "为卡片三段写总结。输入的 risks、causes、advice 是卡片上已经显示的条目。"
     "请分别为这三组各写一段总结：riskSummary 只总结 risks，causeSummary 只总结 causes，"
     "adviceSummary 只总结 advice。只能依据对应那一组条目的内容归纳，不得新增事实、对象、原因或措施；"
     "数字只能原样引用同一组条目里出现的数字，不得计算、合并或引用其他组的数字；"
@@ -32,6 +33,13 @@ SYSTEM_PROMPT = (
     "如果输入带有 validationFeedback，说明上一次的总结没有通过校验，请按 issues 修正后重新输出全部三个字段。"
     '只返回 JSON：{"riskSummary":"","causeSummary":"","adviceSummary":""}，不要输出其他内容。'
 )
+SYSTEM_PROMPT = SUMMARY_IDENTITY + SUMMARY_TASK
+
+
+def summary_system_prompt(role=""):
+    """A card with its own system role puts it first; others keep the default."""
+    role = _clean(role, 2000) if role else ""
+    return f"{role}\n\n本次任务：{SUMMARY_TASK}" if role else SYSTEM_PROMPT
 
 
 def _clean(value, limit=400):
@@ -85,7 +93,7 @@ def validate_summaries(answer, items):
     return summaries, issues
 
 
-def _call_model(payload, *, timeout, max_tokens):
+def _call_model(payload, *, timeout, max_tokens, system=SYSTEM_PROMPT):
     from ..llm import provider
     from ..llm.runtime_config import request_config
     from .opportunity_v2 import _decode_model_json, _model_candidate_keys, _model_route_name
@@ -97,7 +105,7 @@ def _call_model(payload, *, timeout, max_tokens):
     with request_config(thinking=False, request_timeout=timeout,
                         context_limit=cockpit_context_limit(), min_output_tokens=min(max_tokens, 600)):
         # An empty allowlist: this step never offers the model any tool.
-        for event in provider.stream_message(messages, SYSTEM_PROMPT, [], key,
+        for event in provider.stream_message(messages, system, [], key,
                                              max_tokens=max_tokens, temperature=0, thinking=False):
             events.append(event)
     errors = [event.get("error", "") for event in events if event.get("type") == "error"]
@@ -110,7 +118,8 @@ def _call_model(payload, *, timeout, max_tokens):
     return _decode_model_json(text), _model_route_name(key)
 
 
-def summarize_sections(result, *, stage_name="", call_model=None, timeout=60, max_tokens=1500):
+def summarize_sections(result, *, stage_name="", call_model=None, timeout=60, max_tokens=1500,
+                       role=""):
     """Return the card's ``sectionSummaries`` or ``None`` when nothing is shown.
 
     One repair round is allowed: sections that failed validation are named to
@@ -119,8 +128,9 @@ def summarize_sections(result, *, stage_name="", call_model=None, timeout=60, ma
     items = displayed_items(result)
     if not any(items.values()):
         return None
+    system = summary_system_prompt(role)
     call = call_model or (lambda payload: _call_model(payload, timeout=timeout,
-                                                      max_tokens=max_tokens))
+                                                      max_tokens=max_tokens, system=system))
     payload = dict(stage=_clean(stage_name, 40), **items)
     started = time.monotonic()
     summaries = {field: "" for field in SECTION_FIELDS.values()}
@@ -158,14 +168,16 @@ def enabled():
         "0", "false", "no", "off"}
 
 
-def with_section_summaries(item, *, stage_name="", progress=None, summarizer=summarize_sections):
+def with_section_summaries(item, *, stage_name="", progress=None, summarizer=summarize_sections,
+                           role=""):
     """Return ``item`` with ``result.sectionSummaries`` set; never raises."""
     if not enabled() or not isinstance(item, dict) or not isinstance(item.get("result"), dict):
         return item
     try:
         if progress is not None:
             progress("summarising", message="模型总结显示的风险、原因与建议")
-        summaries = summarizer(item["result"], stage_name=stage_name)
+        summaries = (summarizer(item["result"], stage_name=stage_name, role=role) if role
+                     else summarizer(item["result"], stage_name=stage_name))
     except Exception:  # noqa: BLE001 - summaries never fail a delivered card
         return item
     if not summaries:

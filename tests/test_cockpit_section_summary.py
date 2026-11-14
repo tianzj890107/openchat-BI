@@ -91,3 +91,26 @@ def test_card_item_gets_section_summaries_and_keeps_them_for_the_page(monkeypatc
     assert with_section_summaries(item, summarizer=failing) is item
     monkeypatch.setenv('COCKPIT_SECTION_SUMMARY_ENABLED', '0')
     assert with_section_summaries(item, summarizer=lambda *a, **k: dict(riskSummary='x')) is item
+
+
+def test_summary_system_prompt_takes_a_card_role_first():
+    from bi_agent.cockpit import section_summary
+    role = '你是储能业务销售运营分析师，请用客观、简洁的经营汇报用语。'
+    seen = []
+
+    def fake_call(payload, *, timeout, max_tokens, system=section_summary.SYSTEM_PROMPT):
+        seen.append(system)
+        return dict(riskSummary='风险1 涉及预测金额 10 亿元', causeSummary='', adviceSummary=''), 'route'
+    original = section_summary._call_model
+    section_summary._call_model = fake_call
+    try:
+        summarize_sections(_result(), stage_name='商机获取', role=role)
+        summarize_sections(_result(), stage_name='订单接收')
+    finally:
+        section_summary._call_model = original
+    assert seen[0].startswith(role) and '本次任务：' in seen[0] and seen[0].count('你是') == 1
+    # Cards without their own role keep the default summary prompt.
+    assert seen[-1] == section_summary.SYSTEM_PROMPT
+    done = with_section_summaries(dict(result=_result()), role=role,
+                                  summarizer=lambda result, stage_name='', role='': dict(riskSummary=role))
+    assert done['result']['sectionSummaries']['riskSummary'] == role

@@ -1304,6 +1304,7 @@ def test_item_judge_sends_no_tools_and_reports_a_tool_call_as_its_error(monkeypa
     answer = judgement.default_item_judge(dict(kind='risk', code='RK01'))
     assert answer['established'] is True and answer['_model'] == 'route-a'
     assert seen[0][0] == [] and '这一条风险' in seen[0][1]
+    assert seen[0][1].startswith(judgement.ROLE_PROMPT)
     entry = judgement._ask(judgement.default_item_judge, dict(kind='cause', code='RC02'), None, '1/1')
     assert entry['decidedBy'] == 'none' and entry['established'] is None
     assert entry['error'].startswith('模型没有作答，而是发起了工具调用')
@@ -1327,7 +1328,7 @@ def test_item_judge_uses_the_inference_prompt_for_unexplained_risks(monkeypatch)
     monkeypatch.setattr(module, '_model_candidate_keys', lambda: ['route-a'])
     answer = judgement._infer(judgement.default_item_judge,
                               dict(kind='inference', code='RK07'), None, '1/1')
-    assert seen[0][0] == [] and seen[0][1] == judgement.INFER_PROMPT
+    assert seen[0][0] == [] and seen[0][1] == judgement.system_prompt(judgement.INFER_PROMPT)
     assert answer['causes'] == [dict(title='拜访不足', description='R09=30', dataGaps='')]
     assert answer['model'] == 'route-a'
 
@@ -1499,3 +1500,26 @@ def test_r08_pairs_customer_and_product_and_never_reads_a_missing_side_as_zero()
 def test_ap_supplement_is_off_unless_explicitly_enabled():
     source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/frozen.py').read_text(encoding='utf-8')
     assert "os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '0').strip().lower() in {'1', 'true', 'yes', 'on'}" in source
+
+
+def test_every_card_model_call_starts_with_the_sales_operations_role(monkeypatch):
+    from bi_agent.cockpit import opportunity_judgement as judgement
+    role = judgement.ROLE_PROMPT
+    assert role.startswith('你是储能业务销售运营分析师')
+    for phrase in ('影响对象', '目标或阈值的差距', '「待核实」', '责任角色', '复检指标'):
+        assert phrase in role
+    for task in (judgement.JUDGE_PROMPT.format(kind='风险'), judgement.INFER_PROMPT):
+        prompt = judgement.system_prompt(task)
+        assert prompt.startswith(role) and '本次任务：' in prompt
+        # One identity only: the task text no longer opens with its own "你是…".
+        assert prompt.count('你是') == 1
+    assert '待核实' in judgement.INFER_PROMPT
+    monkeypatch.setenv('COCKPIT_OPPORTUNITY_ROLE_PROMPT', '你是测试角色。')
+    assert judgement.system_prompt('x').startswith('你是测试角色。')
+    monkeypatch.setenv('COCKPIT_OPPORTUNITY_ROLE_PROMPT', '  ')
+    assert judgement.role_prompt() == role
+
+
+def test_only_the_opportunity_card_summaries_use_the_role():
+    source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/frozen.py').read_text(encoding='utf-8')
+    assert "if stage == 'opportunity-risk':" in source and 'role=role)' in source

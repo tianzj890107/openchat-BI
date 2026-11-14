@@ -925,8 +925,13 @@ def recompute_from_router(app, cwd):
                 # The 销售额口径明细 cards open each section with a model
                 # summary of the items that section displays.
                 from .section_summary import with_section_summaries
+                role = ''
+                if stage == 'opportunity-risk':
+                    # The 商机获取 card's model calls share one system role.
+                    from .opportunity_judgement import role_prompt
+                    role = role_prompt()
                 item = with_section_summaries(item, stage_name=STAGE_LABELS.get(stage, stage),
-                                              progress=self._progress_callback)
+                                              progress=self._progress_callback, role=role)
             return item
 
         def _analyse_slot(self, period, stage):
