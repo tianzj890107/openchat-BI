@@ -58,10 +58,16 @@ def system_prompt(task):
     return compose_system_prompt(role_prompt(), task)
 
 
+ONTOLOGY_RULES = (
+    "ontology 给出本条在本体中的定义、判定规则原文，以及所涉指标的本体口径（metrics：指标编码、名称、口径定义、业务规则、单位与本轮取值 values）；判断和表述必须沿用这些本体口径与名称。引用数值时写明指标名称，并按 values 中给出的单位原样引用，不得换算或改写单位；不得使用输入以外的数字。"
+)
+
 JUDGE_PROMPT = (
     "本体规则判定。程序已按规则计算，但下面这一条{kind}无法只凭结构化数据判定是否成立。"
-    "请严格依据 rule 中的判定规则，结合 data 中本轮的取数结果作出判断，不得编造输入以外的数据。"
-    "数据确实不足以判断时，established 返回 null，并在 reason 中写明缺少什么。"
+    "请严格依据 rule 中的判定规则，结合 ontology 与 data 中本轮的取数结果作出判断，不得编造输入以外的数据。"
+    + ONTOLOGY_RULES.replace("{", "{{").replace("}", "}}") +
+    "判定所需的数据缺失（data.missingInputs 非空）且 ontology.metrics 中没有可替代的数据时，"
+    "established 必须返回 null，不得返回 false；并在 reason 中写明缺少什么。"
     '只返回 JSON：{{"established": true 或 false 或 null, "level": "极高/高/中/低 或空字符串", '
     '"reason": "不超过160字的判断依据，引用 data 中的具体数值"}}，不要输出其他内容。'
 )
@@ -69,9 +75,11 @@ JUDGE_PROMPT = (
 
 INFER_PROMPT = (
     "商机获取环节根因推理。下面这条风险已经成立，但本体中与它关联的根因规则都没有命中。"
-    "请只依据 risk（风险及其判定数据）、ontologyCauses（各本体候选根因的判定结果和原因）"
-    "和 data（本轮取数的指标结果）推理最可能导致该风险的根因，不得编造输入以外的数据；"
-    "不要重复已判定未命中的本体根因，除非 data 中有相反证据。最多给出 3 条，按可能性从高到低排列；"
+    "请只依据 risk（风险的本体定义、判定规则与判定数据）、ontologyCauses（各本体候选根因的定义、"
+    "判定规则、判定结果和原因）和 data.metrics（只含本风险及其候选根因涉及的指标，附本体口径与本轮取值）"
+    "推理最可能导致该风险的根因。" + ONTOLOGY_RULES +
+    "不要重复已判定未命中的本体根因，也不要把它换一种说法重新提出，除非 data 中有相反证据。"
+    "最多给出 3 条，按可能性从高到低排列；"
     "数据不足以推理时 causes 返回空数组，并在 note 中写明缺少什么。"
     "推理出的根因都未经规则确认，description 以「待核实」开头。"
     '只返回 JSON：{"causes": [{"title": "不超过20字的根因名称", '
@@ -82,6 +90,46 @@ INFER_PROMPT = (
 
 def _text(value):
     return "" if value is None else str(value).strip()
+
+
+def _metric_code_of(fact_id, codes):
+    """The ontology metric a fact belongs to: "…metric:R01-AMOUNT" → "R01"."""
+    suffix = str(fact_id or "").split("metric:", 1)[-1]
+    best = ""
+    for code in codes:
+        if (suffix == code or suffix.startswith(code + "-") or suffix.startswith(code + ":")) and len(code) > len(best):
+            best = code
+    return best
+
+
+def _metric_context(config, codes, facts):
+    """Ontology definition plus this round's labelled values for each metric code.
+
+    Values come from the card's evidence facts, which carry the Chinese label,
+    the unit and the caliber note, so the model reads the same metric the page
+    shows instead of a bare code and number.
+    """
+    specs = config.get("metrics") or {}
+    wanted = [code for code in dict.fromkeys(codes) if code in specs]
+    values = {code: [] for code in wanted}
+    all_codes = list(specs)
+    for fact in facts or []:
+        code = _metric_code_of(fact.get("id"), all_codes)
+        if code in values:
+            values[code].append({key: fact.get(key) for key in ("label", "value", "unit", "definition")
+                                 if fact.get(key) not in (None, "")})
+    context = []
+    for code in wanted:
+        spec = specs[code] or {}
+        if not values[code]:
+            # Named so the model knows it exists, but without a value to quote.
+            context.append(dict(code=code, name=_text(spec.get("name")), note="本轮未取数，不能引用"))
+            continue
+        item = dict(code=code, name=_text(spec.get("name")), definition=_text(spec.get("definition"))[:400],
+                    rule=_text(spec.get("formula") or spec.get("rule"))[:300], unit=_text(spec.get("unit")),
+                    values=values[code])
+        context.append({key: value for key, value in item.items() if value not in ("", None)})
+    return context
 
 
 def _established(value):
@@ -198,6 +246,8 @@ def _status_label(entry):
     if entry.get("error"):
         return "判断失败，已跳过"
     if entry.get("inferred"):
+        if entry.get("dataGap"):
+            return "待补数据，未推理"
         return "模型推理（本体根因未命中）" if entry.get("established") is True else "模型未能推理"
     if entry.get("decidedBy") == "unevaluated":
         return entry.get("reason") or "未评估"
@@ -244,6 +294,29 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                     condition=_text(spec.get("condition")),
                     levelRule=_text(spec.get("levelRule")))
 
+    facts = (evaluated.get("evidence") or {}).get("facts") or []
+
+    def rule_text(code):
+        rule = rules.get(_text(code)) or {}
+        return {key: _text(rule.get(key)) for key in ("code", "name", "description", "result")
+                if _text(rule.get(key))}
+
+    def element(spec, entry):
+        """The ontology element itself: definition, rule text and impact."""
+        value = dict(code=entry["code"], name=entry["name"],
+                     description=_text(spec.get("description")),
+                     condition=_text(spec.get("condition")), levelRule=_text(spec.get("levelRule")),
+                     objects=_text(spec.get("impact") or spec.get("objects")),
+                     method=_text(spec.get("method")), analysisFocus=_text(spec.get("aiFocus")),
+                     ontologyRule=rule_text(spec.get("rule")))
+        return {key: item for key, item in value.items() if item}
+
+    def indicator_codes(*specs):
+        codes = []
+        for spec in specs:
+            codes += _indicators(spec or {})
+        return codes
+
     # ---- risks ---------------------------------------------------------
     risk_entries = []
     pending = [code for code in risk_specs if (candidates.get(code) or {}).get("ruleStatus") == "insufficient"]
@@ -266,6 +339,8 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
         else:
             request = dict(kind=primary, code=code, name=entry["name"], period=period,
                            rule=entry["rule"], ontologyDescription=_text(spec.get("description")),
+                           ontology=dict(element=element(spec, entry),
+                                         metrics=_metric_context(config, indicator_codes(spec), facts)),
                            data=dict(observed=entry["observed"], missingInputs=entry["missingEvidence"],
                                      programNote="规则所需输入不完整，程序无法判定"))
             entry.update(_ask(judge, request, progress, f"{pending.index(code) + 1}/{len(pending)}"))
@@ -303,7 +378,10 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
             request = dict(
                 kind="cause", code=code, name=entry["name"], period=period, rule=entry["rule"],
                 analysisFocus=_text(spec.get("aiFocus")),
+                ontology=dict(element=element(spec, entry), metrics=_metric_context(
+                    config, indicator_codes(spec, *(risk_specs.get(r) for r in related)), facts)),
                 linkedRisks=[dict(code=risk_code, name=established_risks[risk_code]["name"],
+                                  ontologyDescription=_text((risk_specs.get(risk_code) or {}).get("description")),
                                   judgement=established_risks[risk_code].get("reason"))
                              for risk_code in related],
                 data=dict(observed=entry["observed"], missingInputs=entry["missingEvidence"],
@@ -316,27 +394,44 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
     risk_order = sorted(established_risks.values(),
                         key=lambda item: (_LEVEL_RANK.get(item.get("level") or "", 4), item["code"]))
     orphans = [entry for entry in risk_order if entry["code"] not in explained]
-    metrics = evaluated.get("metrics") or {}
     inference_calls = 0
     for position, risk in enumerate(orphans, 1):
         linked = (links.get(risk["code"]) or {}).get("causes") or []
+        base = dict(kind="cause", rule=dict(INFERRED_RULE), ruleStatus="inferred", inferred=True,
+                    linkedRisks=[risk["code"]], observed=[], evidenceIds=list(risk["evidenceIds"])[:3])
+        # An ontology cause that could not be judged for lack of data is not
+        # "unmatched": inferring a cause then just renames it with unrelated
+        # numbers.  Report the missing data instead of calling the model.
+        gaps = [entry for entry in cause_entries
+                if entry["code"] in linked and entry.get("ruleStatus") == "insufficient"
+                and entry.get("missingEvidence") and entry.get("established") is not True]
+        if gaps:
+            missing = list(dict.fromkeys(item for entry in gaps for item in entry["missingEvidence"]))
+            cause_entries.append(dict(
+                base, code=f"{risk['code']}-AI", name=f"{risk['name']}·根因推理", decidedBy="rule",
+                established=None, dataGap=True, missingEvidence=missing,
+                reason="本体根因 " + "、".join(f"{entry['code']} {entry['name']}" for entry in gaps)
+                       + " 缺少判定数据（" + "、".join(missing) + "），未进行模型推理；补齐数据后由规则判定。"))
+            continue
+        cause_specs_linked = [cause_specs.get(code) for code in linked]
         request = dict(
             kind="inference", subjectLabel=label, code=risk["code"], name=risk["name"], period=period,
             risk=dict(code=risk["code"], name=risk["name"], level=risk.get("level") or "",
                       judgement=risk.get("reason") or "", rule=risk["rule"],
                       ontologyDescription=_text((risk_specs.get(risk["code"]) or {}).get("description")),
+                      ontology=element(risk_specs.get(risk["code"]) or {}, risk),
                       observed=risk["observed"]),
             ontologyCauses=[dict(code=entry["code"], name=entry["name"], rule=entry["rule"],
+                                 ontology=element(cause_specs.get(entry["code"]) or {}, entry),
                                  status=_status_label(entry),
                                  reason=entry.get("reason") or entry.get("error") or "",
                                  observed=entry["observed"], missingInputs=entry["missingEvidence"])
                             for entry in cause_entries if entry["code"] in linked],
-            data=dict(metrics=metrics))
+            data=dict(metrics=_metric_context(
+                config, indicator_codes(risk_specs.get(risk["code"]), *cause_specs_linked), facts)))
         answer = _infer(judge, request, progress, f"{position}/{len(orphans)}")
         if judge is not None:
             inference_calls += 1
-        base = dict(kind="cause", rule=dict(INFERRED_RULE), ruleStatus="inferred", inferred=True,
-                    linkedRisks=[risk["code"]], observed=[], evidenceIds=list(risk["evidenceIds"])[:3])
         if answer.get("error"):
             cause_entries.append(dict(base, code=f"{risk['code']}-AI", name=f"{risk['name']}·根因推理",
                                       decidedBy="none", established=None, missingEvidence=[],

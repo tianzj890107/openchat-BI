@@ -221,3 +221,11 @@ def test_fixed_annual_mode_runs_the_card_on_its_ontology():
                                           durationSeconds=1.5, message="m")) == dict(
         phase="database_query", query="B01", code="TIMEOUT", message="m", upstream_code="57014",
         duration_seconds=1.5)
+
+
+def test_ratio_facts_are_percentages_with_their_ontology_definition():
+    card = _card()
+    facts = {f["id"]: f for f in card["evidence"]["facts"]}
+    r01 = facts["ss:metric:R01"]
+    assert r01["value"] == 60.0 and r01["unit"] == "%" and r01["label"] == "销售额达成率"
+    assert r01["definition"] == ss.load_config()["metrics"]["R01"]["definition"]

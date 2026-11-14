@@ -415,6 +415,23 @@ def _query_failure(exc, label, duration):
     )
 
 
+# Which ontology metrics each query feeds; the page lists, under each risk or
+# cause, only the queries behind its metrics.
+_QUERY_METRICS = {
+    "销售目标": ["B01", "R01", "R05", "R06", "R08"],
+    "产品类型": ["R05", "R06"],
+    "商机预测": ["B02", "R01", "R02", "R03", "R04", "R05", "R06", "R08", "C01", "C06", "C07", "C08",
+                 "C09", "P0-01", "P0-02", "P2-01", "P2-02"],
+    "商机聚合": ["B02", "R01", "R02", "R03", "R04", "R05", "R06", "R08"],
+    "全部商机": ["R09", "P0-01", "P0-02", "P2-01", "P2-02"],
+    "客户": ["R09"],
+    "投标": [],
+    "项目进展": ["C07", "P2-01", "P2-02"],
+    "订单关联": ["R02", "R03", "R04", "R05", "R06", "C01", "C06", "C07", "C08", "C09"],
+    "产品团队": ["C05"],
+    "产品部销售缺口": ["C03", "C04", "C05"],
+}
+
 _QUERY_AGGREGATION_NOTES = {
     "销售目标": "B01：同一商机（商机为空时按目标 ID）同一年度只取最新一条目标后汇总；amount_yuan / 1e8 = 目标金额（亿元），电量按配置单位换算为 GWh。",
     "产品类型": "产品类型枚举映射：1=电芯，2=PACK，空或其他=其他；只用于维度归类，不参与金额汇总。",
@@ -601,6 +618,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
             host=db_source["host"], port=db_source["port"],
             source=db_source["source"],
             aggregation=_QUERY_AGGREGATION_NOTES.get(label, ""),
+            metricCodes=list(_QUERY_METRICS.get(label, [])),
         )
         if error is not None:
             entry["error"] = {key: error.get(key) for key in

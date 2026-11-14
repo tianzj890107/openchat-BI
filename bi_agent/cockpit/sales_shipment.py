@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import opportunity_v2 as v2
-from .opportunity_judgement import judge_card, make_item_judge
+from .opportunity_judgement import ONTOLOGY_RULES, judge_card, make_item_judge
 
 SLOT_ID = "sales-shipment-issues"
 STAGE = "combined"
@@ -73,9 +73,10 @@ ROLE_PROMPT = (
 )
 INFER_PROMPT = (
     "销售额与出货量共同问题的根因推理。下面这条问题（risk 字段，可能是指标异常或数据问题）已经成立，"
-    "但本体中与它关联的根因规则都没有命中。请只依据 risk（问题及其判定数据）、ontologyCauses"
-    "（各本体候选根因的判定结果和原因）和 data（本轮取数的指标结果）推理最可能导致该问题的根因，"
-    "不得编造输入以外的数据；不要重复已判定未命中的本体根因，除非 data 中有相反证据。"
+    "但本体中与它关联的根因规则都没有命中。请只依据 risk（问题的本体定义、判定规则与判定数据）、"
+    "ontologyCauses（各本体候选根因的定义、判定规则、判定结果和原因）和 data.metrics（只含本问题及其"
+    "候选根因涉及的指标，附本体口径与本轮取值）推理最可能导致该问题的根因。" + ONTOLOGY_RULES +
+    "不要重复已判定未命中的本体根因，也不要把它换一种说法重新提出，除非 data 中有相反证据。"
     "最多给出 3 条，按可能性从高到低排列；数据不足以推理时 causes 返回空数组，并在 note 中写明缺少什么。"
     "推理出的根因都未经规则确认，description 以「待核实」开头。"
     '只返回 JSON：{"causes": [{"title": "不超过20字的根因名称", '
@@ -347,9 +348,13 @@ def evaluate(data, config, measured):
         entry = values.get(code) or {}
         fid = f"ss:metric:{code}"
         if fid not in facts:
-            facts[fid] = dict(id=fid, label=f"{code} {entry.get('name', code)}", value=entry.get("value"),
-                              unit=entry.get("unit", ""), source="customer PostgreSQL · ded_public",
-                              status=entry.get("status"))
+            value, unit = entry.get("value"), entry.get("unit", "")
+            if unit in {"%", "比值"} and value is not None:
+                # Ratio metrics are 0–1 decimals; facts carry them as percentages.
+                value, unit = round(value * 100, 4), "%"
+            facts[fid] = dict(id=fid, label=entry.get("name", code), value=value, unit=unit,
+                              definition=(config["metrics"].get(code) or {}).get("definition", ""),
+                              source="customer PostgreSQL · ded_public", status=entry.get("status"))
         return fid
 
     def num(code):

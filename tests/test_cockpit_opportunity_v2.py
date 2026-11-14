@@ -1568,3 +1568,74 @@ def test_product_signing_lag_uses_the_products_forecast_total():
                  opportunities=[signed, pending], allOpportunities=[deepcopy(signed), deepcopy(pending)])
     value = evaluate(data, measured=date(2026, 11, 11))
     assert 'RK04' in {risk['code'] for risk in value['risks']}
+
+
+def _requests_for(value):
+    from bi_agent.cockpit.opportunity_judgement import judge_card
+    seen = []
+
+    def judge(request):
+        seen.append(request)
+        return dict(causes=[]) if request['kind'] == 'inference' else dict(established=False, reason='x')
+    judged = judge_card(value, load_config(), judge=judge)
+    return seen, judged
+
+
+def test_inference_reads_only_the_chain_metrics_with_their_ontology_caliber():
+    seen, _ = _requests_for(_strategic_value())
+    inference = [r for r in seen if r['kind'] == 'inference']
+    assert inference
+    config = load_config()
+    for request in inference:
+        risk_codes = [c for c in config['risks'][request['code']]['indicators'].split('、')]
+        allowed = set(risk_codes)
+        for cause in config['links'][request['code']]['causes']:
+            allowed |= set(config['causes'][cause]['indicators'].split('、'))
+        metrics = request['data']['metrics']
+        # Only the metrics of this risk and its ontology causes, never the whole card.
+        assert set(request['data']) == {'metrics'} and isinstance(metrics, list)
+        assert {m['code'] for m in metrics} <= allowed
+        for metric in metrics:
+            assert metric['name'] == config['metrics'][metric['code']]['name']
+            if 'values' in metric:
+                assert metric['definition'] and all(v.get('unit') for v in metric['values'])
+            else:
+                assert metric['note'] == '本轮未取数，不能引用'
+        assert request['risk']['ontology']['ontologyRule']['code'] == config['risks'][request['code']]['rule']
+        assert all(cause['ontology']['code'] == cause['code'] for cause in request['ontologyCauses'])
+
+
+def test_a_data_gap_in_the_ontology_cause_is_reported_not_inferred():
+    # RK07 holds; its only ontology cause RC09 lacks recent-activity data.
+    value = _strategic_value(accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic'),
+                                       dict(id='account-9', name='战略客户B', level='1', tier='strategic')])
+    assert value['causeOutcomes']['RC09']['ruleStatus'] == 'insufficient'
+    seen, judged = _requests_for(value)
+    assert 'RK07' in {f['riskCode'] for f in judged['findings']}
+    assert not [r for r in seen if r['kind'] == 'inference' and r['code'] == 'RK07']
+    entry = next(e for e in judged['ontologyJudgement']['causes'] if e['code'] == 'RK07-AI')
+    assert entry['statusLabel'] == '待补数据，未推理' and entry['established'] is None
+    assert entry['reason'].startswith('本体根因 RC09 战略客户开拓不足 缺少判定数据')
+    assert not any(c['causeCode'].startswith('RK07-AI') for c in judged['causes'])
+
+
+def test_item_requests_carry_the_ontology_and_ask_for_null_on_missing_data():
+    from bi_agent.cockpit import opportunity_judgement as judgement
+    seen, _ = _requests_for(_strategic_value())
+    for request in [r for r in seen if r['kind'] in ('risk', 'cause')]:
+        element = request['ontology']['element']
+        assert element['code'] == request['code'] and element['ontologyRule']['description']
+        assert isinstance(request['ontology']['metrics'], list)
+    prompt = judgement.JUDGE_PROMPT.format(kind='风险')
+    assert 'established 必须返回 null，不得返回 false' in prompt
+    assert '按 values 中给出的单位原样引用，不得换算或改写单位' in prompt
+    assert '不要把它换一种说法重新提出' in judgement.INFER_PROMPT
+
+
+def test_every_query_names_the_metrics_it_feeds():
+    from bi_agent.cockpit.opportunity_v2 import _QUERY_METRICS
+    metrics = set(load_config()['metrics'])
+    assert _QUERY_METRICS['客户'] == ['R09']
+    assert all(set(codes) <= metrics for codes in _QUERY_METRICS.values())
+    source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/opportunity_v2.py').read_text(encoding='utf-8')
+    assert 'metricCodes=list(_QUERY_METRICS.get(label, []))' in source
