@@ -23,7 +23,7 @@ ROOT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().pare
 REF = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_无投标_周期红字同步版.xlsx"
 DICT = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 CSV = ROOT / "bp_local_analysis_query_202611141015.csv"
-OUT = ROOT / "docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V1.xlsx"
+OUT = ROOT / "docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V2.xlsx"
 
 PERIOD_START, PERIOD_END = "2025-01-01", "2026-01-01"
 NODE = "销售额／出货量共同问题分析"
@@ -229,9 +229,16 @@ er_rows += [
 ]
 
 run_header, run_rows = sheet_rows(ref, "分析运行记录模型")
+RUN_TERMS = [("风险运行记录", "问题运行记录"), ("风险影响明细", "问题影响明细"), ("riskInstance", "issueInstance"),
+             ("riskImpact", "issueImpact"), ("risk_instance", "issue_instance"), ("risk_impact", "issue_impact"),
+             ("风险 RK*", "问题 IS* / DQ*"), ("某统计期间成立的风险", "某统计期间成立的问题（指标异常 / 数据问题）"),
+             ("风险实例", "问题实例"), ("风险编码", "问题编码"), ("风险名称", "问题名称"), ("风险等级", "问题等级"),
+             ("risk_code", "issue_code"), ("risk_level", "issue_level"), ("risk_name", "issue_name")]
 for r in run_rows:
     for i, v in enumerate(r):
         if isinstance(v, str):
+            for old, new in RUN_TERMS:
+                v = v.replace(old, new)
             r[i] = (v.replace("受影响的商机 / 客户 / 产品部及预测量",
                               "受影响的订单 / 客户 / 产品团队 / 产品类型及金额、电量")
                      .replace("对象类型（商机 / 客户 / 产品部）", "对象类型（订单 / 客户 / 产品团队 / 产品类型 / 商机）"))
@@ -361,91 +368,138 @@ metric("C10", "已签单商机占比", "根因判定", "派生指标", "比值",
        definition="C04 已签单商机获取金额 ÷ C01 商机获取金额。", rule="低于 B05 时间进度判定签单转化滞后（BR-C02）。",
        derived="C04、C01")
 
-# ---------------------------------------------------------------- risks / causes / advice
-RISKS = OrderedDict()
+# ---------------------------------------------------------------- problems / causes / advice
+# This card is problem driven: indicator → problem (metric anomaly or data
+# problem) → cause → advice.  It has no risk layer; problems take its place.
+ISSUES = OrderedDict()
+ISSUE_TYPES = {"metric": "指标异常", "data": "数据问题"}
 
 
-def risk(code, name, desc, indicators, rule, condition, level, objects, causes, source):
-    RISKS[code] = dict(code=code, name=name, desc=desc, indicators=indicators, rule=rule,
-                       condition=condition, level=level, objects=objects, causes=causes, source=source)
+def params_text(params):
+    return "；".join(f"{key}={value}" for key, value in (params or {}).items())
 
 
-risk("RK01", "销售额与出货量双双落后时间进度", "销售额达成率与出货量达成率同时低于年度时间进度",
-     ["R01", "R02", "B05"], "BR-A01",
-     "R01 < B05 且 R02 < B05（统一按百分比比较；任一侧缺值不判定）",
-     "两项中落后较多者 ≥ 15 个百分点 极高；10～15 高；< 10 中（沿用商机获取节点 BR-A02 落后分档）",
-     "产品团队、产品类型、客户", ["RC01", "RC02", "RC03", "RC04", "RC05"],
-     "看板 M0003 / M0008 / M0009 对照")
-risk("RK02", "全年预计达成缺口", "按已发生实绩＋后续预测推算，全年销售额或出货量预计不达成",
-     ["R05", "R07", "R04", "R06"], "BR-A02",
-     "R05 < 100% 或 R07 < 1（金额、电量分别判断）",
-     f"预计达成率 < 90% 高；90%～100% 中{PENDING}", "产品团队、产品类型、客户",
-     ["RC01", "RC02", "RC07"], "看板 M0004 / M0005 / M0011 / M0012 对照")
-risk("RK03", "销售额与出货量量价背离", "销售额与出货量进度差异明显，金额与电量未同步",
-     ["R03", "R01", "R02"], "BR-A03",
-     f"|R03| ≥ 10 个百分点{PENDING}", f"|R03| ≥ 20 个百分点 高；10～20 中{PENDING}",
-     "产品类型、产品团队", ["RC06", "RC05"], "共同分析新增（销售额 × 出货量交叉）")
-risk("RK04", "超期订未发积压", "承诺交期已过的订单仍未发货，占订未发比例偏高",
-     ["S05", "S06", "S08"], "BR-A04",
-     f"S05 > 0 且 S08 ≥ 20%{PENDING}", f"S08 ≥ 50% 高；20%～50% 中{PENDING}",
-     "订单、客户、产品团队", ["RC03", "RC04", "RC08"], "看板 M0143 / M0134 / 超期订未发占比")
-risk("RK05", "在手订单不足以覆盖剩余目标", "订未发金额 / 电量不足以支撑年度剩余目标",
-     ["C09", "S03", "S04", "B01", "B02", "B03", "B04"], "BR-A05",
-     "剩余目标 > 0 且 C09 < 1（金额、电量分别判断）", f"C09 < 0.5 高；0.5～1 中{PENDING}",
-     "产品团队、产品类型", ["RC01", "RC02"], "共同分析新增（订单储备 × 剩余目标）")
-risk("RK06", "订单履约率偏低", "已签订单截至期末的发货履约不足",
-     ["O03"], "BR-A06", f"O03 < 0.8{PENDING}", f"O03 < 0.6 高；0.6～0.8 中{PENDING}",
-     "订单、客户", ["RC03", "RC04", "RC08"], "看板 M0037")
-risk("RK07", "重点客户电量缺口", "战略 / 重要大客户的目标电量高于实际发货电量",
-     ["C08", "C07"], "BR-A07", "客户等级 1（战略）或 2（重要）的 C08 > 0",
-     "战略大客户存在缺口 高；仅重要大客户存在缺口 中", "客户、客户等级", ["RC07", "RC01"],
-     "看板客户电量缺口")
-risk("RK08", "订单取消／变更冲减", "所选期间存在取消或变更订单，冲减订单与后续出货",
-     ["O04", "O01"], "BR-A08", "O04 > 0",
-     f"O04 ÷ O01 ≥ 5% 高；其余 中{PENDING}", "订单、客户、产品类型", ["RC09"], "看板取消 / 变更订单电量")
+def issue(code, name, kind, desc, indicators, rule, condition, level, objects, causes, source, params=None):
+    ISSUES[code] = dict(code=code, name=name, kind=kind, type=ISSUE_TYPES[kind], desc=desc,
+                        indicators=indicators, rule=rule, condition=condition, level=level, objects=objects,
+                        causes=causes, source=source, params=params or {})
+
+
+# -- metric anomalies (indicator vs target / threshold)
+issue("IS01", "销售额与出货量双双落后时间进度", "metric", "销售额达成率与出货量达成率同时低于年度时间进度",
+      ["R01", "R02", "B05"], "BR-A01",
+      "R01 < B05 且 R02 < B05（均为 0～1 小数；任一侧缺值不判定）",
+      "两项中落后较多者 ≥ 15 个百分点 极高；10～15 高；< 10 中（沿用商机获取节点 BR-A02 落后分档）",
+      "产品团队、产品类型、客户", ["RC01", "RC02", "RC03", "RC04", "RC05"], "看板 M0003 / M0008 / M0009 对照",
+      dict(lagExtremePoints=15, lagHighPoints=10))
+issue("IS02", "全年预计达成缺口", "metric", "按已发生实绩＋后续预测推算，全年销售额或出货量预计不达成",
+      ["R05", "R07", "R04", "R06"], "BR-A02",
+      "R05 < 1 或 R07 < 1（金额、电量分别判断）",
+      f"预计达成率 < 0.9 高；0.9～1 中{PENDING}", "产品团队、产品类型、客户",
+      ["RC01", "RC02", "RC07"], "看板 M0004 / M0005 / M0011 / M0012 对照", dict(highBelow=0.9))
+issue("IS03", "销售额与出货量量价背离", "metric", "销售额与出货量进度差异明显，金额与电量未同步",
+      ["R03", "R01", "R02"], "BR-A03",
+      f"|R03| ≥ 10 个百分点{PENDING}", f"|R03| ≥ 20 个百分点 高；10～20 中{PENDING}",
+      "产品类型、产品团队", ["RC06", "RC05"], "共同分析新增（销售额 × 出货量交叉）",
+      dict(gapPoints=10, highGapPoints=20))
+issue("IS04", "超期订未发积压", "metric", "承诺交期已过的订单仍未发货，占订未发比例偏高",
+      ["S05", "S06", "S08"], "BR-A04",
+      f"S05 > 0 且 S08 ≥ 0.2{PENDING}", f"S08 ≥ 0.5 高；0.2～0.5 中{PENDING}",
+      "订单、客户、产品团队", ["RC03", "RC04", "RC08"], "看板 M0143 / M0134 / 超期订未发占比",
+      dict(share=0.2, highShare=0.5))
+issue("IS05", "在手订单不足以覆盖剩余目标", "metric", "订未发金额 / 电量不足以支撑年度剩余目标",
+      ["C09", "S03", "S04", "B01", "B02", "B03", "B04"], "BR-A05",
+      "剩余目标 > 0 且 C09 < 1（金额、电量分别判断）", f"C09 < 0.5 高；0.5～1 中{PENDING}",
+      "产品团队、产品类型", ["RC01", "RC02"], "共同分析新增（订单储备 × 剩余目标）", dict(highBelow=0.5))
+issue("IS06", "订单履约率偏低", "metric", "已签订单截至期末的发货履约不足",
+      ["O03"], "BR-A06", f"O03 < 0.8{PENDING}", f"O03 < 0.6 高；0.6～0.8 中{PENDING}",
+      "订单、客户", ["RC03", "RC04", "RC08"], "看板 M0037", dict(below=0.8, highBelow=0.6))
+issue("IS07", "重点客户电量缺口", "metric", "战略 / 重要大客户的目标电量高于实际发货电量",
+      ["C08", "C07"], "BR-A07", "客户等级 1（战略）或 2（重要）的 C08 > 0",
+      "战略大客户存在缺口 高；仅重要大客户存在缺口 中", "客户、客户等级", ["RC07", "RC01"],
+      "看板客户电量缺口", dict(levels="1,2"))
+issue("IS08", "订单取消／变更冲减", "metric", "所选期间存在取消或变更订单，冲减订单与后续出货",
+      ["O04", "O01"], "BR-A08", "O04 > 0",
+      f"O04 ÷ O01 ≥ 0.05 高；其余 中{PENDING}", "订单、客户、产品类型", ["RC09"], "看板取消 / 变更订单电量",
+      dict(highShare=0.05))
+# -- data problems (the evidence itself is unusable or inconsistent)
+issue("DQ01", "指标取数失败或超时", "data", "调用SQL执行失败、超时或结果被截断，对应指标无法使用",
+      ["B01", "B02", "B03", "B04"], "BR-DQ02",
+      "任一调用SQL状态为失败、超时或截断（查询目录 status ≠ ok）",
+      "核心指标（B01～B04）取数失败 高；其他指标 中", "指标、取数链路", ["RC10"], "运行时查询目录",
+      dict(core="B01,B02,B03,B04"))
+issue("DQ02", "核心指标结果为空", "data", "取数成功但目标或实绩为空，无法计算达成与缺口",
+      ["B01", "B02", "B03", "B04"], "BR-DQ03",
+      "B01～B04 任一调用SQL状态为 ok 且结果为 NULL", "高", "目标、实绩", ["RC11"], "BR-DQ01 缺值不补零",
+      dict(core="B01,B02,B03,B04"))
+issue("DQ03", "达成率与基础指标不一致", "data", "看板达成率与实绩 ÷ 目标的复算结果不一致，口径存疑",
+      ["R01", "B01", "B02", "R02", "B03", "B04"], "BR-DQ04",
+      f"|R01 − B02 ÷ B01| > 0.01 或 |R02 − B04 ÷ B03| > 0.01{PENDING}", "中", "达成率指标",
+      ["RC12"], "共同分析新增（口径复核）", dict(tolerance=0.01))
+issue("DQ04", "订未发结构不闭合", "data", "超期与正常订未发金额之和与未发货金额不一致",
+      ["S04", "S05", "S07"], "BR-DQ05",
+      f"S04 > 0 且 |S05 + S07 − S04| ÷ S04 > 0.05{PENDING}", "中", "订未发指标", ["RC12"],
+      "共同分析新增（口径复核）", dict(tolerance=0.05))
+issue("DQ05", "计划外发货无法核对", "data", "有已发货金额，但计划外发货因计划缺失或匹配不唯一返回空值",
+      ["S09", "S02"], "BR-DQ06", "S02 > 0 且 S09 为 NULL", "中", "日出货计划、发货行", ["RC11"],
+      "看板 M0151 空值口径")
+issue("DQ06", "客户电量缺口单侧缺失", "data", "客户等级分组有实际发货电量，但目标侧缺失导致缺口为空",
+      ["C08", "C07"], "BR-DQ07", "同一客户等级 C07 有值且 C08 为 NULL", "中", "客户等级、客户目标",
+      ["RC11"], "看板客户电量缺口空值口径")
 
 CAUSES = OrderedDict()
 
 
-def cause(code, name, group, indicators, rule, condition, method, ai, output):
-    CAUSES[code] = dict(code=code, name=name, group=group, indicators=indicators, rule=rule,
-                        condition=condition, method=method, ai=ai, output=output)
+def cause(code, name, group, stage, indicators, rule, condition, method, ai, output, params=None):
+    CAUSES[code] = dict(code=code, name=name, group=group, stage=stage, indicators=indicators, rule=rule,
+                        condition=condition, method=method, ai=ai, output=output, params=params or {})
 
 
-cause("RC01", "上游商机预测覆盖不足", "上游商机", ["C03", "C01", "C02"], "BR-C01",
+cause("RC01", "上游商机预测覆盖不足", "上游商机", "opportunity", ["C03", "C01", "C02"], "BR-C01",
       "C03 商机预测缺口 > 0", "规则",
       "联动商机获取卡片：引用其 RK01 判定与根因，归纳缺口集中的产品团队 / 客户",
       "是否成立、缺口金额、缺口集中对象、商机获取卡片证据引用")
-cause("RC02", "签单转化滞后", "订单签订", ["C10", "C04", "C01", "B05", "O05", "O06"], "BR-C02",
+cause("RC02", "签单转化滞后", "订单签订", "order", ["C10", "C04", "C01", "B05", "O05", "O06"], "BR-C02",
       "C10 已签单商机占比 < B05 年度时间消耗", "规则",
       "对比 O05 与 O06 判断订单接收是否同时超标杆；列出预测金额最大的未签单商机",
       "是否成立、签单占比与时间进度差、未签单重点商机清单")
-cause("RC03", "超期订单未发（交付执行卡点）", "交付执行", ["S05", "S06", "S12"], "BR-C03",
+cause("RC03", "超期订单未发（交付执行卡点）", "交付执行", "shipment", ["S05", "S06", "S12"], "BR-C03",
       "S05 > 0 且 S12 存在超期天数 > 0 的订单", "规则 + AI",
       "AI 读取超期订单对应商机的最新项目进展卡点与下一步（YWLN_D_PROJECT_BLOCKER / NEXT_STEP），归纳客户侧 / 内部原因",
       "超期订单清单（订单号、客户、金额、超期天数）、卡点归类、证据")
-cause("RC04", "发货周期超标杆", "交付执行", ["S10", "S11"], "BR-C04",
-      "S10 > S11（严格大于）", "规则", "按产品团队定位周期最长环节",
-      "是否成立、平均周期与标杆差值")
-cause("RC05", "计划外发货扰动", "交付计划", ["S09"], "BR-C05",
+cause("RC04", "发货周期超标杆", "交付执行", "shipment", ["S10", "S11"], "BR-C04",
+      "S10 > S11（严格大于）", "规则", "按产品团队定位周期最长环节", "是否成立、平均周期与标杆差值")
+cause("RC05", "计划外发货扰动", "交付计划", "shipment", ["S09"], "BR-C05",
       "S09 计划外发货金额 > 0", "规则",
       "区分计划缺失、计划后改与超计划发货三类来源，说明对销售额与出货量节奏的影响",
       "是否成立、计划外金额、涉及订单行")
-cause("RC06", "产品结构或单价偏离目标", "产品结构", ["R09", "R10", "O01", "O02"], "BR-C06",
-      f"|R09 − R10| ÷ R10 ≥ 10%{PENDING}", "规则 + AI",
+cause("RC06", "产品结构或单价偏离目标", "产品结构", "order", ["R09", "R10", "O01", "O02"], "BR-C06",
+      f"|R09 − R10| ÷ R10 ≥ 0.1{PENDING}", "规则 + AI",
       "AI 按产品类型（D003）比较订单电量与金额结构，判断是产品结构变化还是价格变化导致量价背离",
-      "是否成立、实际与目标单位电量销售额、偏离方向与主要产品类型")
-cause("RC07", "重点客户需求不足或待突破", "客户", ["C06", "C08", "C07"], "BR-C07",
+      "是否成立、实际与目标单位电量销售额、偏离方向与主要产品类型", dict(deviation=0.1))
+cause("RC07", "重点客户需求不足或待突破", "客户", "opportunity", ["C06", "C08", "C07"], "BR-C07",
       "C06 > 0，或客户等级 1 / 2 的 C08 > 0", "规则 + AI",
       "AI 归纳缺口客户的需求变化、份额与在途商机情况；证据不足时标注待核实",
-      "缺口客户清单、缺口电量、待突破客户数")
-cause("RC08", "发货办理逾期", "交付执行", ["S13"], "BR-C08",
+      "缺口客户清单、缺口电量、待突破客户数", dict(levels="1,2"))
+cause("RC08", "发货办理逾期", "交付执行", "shipment", ["S13"], "BR-C08",
       "S13 中“逾期未完成”或“逾期完成”电量 > 0", "规则",
       "按产品团队与客户定位逾期办理订单", "是否成立、逾期电量、涉及订单")
-cause("RC09", "客户需求变化（取消／变更）", "客户", ["O04", "O02"], "BR-C09",
+cause("RC09", "客户需求变化（取消／变更）", "客户", "order", ["O04", "O02"], "BR-C09",
       "O04 > 0", "规则 + AI",
       "AI 读取 D016 订单状态分组与订单备注，区分客户取消、数量变更与交期变更",
       "取消 / 变更订单清单、涉及电量与金额、变更类型")
+cause("RC10", "取数链路异常", "数据质量", "data", ["B01", "B02", "B03", "B04"], "BR-C10",
+      "DQ01 成立的查询中存在连接失败、超时或截断错误码", "规则",
+      "按错误码区分连接、权限、超时与行数上限；给出受影响指标清单",
+      "失败查询清单（指标、错误码、耗时）")
+cause("RC11", "源数据未维护或缺失", "数据质量", "data", ["B01", "B03", "S09", "C08"], "BR-C11",
+      "DQ02、DQ05 或 DQ06 成立（结果为空或单侧缺失）", "规则 + AI",
+      "AI 定位缺失的源字段（目标、日出货计划、客户目标）与维护部门；证据不足时标注待核实",
+      "缺失字段、涉及对象与维护责任方")
+cause("RC12", "指标口径不一致", "数据质量", "data", ["R01", "R02", "S04", "S05", "S07"], "BR-C12",
+      "DQ03 或 DQ04 成立（复算或结构不闭合）", "规则",
+      "列出不一致的指标对、两侧数值与差额，说明可能的口径差异（期间、去重、取消订单处理）",
+      "不一致指标对、差额与口径说明")
 
 ADVICE = OrderedDict()
 
@@ -496,6 +550,18 @@ advice("AC10", "RC03", "超期订单客户沟通与交期重排",
        "对超期 30 天以上订单与客户共同确认新交期并书面留痕，纳入排产优先级",
        "超期 30 天以上订单", "销售负责人 ＋ 计划经理", "10 个工作日",
        "超期 30 天以上订单数下降", "订单均有客户确认的新交期", ["S12", "S05"], "中")
+advice("AC11", "RC10", "排查取数链路并重跑",
+       "按失败查询的错误码排查数据库连接、权限与查询耗时，修复后重新分析本卡片",
+       "失败或超时的调用SQL", "数据平台负责人", "3 个工作日",
+       "全部调用SQL 状态为 ok", "重跑后查询目录无失败、超时或截断", ["B01", "B02", "B03", "B04"], "高")
+advice("AC12", "RC11", "补录缺失的源数据",
+       "按缺失字段通知维护部门补录目标、日出货计划或客户目标，补录后重新分析",
+       "结果为空或单侧缺失的指标对应源数据", "业务数据负责人（牵头）＋ 销售运营", "5 个工作日",
+       "DQ02、DQ05、DQ06 不再成立", "缺失字段补录完成并有补录记录", ["B01", "B03", "S09", "C08"], "高")
+advice("AC13", "RC12", "开展指标口径对账",
+       "对复算不一致或结构不闭合的指标对逐项对账，统一期间、去重与取消订单处理口径，更新指标说明",
+       "不一致的指标对", "销售运营（牵头）＋ 数据团队", "10 个工作日",
+       "DQ03、DQ04 不再成立", "形成口径对账记录并更新指标说明", ["R01", "R02", "S04"], "中")
 
 # ---------------------------------------------------------------- business rules
 RULES = OrderedDict()
@@ -529,34 +595,34 @@ brule("BR-Q07", "共同分析同期间约束",
       "全部风险与根因", "期间不一致的证据不合并；缺失环节在结果中披露", "—", "口径规则")
 brule("BR-Q08", "跨环节不混算", "不同业务状态（预测 / 订单 / 发货）只做关联比较，不相加为同一指标",
       "R03、C09、RK03、RK05", "跨环节比较须注明各自口径与观察时间", "—", "口径规则")
-brule("BR-DQ01", "缺值不补零", "任一输入缺失时相应指标保持 NULL，不以 0 参与比较；风险规则输入缺失时交由模型判断或标注无法判定",
+brule("BR-DQ01", "缺值不补零", "任一输入缺失时相应指标保持 NULL，不以 0 参与比较；问题规则输入缺失时交由模型判断或标注无法判定",
       "全部指标", "缺值条数在结果明细披露", "—", "数据质量")
 
-for code, r in RISKS.items():
-    brule(r["rule"], f"{r['name']}判定", r["condition"], "指标计算完成后检测", r["level"],
-          "生成指标异常并登记风险实例", "异常判定")
+for code, r in ISSUES.items():
+    brule(r["rule"], f"{r['name']}判定", r["condition"],
+          "指标计算完成后检测" if r["kind"] == "metric" else "取数完成后检测", r["level"],
+          "登记问题实例（" + r["type"] + "）", "指标异常判定" if r["kind"] == "metric" else "数据问题判定")
 for code, c in CAUSES.items():
-    brule(c["rule"], f"{c['name']}成立判定", "、".join(c["indicators"]) + " 相关", "风险实例登记后",
+    brule(c["rule"], f"{c['name']}成立判定", "、".join(c["indicators"]) + " 相关", "问题实例登记后",
           c["condition"], "规则判定写入根因分析结果" if c["method"] == "规则"
           else "规则初筛后调用 AI 根因分析，结果需复核", "根因判定")
 brule("BR-D01", "行动建议生成", "根因成立后按行动建议模板生成，AI 补充具体对象、数字与时间（数字须来自指标结果）",
       "根因分析完成", "每个成立根因至少一条建议", "—", "决策规则")
 brule("BR-D02", "任务令下发", "行动建议经人工确认责任人与期限后合并为任务令下发",
       "建议确认后", "未确认的建议不下发", "按责任角色合并任务令", "决策规则")
-brule("BR-L01", "链路完整性", "每个风险至少一个候选根因；每个根因至少一条建议；每条建议只对应一个根因",
+brule("BR-L01", "链路完整性", "每个问题至少一个候选根因；每个根因至少一条建议；每条建议只对应一个根因",
       "本体生成与校验", "链路缺失时生成失败", "—", "治理规则")
 
 # ---------------------------------------------------------------- links
 links = []
 n = 0
-for rcode, r in RISKS.items():
+for rcode, r in ISSUES.items():
     for ccode in r["causes"]:
         for acode_, a in ADVICE.items():
             if a["cause"] != ccode:
                 continue
             n += 1
-            c = CAUSES[ccode]
-            links.append(dict(id=f"L{n:03d}", risk=rcode, cause=ccode, advice=acode_))
+            links.append(dict(id=f"L{n:03d}", issue=rcode, cause=ccode, advice=acode_))
 
 
 def names(codes):
@@ -564,17 +630,17 @@ def names(codes):
 
 
 # reverse relations
-cause_risks = defaultdict(list)
-for rcode, r in RISKS.items():
+cause_issues = defaultdict(list)
+for rcode, r in ISSUES.items():
     for ccode in r["causes"]:
-        cause_risks[ccode].append(rcode)
+        cause_issues[ccode].append(rcode)
 cause_advice = defaultdict(list)
 for acode_, a in ADVICE.items():
     cause_advice[a["cause"]].append(acode_)
-metric_risks, metric_causes, metric_advice = defaultdict(set), defaultdict(set), defaultdict(set)
-for rcode, r in RISKS.items():
+metric_issues, metric_causes, metric_advice = defaultdict(set), defaultdict(set), defaultdict(set)
+for rcode, r in ISSUES.items():
     for m in r["indicators"]:
-        metric_risks[m].add(rcode)
+        metric_issues[m].add(rcode)
 for ccode, c in CAUSES.items():
     for m in c["indicators"]:
         metric_causes[m].add(ccode)
@@ -650,7 +716,7 @@ for r in attr_rows:
 metric_header = ["指标编码", "指标名称", "分类或阶段", "所属节点", "指标定义", "业务规则", "指标类型", "统计单位",
                  "结果列", "聚合类型", "时间维度", "适用维度", "来源业务对象", "来源逻辑实体", "来源业务属性",
                  "物理字段或阶段参考", "当前看板对应编码", "当前看板SQL实际口径", "核对说明", "SQL实现状态",
-                 "版本变更", "触发风险", "判定根因", "跟踪行动建议", "链路角色", "调用SQL依赖CTE数",
+                 "版本变更", "触发问题", "判定根因", "跟踪行动建议", "链路角色", "调用SQL依赖CTE数",
                  "调用SQL依赖CTE", "调用SQL", "看板查询键", "看板SQL模板（原文）"]
 LE_BO = {r[2]: r[0] for r in le_rows}
 BO_NAME = {r[0]: r[1] for r in bo_rows}
@@ -663,7 +729,7 @@ for code, s in M.items():
             if en in used_fields and re.search(r"\b" + re.escape(en) + r"\b", s["sql"]):
                 attrs.append(f"{row[2]} {row[3]}（{en}）")
     roles = []
-    if metric_risks.get(code):
+    if metric_issues.get(code):
         roles.append("触发")
     if metric_causes.get(code):
         roles.append("判定")
@@ -683,7 +749,7 @@ for code, s in M.items():
         (f"{s['board']}（{s.get('label', '')}）" if s["board"] else "—"), s["board_caliber"],
         ("派生指标：输入缺失时结果为 NULL（BR-DQ01）" if s["derived"]
          else "调用SQL由看板模板渲染：去除可选筛选块，期间改为 parameters CTE；结果列沿用看板标识"),
-        s["status"], "V1 新建", "、".join(sorted(metric_risks.get(code, ()))),
+        s["status"], "V1 新建", "、".join(sorted(metric_issues.get(code, ()))),
         "、".join(sorted(metric_causes.get(code, ()))), "、".join(sorted(metric_advice.get(code, ()))),
         "、".join(roles) or "补充", len(s["cte"]), "、".join(s["cte"]), s["sql"], s["query_key"], s["template"],
     ])
@@ -698,10 +764,12 @@ for i, st in enumerate(steps.values(), 1):
     step_rows.append([i, st["name"], "是" if st["materialized"] else "否", "、".join(deps), "、".join(les),
                       "、".join(fields), "、".join(st["metrics"]), "看板查询模板中的公共步骤", st["text"]])
 
-risk_rows = [[r["code"], r["name"], r["desc"], NODE, "、".join(r["indicators"]), r["rule"], r["condition"],
-              r["level"], r["objects"], "、".join(r["causes"]), r["source"]] for r in RISKS.values()]
-cause_rows = [[c["code"], c["name"], c["group"], "、".join(cause_risks[c["code"]]), "、".join(c["indicators"]),
-               c["rule"], c["condition"], c["method"], c["ai"], c["output"], "、".join(cause_advice[c["code"]]),
+issue_rows = [[r["code"], r["name"], r["type"], r["desc"], NODE, "、".join(r["indicators"]), r["rule"],
+               r["condition"], r["level"], r["objects"], "、".join(r["causes"]), params_text(r["params"]),
+               r["source"]] for r in ISSUES.values()]
+cause_rows = [[c["code"], c["name"], c["group"], c["stage"], "、".join(cause_issues[c["code"]]),
+               "、".join(c["indicators"]), c["rule"], c["condition"], c["method"], c["ai"], c["output"],
+               params_text(c["params"]), "、".join(cause_advice[c["code"]]),
                "\n".join(f"{a} {ADVICE[a]['title']}（{ADVICE[a]['owner']}，{ADVICE[a]['deadline']}）"
                          for a in cause_advice[c["code"]])] for c in CAUSES.values()]
 advice_rows = [[a["code"], a["cause"], CAUSES[a["cause"]]["name"], a["title"], a["content"], a["object"],
@@ -710,8 +778,8 @@ advice_rows = [[a["code"], a["cause"], CAUSES[a["cause"]]["name"], a["title"], a
                 "参照商机获取节点 V3 行动建议模板"] for a in ADVICE.values()]
 link_rows = []
 for l in links:
-    r, c, a = RISKS[l["risk"]], CAUSES[l["cause"]], ADVICE[l["advice"]]
-    link_rows.append([l["id"], names(r["indicators"]), r["rule"], r["code"], r["name"], r["condition"],
+    r, c, a = ISSUES[l["issue"]], CAUSES[l["cause"]], ADVICE[l["advice"]]
+    link_rows.append([l["id"], names(r["indicators"]), r["rule"], r["code"], r["name"], r["type"], r["condition"],
                       c["code"], c["name"], names(c["indicators"]), c["rule"], c["method"], a["code"], a["title"],
                       a["owner"], a["deadline"], a["target"], names(a["tracking"]),
                       f"闭环（跟踪 {'、'.join(a['tracking'])}）", "确认后按责任角色合并为任务令下发"])
@@ -720,13 +788,13 @@ related = defaultdict(list)
 for code, s in M.items():
     for token in re.findall(r"BR-[A-Z]+\d+", s["rule"]):
         related[token].append(f"指标：{code}")
-for r in RISKS.values():
-    related[r["rule"]] += [f"风险：{r['code']} {r['name']}", "判定指标：" + "、".join(r["indicators"])]
+for r in ISSUES.values():
+    related[r["rule"]] += [f"问题（{r['type']}）：{r['code']} {r['name']}", "判定指标：" + "、".join(r["indicators"])]
 for c in CAUSES.values():
     related[c["rule"]] += [f"根因：{c['code']} {c['name']}", "判定指标：" + "、".join(c["indicators"])]
-related["BR-D01"] += ["根因：RC01—RC09", "行动建议：AC01—AC10", "运行记录：RUN07 行动建议记录、RUN08 建议措施项"]
-related["BR-D02"] += ["实体：LE13 任务令", "行动建议：AC01—AC10"]
-related["BR-L01"] += ["风险：RK01—RK08", "根因：RC01—RC09", "行动建议：AC01—AC10"]
+related["BR-D01"] += ["根因：RC01—RC12", "行动建议：AC01—AC13", "运行记录：RUN07 行动建议记录、RUN08 建议措施项"]
+related["BR-D02"] += ["实体：LE13 任务令", "行动建议：AC01—AC13"]
+related["BR-L01"] += ["问题：IS01—IS08、DQ01—DQ06", "根因：RC01—RC12", "行动建议：AC01—AC13"]
 rule_rows = [[b["code"], b["name"], b["desc"], b["trigger"], b["result"], b["action"], b["category"],
               "\n".join(dict.fromkeys(related.get(b["code"], [])))] for b in RULES.values()]
 
@@ -772,23 +840,25 @@ dr_rows = [
     ["DR18", "D051", "超期订未发", 3, "requestdeliveryby < 统计截止日（取 M0143）"],
 ]
 
-pending = [f"{r['code']} {r['name']}：{r['condition']}；分级 {r['level']}" for r in RISKS.values()
+pending = [f"{r['code']} {r['name']}：{r['condition']}；分级 {r['level']}" for r in ISSUES.values()
            if PENDING in r["condition"] + r["level"]]
 pending += [f"{c['code']} {c['name']}：{c['condition']}" for c in CAUSES.values() if PENDING in c["condition"]]
 n_attr_used = sum(1 for r in attr_rows if r[13] == "Y")
 n_sql = sum(1 for s in M.values() if s["sql"])
 explain = [
     ["范围", f"仅“{NODE}”卡片（穿透式问题分析 · 经营指标分组）。跨商机获取、订单接收、发货三个环节，分析销售额与出货量的共同问题。不含投标、报价。"],
-    ["链路", "源数据（ded_public）→ 指标 → 指标异常（业务规则 BR-A*）→ 风险 → 根因（规则 BR-C* 初筛 + 大模型）→ 行动建议 → 任务令（人工确认下发）"],
-    ["分层", "业务层：业务对象 BO01、BO02、BO03、BO04、BO06、BO07 及其逻辑实体、属性、映射；知识层：指标、业务规则、风险、根因、行动建议及链路；运行层：RUN01～RUN08。"],
+    ["链路", "源数据（ded_public）→ 指标 → 问题（指标异常 BR-A* / 数据问题 BR-DQ*）→ 根因（规则 BR-C* 初筛 + 大模型）→ 行动建议 → 任务令（人工确认下发）。"
+           "本卡片为“指标 → 问题”驱动，不设风险层：问题表取代风险表，与商机获取等环节卡片的风险表并列。"],
+    ["分层", "业务层：业务对象 BO01、BO02、BO03、BO04、BO06、BO07 及其逻辑实体、属性、映射；知识层：指标、业务规则、问题（指标异常 / 数据问题）、根因、行动建议及链路；运行层：RUN01～RUN08。"],
     ["依据", f"本体结构与通用口径：{REF.name}（sha256 {sha(REF)[:12]}）；业务属性：{DICT.name}（sha256 {sha(DICT)[:12]}）；"
            f"指标与调用SQL：{CSV.name}（sha256 {sha(CSV)[:12]}）；卡片现状：bi_agent/cockpit/combined.py 与 sales-shipment-issues 组件。"],
     ["规模", f"业务对象 {len(bo_rows)}；逻辑实体 {len(le_rows)}（源数据 {len(le_rows) - 1}、任务令 1）；业务属性 {len(attr_rows)}（本卡片使用 {n_attr_used}）；"
            f"实体关系 {len(er_rows)}；维度 {len(dim_rows)}；指标 {len(M)}（含调用SQL {n_sql}、派生 {len(M) - n_sql}）；业务规则 {len(RULES)}；"
-           f"风险 {len(RISKS)}；根因 {len(CAUSES)}；行动建议 {len(ADVICE)}；完整链路 {len(links)} 条；SQL 计算步骤 {len(step_rows)}；工作表 18 张。"],
+           f"问题 {len(ISSUES)}（指标异常 {sum(1 for i in ISSUES.values() if i['kind'] == 'metric')}、数据问题 {sum(1 for i in ISSUES.values() if i['kind'] == 'data')}）；根因 {len(CAUSES)}；行动建议 {len(ADVICE)}；完整链路 {len(links)} 条；SQL 计算步骤 {len(step_rows)}；工作表 18 张。"],
     ["编码", "业务对象、逻辑实体与业务属性沿用商机获取节点编码（新增 LE19、LE20）；指标为本卡片编码（B 基础 / R 风险 / O 订单 / S 发货 / C 根因判定），"
-           "“当前看板对应编码”列对应看板指标；风险 RK、根因 RC、行动建议 AC、规则 BR 为本卡片独立编号。"],
-    ["链路闭环", "指标（触发）→ 风险 → 根因（判定指标）→ 行动建议（跟踪指标回到指标库）；每个根因至少一条行动建议，每条行动建议只对应一个根因；根因“关联风险”由风险“候选根因”反向生成。"],
+           "“当前看板对应编码”列对应看板指标；问题 IS（指标异常）/ DQ（数据问题）、根因 RC、行动建议 AC、规则 BR 为本卡片独立编号。"
+           "问题与根因的“判定参数”列为运行时规则函数读取的阈值（key=value）。"],
+    ["链路闭环", "指标（触发）→ 问题 → 根因（判定指标）→ 行动建议（跟踪指标回到指标库）；每个问题至少一个候选根因，每个根因至少一条行动建议，每条行动建议只对应一个根因；根因“关联问题”由问题“候选根因”反向生成。"],
     ["与商机卡片关系", "RC01 上游商机预测覆盖不足直接引用商机获取卡片（销售额口径明细）的 RK01 判定；本卡片不重复商机获取节点的商机级根因，只做销售额 × 出货量 × 订单的交叉判断。"],
     ["调用 SQL 用法", "复制“指标”表“调用SQL”列整段到客户 PG（ded_public）执行；改统计期间只改 parameters 中 start_date / end_exclusive；"
                   "observed_at 为观察时点（看板原 SQL 中的当前时间统一改为引用它），复现历史结果时改为当时的观察时点；"
@@ -798,9 +868,10 @@ explain = [
     ["待确认", "以下阈值本体无专家依据，暂按建议值填写，需业务确认后定稿：\n" + "\n".join(pending)],
     ["数据缺口", "C07 / C08 客户电量单位为 MWh（看板口径），与 GWh 指标比较时需换算；S09 计划外发货在计划缺失或行匹配不唯一时返回空值；"
               "LE19 / LE20 字段空值率字典未统计。"],
-    ["版本", "V1（2026-11-14 生成）：基于商机获取节点 V3 无投标·周期红字同步版结构与看板指标清单 202611141015 首次建立。"],
+    ["版本", "V2（2026-11-14）：改为“指标 → 问题”驱动，风险表替换为问题表（指标异常 IS01～IS08、数据问题 DQ01～DQ06），"
+           "新增数据质量根因 RC10～RC12 与建议 AC11～AC13，问题与根因增加机器可读的判定参数。V1 保持不变。"],
 ]
-write("说明", [f"亿纬锂能本体 · {NODE} V1", ""], explain, {f"亿纬锂能本体 · {NODE} V1": 18, "": 120})
+write("说明", [f"亿纬锂能本体 · {NODE} V2", ""], explain, {f"亿纬锂能本体 · {NODE} V2": 18, "": 120})
 write("业务对象", bo_header, bo_rows)
 write("对象关系", bor_header, bor_rows)
 write("逻辑实体", le_header, le_rows)
@@ -816,19 +887,20 @@ write("指标SQL计算步骤", ["序号", "步骤CTE", "物化", "依赖步骤",
                         "SQL片段"], step_rows, {"SQL片段": 80})
 write("业务规则", ["规则编码", "规则名称", "规则描述", "触发条件", "判断或结果", "处置动作", "规则类别", "关联本体元素"],
       rule_rows, {"规则描述": 50, "判断或结果": 40, "关联本体元素": 36})
-write("风险", ["风险编码", "风险名称", "风险描述", "节点", "触发指标", "异常判定规则", "成立条件", "风险等级规则", "影响对象",
-             "候选根因", "专家来源"], risk_rows, {"成立条件": 40, "风险等级规则": 40})
-write("根因", ["根因编码", "根因名称", "根因分组", "关联风险", "判定指标", "根因成立规则", "成立条件", "判定方式", "AI 分析要点",
-             "输出", "行动建议编码", "行动建议"], cause_rows, {"成立条件": 36, "AI 分析要点": 40, "输出": 30, "行动建议": 36})
+write("问题", ["问题编码", "问题名称", "问题类型", "问题描述", "节点", "触发指标", "判定规则", "成立条件", "问题等级规则",
+             "影响对象", "候选根因", "判定参数", "来源"], issue_rows, {"成立条件": 40, "问题等级规则": 40})
+write("根因", ["根因编码", "根因名称", "根因分组", "所属环节", "关联问题", "判定指标", "根因成立规则", "成立条件", "判定方式",
+             "AI 分析要点", "输出", "判定参数", "行动建议编码", "行动建议"], cause_rows,
+      {"成立条件": 36, "AI 分析要点": 40, "输出": 30, "行动建议": 36})
 write("行动建议", ["行动建议编码", "对应根因", "根因名称", "行动建议", "行动内容", "作用对象", "责任角色", "期限", "目标值",
                "验收标准", "跟踪指标", "优先级", "生成方式", "来源"], advice_rows, {"行动内容": 44, "目标值": 30, "验收标准": 30})
-write("指标-风险-根因-行动建议链路", ["链路编号", "触发指标", "异常判定规则", "风险编码", "风险名称", "风险成立条件", "根因编码",
+write("指标-问题-根因-行动建议链路", ["链路编号", "触发指标", "判定规则", "问题编码", "问题名称", "问题类型", "问题成立条件", "根因编码",
                               "根因名称", "判定指标", "根因成立规则", "判定方式", "行动建议编码", "行动建议", "责任角色",
                               "期限", "目标值", "跟踪指标", "闭环", "下一步"], link_rows)
 write("分析运行记录模型", run_header, run_rows)
 wb.save(OUT)
 
-summary = dict(out=str(OUT), metrics=len(M), sql=n_sql, risks=len(RISKS), causes=len(CAUSES), advice=len(ADVICE),
+summary = dict(out=str(OUT), metrics=len(M), sql=n_sql, issues=len(ISSUES), causes=len(CAUSES), advice=len(ADVICE),
                links=len(links), rules=len(RULES), steps=len(step_rows), attrs=len(attr_rows), attrs_used=n_attr_used,
                entities=len(le_rows), relations=len(er_rows))
 print(json.dumps(summary, ensure_ascii=False))
