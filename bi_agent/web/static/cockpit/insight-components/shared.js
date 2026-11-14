@@ -20,6 +20,69 @@ export function cockpitApiBase() {
   return `${root}/api/cockpit`
 }
 
+// 深度分析: hand one card clause to the 360 智能分析 page.
+//
+// The clause (codes, wording, numbers, period) is stored on the server and the
+// analysis page opens in a new tab with the handoff id.  The card's own
+// ontology is not the analysis ontology: the agent re-anchors the clause in
+// the 流程360全局本体.
+export function appRootPath() {
+  return cockpitApiBase().replace(/\/api\/cockpit$/, '')
+}
+
+export function deepAnalysisPayload(kind, item, context = {}) {
+  const clause = source => source && ({
+    code: String(source.riskCode || source.causeCode || source.code || ''),
+    title: String(source.title || source.name || ''),
+    description: String(source.description || ''),
+    level: String(source.riskLevel || source.level || ''),
+    status: String(source.statusLabel || ''),
+    decidedBy: String(source.decidedBy || ''),
+    metricCodes: Array.isArray(source.metricCodes) ? source.metricCodes.slice(0, 20) : [],
+    linkedRisks: Array.isArray(source.linkedRisks) ? source.linkedRisks.slice(0, 12) : [],
+    inferred: Boolean(source.inferred),
+  })
+  const ids = new Set(Array.isArray(item?.evidenceIds) ? item.evidenceIds : [])
+  const facts = (context.facts || []).filter(fact => fact && ids.has(fact.id)).slice(0, 12)
+    .map(fact => ({label: fact.label, value: fact.value, unit: fact.unit || ''}))
+  return {
+    kind,
+    clause: clause(item),
+    period: String(context.period || '').slice(0, 7),
+    measurementDate: String(context.measurementDate || '').slice(0, 10),
+    card: {stage: context.stage || '', title: context.title || '', ontology: context.ontology || '',
+      slot: context.slot || ''},
+    siblings: (context.siblings || []).filter(other => other !== item).slice(0, 20).map(clause),
+    facts,
+  }
+}
+
+export async function openDeepAnalysis(payload, {root = appRootPath(), win = window} = {}) {
+  // Open the tab inside the click, before any await, so it is not blocked.
+  const tab = win.open('about:blank', '_blank')
+  try {
+    const response = await win.fetch(`${root}/api/analysis360/handoff`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}))
+      throw new Error(detail.detail || `深度分析暂不可用（${response.status}）`)
+    }
+    const {id} = await response.json()
+    const url = `${root}/workbench?a360=${encodeURIComponent(id)}`
+    if (tab) {
+      tab.opener = null
+      tab.location.replace(url)
+    } else {
+      win.location.assign(url)
+    }
+    return url
+  } catch (error) {
+    if (tab) tab.close()
+    throw error
+  }
+}
+
 export function cockpitIdentityId() {
   const value = Number(new URLSearchParams(location.search).get('id'))
   return value === 2 ? 2 : 1
@@ -446,8 +509,38 @@ export function createStageRiskComponent(options = {}) {
       // The 共同问题 card opens with its overall summary (rule tally on the
       // ontology path, the whole-card summary on the older path).
       const showOverallSummary = Boolean(options.showOverallSummary)
+      // 深度分析 on every risk / problem and cause row (advice has none).
+      const deepAnalysisError = ref('')
+      const deepAnalysisBusy = ref('')
+      const deepAnalysis = async (kind, item) => {
+        if (deepAnalysisBusy.value) return
+        const result = props.analysis?.result || {}
+        deepAnalysisError.value = ''
+        deepAnalysisBusy.value = item.id || item.riskCode || item.causeCode || kind
+        // A cause names the risks it explains by their ontology codes.
+        const linked = kind === 'cause' ? [...new Set(item.findingIds || [])]
+          .map(id => insight.findings.value.find(finding => finding.id === id)?.riskCode).filter(Boolean) : []
+        const clause = kind === 'cause' && !(item.linkedRisks || []).length ? {...item, linkedRisks: linked} : item
+        try {
+          await openDeepAnalysis(deepAnalysisPayload(
+            kind === 'cause' ? 'cause' : (primaryLabel === '问题' ? 'issue' : 'risk'), clause, {
+              period: props.analysis?.period || result.period || props.slotProps?.period || '',
+              measurementDate: result.measurementDate || result.trace?.measurementDate || '',
+              stage: displayStage.value, title: props.slotProps?.title || '',
+              ontology: result.trace?.ontology || result.ontology?.name || '',
+              slot: props.slotProps?.slotId || '',
+              siblings: (kind === 'cause' ? analysisDimensions.value : insight.findings.value)
+                .filter(other => other !== item),
+              facts: insight.facts.value,
+            }), {root: String(taskApiBase.value).replace(/\/api\/cockpit$/, '')})
+        } catch (error) {
+          deepAnalysisError.value = error?.message || '深度分析暂不可用'
+        } finally {
+          deepAnalysisBusy.value = ''
+        }
+      }
       return { ...insight, ...taskOrder, displayStage, primaryLabel, judgementGroups, analysisDimensions,
-               showOverallSummary, showSectionSummaries }
+               showOverallSummary, showSectionSummaries, deepAnalysis, deepAnalysisError, deepAnalysisBusy }
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
@@ -465,10 +558,13 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【{{ primaryLabel }}】</span>
               {{ displayStage }}当前{{ primaryLabel }}判断
             </div>
+            <div v-if="deepAnalysisError" class="stage-risk-analysis__deep-error">{{ deepAnalysisError }}</div>
             <div v-if="showSectionSummaries && riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">{{ primaryLabel }}{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ finding.issueType }}】</template>{{ finding.title }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
+                <button type="button" class="stage-risk-analysis__deep" :disabled="Boolean(deepAnalysisBusy)"
+                        :title="'在 360 智能分析中打开这条' + primaryLabel" @click="deepAnalysis('risk', finding)">深度分析</button>
                 <details v-if="traces[finding.id] && (traces[finding.id].rules.length || traces[finding.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ distinctEvidenceCount(finding) }} 条证据</summary>
                   <div class="stage-risk-analysis__trace-body">
@@ -535,6 +631,8 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ dimension.missingEvidence.join('；') }}</small>
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
+                <button type="button" class="stage-risk-analysis__deep" :disabled="Boolean(deepAnalysisBusy)"
+                        title="在 360 智能分析中打开这条根因" @click="deepAnalysis('cause', dimension)">深度分析</button>
                 <details v-if="traces[dimension.id] && (traces[dimension.id].rules.length || traces[dimension.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ evidenceFor(dimension).length }} 条证据</summary>
                   <div class="stage-risk-analysis__trace-body">

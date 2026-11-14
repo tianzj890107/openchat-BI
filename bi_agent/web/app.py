@@ -82,6 +82,11 @@ logger = logging.getLogger(__name__)
 
 
 REPORT_AGENT_NAME = "report-analyst"
+# 360 智能分析: a separate agent on the 流程360全局本体, entered from the
+# cockpit cards' 深度分析 buttons.  Session ids that were handed over stay 360
+# sessions, also after their in-memory session object has been reaped.
+ANALYSIS360_AGENT_NAME = "analysis360"
+_ANALYSIS360_SESSIONS: dict[str, dict] = {}
 REPORTGEN_AGENT_NAME = "report-generator"
 
 # Hard cap so the multi-report system prompt doesn't blow past the model's
@@ -663,6 +668,12 @@ def configure(
         available = ", ".join(reg.list_names()) or "(none)"
         raise RuntimeError(f"Agent '{agent_name}' not found. Available: {available}")
     STATE.agent_def = agent_def
+    # 360 智能分析 tool schemas; each 360 session binds its own executors.
+    from open_claude.tools import register_tool as _register_tool
+    from ..analysis360 import tools as _analysis360_tools
+    for _schema in _analysis360_tools.schemas():
+        _register_tool(_schema, _analysis360_tools.unbound_executor)
+    _ANALYSIS360_SESSIONS.clear()
 
     # Report store (PDF/Word uploads for the report-analysis mode)
     STATE.report_store = ReportStore(cwd)
@@ -839,6 +850,18 @@ class ChatRequest(BaseModel):
     message: str
     visible_user_text: Optional[str] = None
     session_id: Optional[str] = None
+    # Set by the analysis page on the first turn after a card's 深度分析 click.
+    analysis360_handoff: Optional[str] = None
+
+
+class Analysis360HandoffRequest(BaseModel):
+    kind: str
+    clause: dict
+    period: Optional[str] = None
+    measurementDate: Optional[str] = None
+    card: Optional[dict] = None
+    siblings: Optional[List[dict]] = None
+    facts: Optional[List[dict]] = None
 
 
 class ChoiceRequest(BaseModel):
@@ -2483,6 +2506,9 @@ def reset_session(session_id: str = "") -> JSONResponse:
             STATE.sessions.pop(key, None)
         else:
             STATE.session = None
+        if key in _ANALYSIS360_SESSIONS:
+            # A new conversation in a 360 page stays 360, without the old clause.
+            _ANALYSIS360_SESSIONS[key] = {}
     return JSONResponse({"ok": True})
 
 
@@ -3075,11 +3101,50 @@ def delete_conversation(cid: str) -> JSONResponse:
     return JSONResponse({"ok": bool(local_ok)})
 
 
+@app.post("/api/analysis360/handoff")
+def analysis360_handoff(req: Analysis360HandoffRequest) -> JSONResponse:
+    """Store a card clause for 深度分析; the analysis page opens with the id."""
+    from ..analysis360 import handoff as a360_handoff
+    try:
+        handoff_id, context = a360_handoff.STORE.put(req.model_dump())
+    except a360_handoff.HandoffRejected as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return JSONResponse({"id": handoff_id, "prompt": a360_handoff.visible_text(context)})
+
+
+@app.get("/api/analysis360/handoff/{handoff_id}")
+def analysis360_handoff_get(handoff_id: str) -> JSONResponse:
+    from ..analysis360 import handoff as a360_handoff
+    context = a360_handoff.STORE.get(handoff_id)
+    if context is None:
+        raise HTTPException(404, "深度分析交接已失效，请回到卡片重新点击“深度分析”")
+    return JSONResponse({"id": handoff_id, "kind": context["kind"],
+                         "prompt": a360_handoff.visible_text(context),
+                         "clause": context["clause"], "card": context["card"], "period": context["period"]})
+
+
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     message = (req.message or "").strip()
     if not message:
         raise HTTPException(400, "empty message")
+    if req.analysis360_handoff:
+        # A card's 深度分析: this session becomes a 360 session and its first
+        # turn is the handed-over clause, not the text typed in the page.
+        from ..analysis360 import handoff as a360_handoff
+        context = a360_handoff.STORE.get(req.analysis360_handoff)
+        if context is None:
+            raise HTTPException(400, "深度分析交接已失效，请回到卡片重新点击“深度分析”")
+        session = _ensure_analysis360_session(req.session_id, context)
+        try:
+            slot, lease, turn_id, ticket, cancel = _begin_turn("data", req.session_id)
+        except HTTPException as exc:
+            return _turn_guard_json_response(exc)
+        return _run_turn_stream(
+            session,
+            session.generate_turn(a360_handoff.opening_message(context), a360_handoff.visible_text(context)),
+            slot, lease, turn_id, ticket, cancel,
+        )
     session = _ensure_session(req.session_id)
     try:
         slot, lease, turn_id, ticket, cancel = _begin_turn("data", req.session_id)
@@ -3906,6 +3971,49 @@ def report_choice(req: ChoiceRequest):
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _build_analysis360_session(key: str, context: Optional[dict]) -> WebSession:
+    """A session of the 360 智能分析 agent, bound to its own analysis run."""
+    from ..analysis360 import tools as a360_tools
+    source = _source_for_session(key)
+    agent_def = get_agent_def_registry().get(ANALYSIS360_AGENT_NAME)
+    if agent_def is None or source.ontology_store is None:
+        raise HTTPException(500, "360 智能分析未配置：缺少 analysis360 Agent 定义")
+    run = a360_tools.Run(handoff=context or None)
+    header = ("# 当前能力：360 智能分析\n"
+              f"- 全局本体：{run.config['ontology']}（{run.config['version']}）\n"
+              "- 数据只来自全局本体登记的只读查询；不使用通用智能分析的本体、指标或数据源。")
+    session = WebSession(
+        cwd=STATE.cwd,
+        agent_def=agent_def,
+        ontology_store=source.ontology_store,
+        context_header=header,
+        role_block=_role_block(key),
+        tool_executors=a360_tools.build_executors(run),
+    )
+    session.analysis360_run = run
+    return session
+
+
+def _ensure_analysis360_session(session_id: Optional[str], context: dict) -> WebSession:
+    """Make ``session_id`` a 360 session for the handed-over clause.
+
+    A new handoff starts a new analysis run; the previous in-memory session of
+    this id is replaced (saved conversations are not touched).
+    """
+    key = _session_key(session_id)
+    _reap_idle_sessions()
+    session = _build_analysis360_session(key, context)
+    with STATE.registry_lock:
+        if key:
+            STATE.sessions[key] = session
+            _ANALYSIS360_SESSIONS[key] = context
+        else:
+            STATE.session = session
+            _ANALYSIS360_SESSIONS[""] = context
+        STATE.session_slots.ensure(_slot_key("data", key))
+    return session
+
+
 def _ensure_session(session_id: Optional[str] = None) -> WebSession:
     key = _session_key(session_id)
     _reap_idle_sessions()
@@ -3914,6 +4022,19 @@ def _ensure_session(session_id: Optional[str] = None) -> WebSession:
         if existing is not None:
             STATE.session_slots.ensure(_slot_key("data", key)).touch()
             return existing
+        analysis360_context = _ANALYSIS360_SESSIONS.get(key)
+    if key in _ANALYSIS360_SESSIONS:
+        # The 360 session object was reaped; the id stays a 360 session.
+        session = _build_analysis360_session(key, analysis360_context)
+        with STATE.registry_lock:
+            if key:
+                STATE.sessions.setdefault(key, session)
+                session = STATE.sessions[key]
+            else:
+                STATE.session = STATE.session or session
+                session = STATE.session
+            STATE.session_slots.ensure(_slot_key("data", key))
+        return session
     # Not present.  Build outside the registry lock (never hold it across
     # executor registration / any slow work), then re-check: two concurrent
     # first requests may both build, but only one instance wins the registry

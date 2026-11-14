@@ -229,6 +229,13 @@ _SOP_TOOL_STEP: dict[str, tuple[int, str]] = {
     "TableGenerate": (SOP_STEP_QUERY, "生成数据表格"),
     "ChartGenerate": (SOP_STEP_QUERY, "生成图表"),
     "ChartGenerateMultiDim": (SOP_STEP_QUERY, "生成图表"),
+    # 360 智能分析: the access strategy's interfaces on the same six steps.
+    "G360ResolveScope": (SOP_STEP_INTENT, "解析分析范围"),
+    "G360GetSubgraph": (SOP_STEP_ONTOLOGY, "装配全局本体子图"),
+    "G360ExecuteQuery": (SOP_STEP_QUERY, "执行登记查询"),
+    "G360DrillRelation": (SOP_STEP_QUERY, "按实体关系下钻"),
+    "G360EvaluateAndRecord": (SOP_STEP_ROOTCAUSE, "证据裁决并记录"),
+    "G360DraftAndRecheck": (SOP_STEP_DECISION, "生成建议与复检计划"),
 }
 
 # Recovery (phase 2) — statuses that end the current recovery turn.  When a
