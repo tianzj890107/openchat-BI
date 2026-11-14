@@ -29,7 +29,11 @@ export const TaskOrderDialog = Vue.defineComponent({
     }
     return {readonly, confirmed, typeLabel}
   },
+  // The dialog is rendered under <body>: a card can sit inside a dashboard
+  // container with its own stacking context (pro-bi split containers set
+  // z-index: 0), where a fixed overlay would stay under later cards.
   template: `
+    <Teleport to="body">
     <div class="task-order-dialog__backdrop" role="dialog" aria-modal="true" aria-label="任务令草稿">
       <div class="task-order-dialog">
         <div class="task-order-dialog__head">
@@ -112,5 +116,6 @@ export const TaskOrderDialog = Vue.defineComponent({
         </div>
       </div>
     </div>
+    </Teleport>
   `,
 })

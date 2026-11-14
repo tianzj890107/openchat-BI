@@ -57,6 +57,14 @@ test('shared dialog exposes editable structured fields and explicit confirmation
   assert.doesNotMatch(dialog, /18837823993|mobile|phoneNumber|recipients\s*:/i)
 })
 
+test('the task-order dialog renders under body so no card can cover it', () => {
+  // A card may sit in a container with its own stacking context (pro-bi split
+  // containers use z-index: 0); a fixed overlay inside it stays under later
+  // cards.  Teleporting to <body> puts the dialog on the page's top layer.
+  assert.match(dialog, /<Teleport to="body">\s*<div class="task-order-dialog__backdrop"/)
+  assert.match(dialog, /<\/div>\s*<\/Teleport>\s*`/)
+})
+
 test('the legacy shipment task slot is hidden after consolidating the entry point', () => {
   assert.match(shipmentShim, /Compatibility shim/)
   assert.match(shipmentShim, /display:none/)
