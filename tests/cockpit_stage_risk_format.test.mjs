@@ -30,7 +30,7 @@ test('shared stage risk component highlights text and keeps the display owner ro
   assert.match(shared, /distinctEvidenceCount/);
   assert.match(shared, /traceFor/);
   assert.match(shared, /识别的规则/);
-  assert.match(shared, /命中的本体/);
+  assert.doesNotMatch(shared, /命中的本体/);
   assert.match(shared, /取数 SQL/);
   assert.match(shared, /ruleName/);
   assert.match(shared, /rulesOntology/);

@@ -5,7 +5,9 @@ import { readFile } from 'node:fs/promises';
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const shared = await read('../bi_agent/web/static/cockpit/insight-components/shared.js');
 const index = await read('../bi_agent/web/static/index.html');
-const { withHandoff, isChatRequest, HANDOFF_FIELD } = await import('../bi_agent/web/static/analysis360-handoff.mjs');
+const {
+  withHandoff, withAnalysis360Routes, analysis360ApiPath, isChatRequest, HANDOFF_FIELD,
+} = await import('../bi_agent/web/static/analysis360-handoff.mjs');
 
 test('the handoff id rides on the first chat request only', async () => {
   const sent = [];
@@ -27,18 +29,28 @@ test('only POST …/api/chat is a chat request', () => {
   assert.equal(isChatRequest('/root/api/choice', {method: 'POST'}), false);
 });
 
-test('the analysis page loads the handoff module', () => {
-  assert.match(index, /static\/analysis360-handoff\.mjs/);
+test('the analysis window routes chat and choices through 360-only endpoints', async () => {
+  assert.equal(analysis360ApiPath('/app/api/chat', 'POST'), '/app/api/analysis360/chat');
+  assert.equal(analysis360ApiPath('/app/api/choice?x=1', 'POST'), '/app/api/analysis360/choice?x=1');
+  assert.equal(analysis360ApiPath('/app/api/chat', 'GET'), '/app/api/chat');
+  const sent = [];
+  const fetcher = withAnalysis360Routes(async (url, init) => { sent.push([url, init]); return {ok: true}; });
+  await fetcher('/app/api/chat', {method: 'POST', body: '{}'});
+  await fetcher('/app/api/choice', {method: 'POST', body: '{}'});
+  assert.deepEqual(sent.map(([url]) => url), ['/app/api/analysis360/chat', '/app/api/analysis360/choice']);
 });
 
-test('risk, problem and cause rows have 深度分析; advice rows do not', () => {
-  assert.match(shared, /@click="deepAnalysis\('risk', finding\)">深度分析<\/button>/);
-  assert.match(shared, /@click="deepAnalysis\('cause', dimension\)">深度分析<\/button>/);
-  assert.equal((shared.match(/>深度分析<\/button>/g) || []).length, 2);
-  const advice = shared.slice(shared.indexOf('v-for="(item, index) in openRecommendations"'));
-  assert.doesNotMatch(advice.slice(0, 1500), /深度分析/);
-  // The problem-driven card hands over an "issue".
-  assert.match(shared, /kind === 'cause' \? 'cause' : \(primaryLabel === '问题' \? 'issue' : 'risk'\)/);
+test('the analysis page loads the handoff module', () => {
+  assert.match(index, /static\/analysis360-handoff\.mjs/);
+  assert.match(index, /document\.documentElement\.dataset\.analysis360 = '1'/);
+  assert.match(index, /html\[data-analysis360="1"\] #antd-sidebar-root/);
+  assert.match(index, /html\[data-analysis360="1"\] \.runtime-sidebar-bridge/);
+});
+
+test('cockpit rows no longer render 深度分析 buttons', () => {
+  assert.doesNotMatch(shared, />深度分析<\/button>/);
+  assert.doesNotMatch(shared, /deepAnalysis\('risk'/);
+  assert.doesNotMatch(shared, /deepAnalysis\('cause'/);
 });
 
 test('the clause is posted to the server and the page opens with only its id', async () => {
@@ -59,12 +71,14 @@ test('the clause is posted to the server and the page opens with only its id', a
   assert.equal(payload.siblings[0].code, 'RC06');
   const calls = [];
   const tab = {location: {replace: url => calls.push(['tab', url])}, close: () => calls.push(['closed'])};
-  const win = {open: () => tab, fetch: async (url, init) => {
+  const opens = [];
+  const win = {open: (...args) => { opens.push(args); return tab; }, fetch: async (url, init) => {
     calls.push(['post', url, JSON.parse(init.body).clause.code]);
     return {ok: true, json: async () => ({id: 'h-1'})};
   }};
   const url = await module.openDeepAnalysis(payload, {root: '/app', win});
   assert.equal(url, '/app/workbench?a360=h-1');
+  assert.match(opens[0][2], /popup=yes/);
   assert.deepEqual(calls, [['post', '/app/api/analysis360/handoff', 'RC01'], ['tab', '/app/workbench?a360=h-1']]);
   assert.equal(tab.opener, null);
   // A refused handoff closes the blank tab and reports the reason.

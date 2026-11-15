@@ -58,8 +58,10 @@ export function deepAnalysisPayload(kind, item, context = {}) {
 }
 
 export async function openDeepAnalysis(payload, {root = appRootPath(), win = window} = {}) {
-  // Open the tab inside the click, before any await, so it is not blocked.
-  const tab = win.open('about:blank', '_blank')
+  // Open the window inside the click, before any await, so it is not blocked.
+  // The 360 surface hides its navigation and leaves only chat + dashboard.
+  const tab = win.open('about:blank', '_blank',
+    'popup=yes,width=1440,height=900,resizable=yes,scrollbars=yes')
   try {
     const response = await win.fetch(`${root}/api/analysis360/handoff`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
@@ -497,8 +499,16 @@ export function createStageRiskComponent(options = {}) {
       const primaryLabel = options.primaryLabel || '风险'
       // The 商机获取 card lists each row only: no per-section summary line.
       const showSectionSummaries = options.sectionSummaries !== false
-      const judgementGroups = computed(() => insight.judgementGroups.value.map(group => (
-        group.kind === 'risks' ? {...group, title: primaryLabel} : group)))
+      // The 共同问题 card is problem-only; hiding a layer also hides its
+      // ontology judgement group, rather than leaving a cause/advice count in
+      // the evidence footer.
+      const showCauses = options.showCauses !== false
+      const showRecommendations = options.showRecommendations !== false
+      const judgementGroups = computed(() => insight.judgementGroups.value
+        .filter(group => group.kind === 'risks'
+          || (group.kind === 'causes' && showCauses)
+          || (group.kind === 'advice' && showRecommendations))
+        .map(group => (group.kind === 'risks' ? {...group, title: primaryLabel} : group)))
       const analysisDimensions = computed(() => riskDimensionLinks(
         props.analysis?.result?.analysisDimensions || [], insight.findings.value, primaryLabel))
       ensureTaskOrderStyle()
@@ -509,38 +519,8 @@ export function createStageRiskComponent(options = {}) {
       // The 共同问题 card opens with its overall summary (rule tally on the
       // ontology path, the whole-card summary on the older path).
       const showOverallSummary = Boolean(options.showOverallSummary)
-      // 深度分析 on every risk / problem and cause row (advice has none).
-      const deepAnalysisError = ref('')
-      const deepAnalysisBusy = ref('')
-      const deepAnalysis = async (kind, item) => {
-        if (deepAnalysisBusy.value) return
-        const result = props.analysis?.result || {}
-        deepAnalysisError.value = ''
-        deepAnalysisBusy.value = item.id || item.riskCode || item.causeCode || kind
-        // A cause names the risks it explains by their ontology codes.
-        const linked = kind === 'cause' ? [...new Set(item.findingIds || [])]
-          .map(id => insight.findings.value.find(finding => finding.id === id)?.riskCode).filter(Boolean) : []
-        const clause = kind === 'cause' && !(item.linkedRisks || []).length ? {...item, linkedRisks: linked} : item
-        try {
-          await openDeepAnalysis(deepAnalysisPayload(
-            kind === 'cause' ? 'cause' : (primaryLabel === '问题' ? 'issue' : 'risk'), clause, {
-              period: props.analysis?.period || result.period || props.slotProps?.period || '',
-              measurementDate: result.measurementDate || result.trace?.measurementDate || '',
-              stage: displayStage.value, title: props.slotProps?.title || '',
-              ontology: result.trace?.ontology || result.ontology?.name || '',
-              slot: props.slotProps?.slotId || '',
-              siblings: (kind === 'cause' ? analysisDimensions.value : insight.findings.value)
-                .filter(other => other !== item),
-              facts: insight.facts.value,
-            }), {root: String(taskApiBase.value).replace(/\/api\/cockpit$/, '')})
-        } catch (error) {
-          deepAnalysisError.value = error?.message || '深度分析暂不可用'
-        } finally {
-          deepAnalysisBusy.value = ''
-        }
-      }
       return { ...insight, ...taskOrder, displayStage, primaryLabel, judgementGroups, analysisDimensions,
-               showOverallSummary, showSectionSummaries, deepAnalysis, deepAnalysisError, deepAnalysisBusy }
+               showOverallSummary, showSectionSummaries, showCauses, showRecommendations }
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
@@ -558,13 +538,10 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【{{ primaryLabel }}】</span>
               {{ displayStage }}当前{{ primaryLabel }}判断
             </div>
-            <div v-if="deepAnalysisError" class="stage-risk-analysis__deep-error">{{ deepAnalysisError }}</div>
             <div v-if="showSectionSummaries && riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">{{ primaryLabel }}{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ finding.issueType }}】</template>{{ finding.title }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
-                <button type="button" class="stage-risk-analysis__deep" :disabled="Boolean(deepAnalysisBusy)"
-                        :title="'在 360 智能分析中打开这条' + primaryLabel" @click="deepAnalysis('risk', finding)">深度分析</button>
                 <details v-if="traces[finding.id] && (traces[finding.id].rules.length || traces[finding.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ distinctEvidenceCount(finding) }} 条证据</summary>
                   <div class="stage-risk-analysis__trace-body">
@@ -572,12 +549,6 @@ export function createStageRiskComponent(options = {}) {
                     <div v-for="rule in traces[finding.id].rules" :key="rule.code" class="stage-risk-analysis__trace-line">
                       {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
                     </div>
-                    <div class="stage-risk-analysis__trace-title">命中的本体</div>
-                    <div class="stage-risk-analysis__trace-line">{{ primaryLabel }}：{{ traces[finding.id].risks.join('；') || '—' }}</div>
-                    <div v-if="traces[finding.id].rulesOntology.length" class="stage-risk-analysis__trace-line">规则：{{ traces[finding.id].rulesOntology.join('；') }}</div>
-                    <div v-if="traces[finding.id].causes.length" class="stage-risk-analysis__trace-line">原因：{{ traces[finding.id].causes.join('；') }}</div>
-                    <div v-if="traces[finding.id].metrics.length" class="stage-risk-analysis__trace-line">指标：{{ traces[finding.id].metrics.join('；') }}</div>
-                    <div v-if="traces[finding.id].advice.length" class="stage-risk-analysis__trace-line">建议：{{ traces[finding.id].advice.join('；') }}</div>
                     <template v-if="traces[finding.id].sql.length">
                       <div class="stage-risk-analysis__trace-title">取数 SQL</div>
                       <details v-for="query in traces[finding.id].sql" :key="query.executionId || query.label" class="stage-risk-analysis__trace-query">
@@ -621,7 +592,7 @@ export function createStageRiskComponent(options = {}) {
             </div>
           </article>
 
-          <article v-if="analysisDimensions.length" class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
+          <article v-if="showCauses && analysisDimensions.length" class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
               按 {{ analysisDimensions.length }} 个业务环节展开原因分析
@@ -631,8 +602,6 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ dimension.missingEvidence.join('；') }}</small>
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
-                <button type="button" class="stage-risk-analysis__deep" :disabled="Boolean(deepAnalysisBusy)"
-                        title="在 360 智能分析中打开这条根因" @click="deepAnalysis('cause', dimension)">深度分析</button>
                 <details v-if="traces[dimension.id] && (traces[dimension.id].rules.length || traces[dimension.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ evidenceFor(dimension).length }} 条证据</summary>
                   <div class="stage-risk-analysis__trace-body">
@@ -640,12 +609,6 @@ export function createStageRiskComponent(options = {}) {
                     <div v-for="rule in traces[dimension.id].rules" :key="rule.code" class="stage-risk-analysis__trace-line">
                       {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
                     </div>
-                    <div class="stage-risk-analysis__trace-title">命中的本体</div>
-                    <div class="stage-risk-analysis__trace-line">{{ primaryLabel }}：{{ traces[dimension.id].risks.join('；') || '—' }}</div>
-                    <div v-if="traces[dimension.id].rulesOntology.length" class="stage-risk-analysis__trace-line">规则：{{ traces[dimension.id].rulesOntology.join('；') }}</div>
-                    <div v-if="traces[dimension.id].causes.length" class="stage-risk-analysis__trace-line">原因：{{ traces[dimension.id].causes.join('；') }}</div>
-                    <div v-if="traces[dimension.id].metrics.length" class="stage-risk-analysis__trace-line">指标：{{ traces[dimension.id].metrics.join('；') }}</div>
-                    <div v-if="traces[dimension.id].advice.length" class="stage-risk-analysis__trace-line">建议：{{ traces[dimension.id].advice.join('；') }}</div>
                     <template v-if="traces[dimension.id].sql.length">
                       <div class="stage-risk-analysis__trace-title">取数 SQL</div>
                       <details v-for="query in traces[dimension.id].sql" :key="query.executionId || query.label" class="stage-risk-analysis__trace-query">
@@ -689,7 +652,7 @@ export function createStageRiskComponent(options = {}) {
             </div>
           </article>
 
-          <article v-if="recommendations.length" class="stage-risk-analysis__card stage-risk-analysis__card--suggest stage-risk-analysis__panel">
+          <article v-if="showRecommendations && recommendations.length" class="stage-risk-analysis__card stage-risk-analysis__card--suggest stage-risk-analysis__panel">
             <div class="stage-risk-analysis__head">
               <div class="stage-risk-analysis__title">
                 <span class="stage-risk-analysis__mark stage-risk-analysis__mark--suggest">【建议】</span>
@@ -734,14 +697,14 @@ export function createStageRiskComponent(options = {}) {
                 <div>调用本体：{{ ontologyTrace.ontology }}（{{ ontologyTrace.version }}，配置 {{ ontologyTrace.digest }}）</div>
                 <div>指标 {{ ontologyTrace.metrics.length }} 项：{{ ontologyText(ontologyTrace.metrics) }}</div>
                 <div>{{ primaryLabel }}规则 {{ ontologyTrace.risks.length }} 条：{{ ontologyText(ontologyTrace.risks) }}</div>
-                <div>原因库 {{ ontologyTrace.causes.length }} 类：{{ ontologyText(ontologyTrace.causes) }}</div>
-                <div>建议库 {{ ontologyTrace.advice.length }} 条：{{ ontologyText(ontologyTrace.advice) }}</div>
+                <div v-if="showCauses">原因库 {{ ontologyTrace.causes.length }} 类：{{ ontologyText(ontologyTrace.causes) }}</div>
+                <div v-if="showRecommendations">建议库 {{ ontologyTrace.advice.length }} 条：{{ ontologyText(ontologyTrace.advice) }}</div>
               </div>
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>
             <details v-if="judgementGroups.length" class="stage-risk-analysis__foot stage-risk-analysis__judgement">
               <summary>本体判定明细：<template v-for="(group, index) in judgementGroups" :key="'sum-' + group.kind"><template v-if="index">，</template>{{ group.title }}命中 {{ group.hit }}/{{ group.items.length }}</template></summary>
-              <div class="stage-risk-analysis__judgement-head">先由规则函数判定；规则无法判定的条目逐条交给模型，失败的条目跳过；成立{{ primaryLabel }}若没有命中任何本体根因，再由模型依据本轮数据推理根因。</div>
+              <div class="stage-risk-analysis__judgement-head">先由规则函数判定；规则无法判定的条目逐条交给模型，失败的条目跳过。<template v-if="showCauses">成立{{ primaryLabel }}若没有命中任何本体根因，再由模型依据本轮数据推理根因。</template></div>
               <div v-for="group in judgementGroups" :key="group.kind" class="stage-risk-analysis__judgement-group">
                 <div class="stage-risk-analysis__judgement-title">{{ group.title }}：命中 {{ group.hit }} / 共 {{ group.items.length }}</div>
                 <div v-for="item in group.items" :key="group.kind + item.code"

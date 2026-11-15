@@ -40,8 +40,34 @@ export function withHandoff(fetchImpl, handoffId) {
   };
 }
 
+// The customer delivery does not expose the general `/api/chat` surface.  The
+// 360 workbench keeps the normal runtime, but its chat and AskUser choice calls
+// go through dedicated endpoints that refuse sessions without a 360 run.
+export function analysis360ApiPath(url, method) {
+  if (String(method || "GET").toUpperCase() !== "POST") return url;
+  const text = typeof url === "string" ? url : (url && url.url) || "";
+  let parsed;
+  try { parsed = new URL(text, "http://analysis360.local"); } catch (_) { return url; }
+  let suffix = "";
+  if (parsed.pathname.endsWith("/api/chat")) suffix = "/api/chat";
+  else if (parsed.pathname.endsWith("/api/choice")) suffix = "/api/choice";
+  if (!suffix) return url;
+  parsed.pathname = parsed.pathname.slice(0, -suffix.length) + "/api/analysis360" + suffix.slice(4);
+  if (/^[a-z]+:\/\//i.test(text)) return parsed.href;
+  return parsed.pathname + parsed.search + parsed.hash;
+}
+
+export function withAnalysis360Routes(fetchImpl) {
+  return function fetchForAnalysis360(input, init) {
+    const method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
+    const rewritten = analysis360ApiPath(input, method);
+    return fetchImpl(rewritten, init);
+  };
+}
+
 export function markMode(document, storage) {
   try { storage.setItem(MODE_KEY, "1"); } catch (_) { /* private mode */ }
+  if (document.documentElement) document.documentElement.dataset.analysis360 = "1";
   if (document.body) document.body.dataset.analysis360 = "1";
   document.title = "360 智能分析";
 }
@@ -51,9 +77,10 @@ export async function bootHandoff(window, document) {
   const handoffId = (url.searchParams.get(HANDOFF_PARAM) || "").trim();
   let stored = false;
   try { stored = window.sessionStorage.getItem(MODE_KEY) === "1"; } catch (_) { /* ignore */ }
+  if (handoffId || stored) markMode(document, window.sessionStorage);
   if (!handoffId) {
     // A reload of a 360 page keeps its label; the server keeps the session.
-    if (stored) markMode(document, window.sessionStorage);
+    if (stored) window.fetch = withAnalysis360Routes(window.fetch.bind(window));
     return false;
   }
   // Consume the parameter first so a refresh cannot repeat the handoff.
@@ -66,8 +93,7 @@ export async function bootHandoff(window, document) {
     return false;
   }
   const handoff = await response.json();
-  markMode(document, window.sessionStorage);
-  window.fetch = withHandoff(window.fetch.bind(window), handoffId);
+  window.fetch = withHandoff(withAnalysis360Routes(window.fetch.bind(window)), handoffId);
   const { input, button } = await waitForWorkbench(window, document);
   input.value = handoff.prompt || "深度分析";
   input.dispatchEvent(new window.Event("input", { bubbles: true }));

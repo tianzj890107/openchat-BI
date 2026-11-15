@@ -12,7 +12,23 @@ test('the combined card is problem driven on the stage card layout', () => {
   assert.match(source, /createStageRiskComponent\(\{/);
   assert.match(source, /primaryLabel: '问题'/);
   assert.match(source, /showOverallSummary: true/);
+  assert.match(source, /showCauses: false/);
+  assert.match(source, /showRecommendations: false/);
   assert.doesNotMatch(opportunity, /primaryLabel/);
+});
+
+test('problem-only cards hide cause, advice and their judgement groups', () => {
+  assert.match(shared, /const showCauses = options\.showCauses !== false/);
+  assert.match(shared, /const showRecommendations = options\.showRecommendations !== false/);
+  assert.match(shared, /v-if="showCauses && analysisDimensions\.length"/);
+  assert.match(shared, /v-if="showRecommendations && recommendations\.length"/);
+  // Evidence lists only the rule and the SQL; the matched ontology is gone.
+  assert.match(shared, /识别的规则/);
+  assert.match(shared, /取数 SQL/);
+  assert.doesNotMatch(shared, /命中的本体/);
+  assert.match(shared, /<template v-if="showCauses">成立\{\{ primaryLabel \}\}若没有命中任何本体根因/);
+  assert.match(shared, /group\.kind === 'causes' && showCauses/);
+  assert.match(shared, /group\.kind === 'advice' && showRecommendations/);
 });
 
 test('the shared card words its first layer by the primary label', () => {

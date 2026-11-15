@@ -134,10 +134,12 @@ def test_card_settles_problems_by_rule_and_ships_as_a_card():
     judgement = result["ontologyJudgement"]
     assert [i["code"] for i in judgement["risks"]] == list(ss.load_config()["issues"])
     assert result["summary"].startswith("本轮 14 项本体问题中")
-    causes = {c["causeCode"]: c for c in result["causes"]}
-    assert {"RC01", "RC03", "RC04", "RC05", "RC08", "RC09"} <= set(causes)
-    assert causes["RC03"]["stage"] == "shipment" and causes["RC01"]["stage"] == "opportunity"
-    assert result["recommendations"] and result["primaryLabel"] == "问题"
+    # The delivery is problem-only: do not run or publish causes/advice.
+    assert result["causes"] == [] and result["analysisDimensions"] == []
+    assert result["recommendations"] == [] and result["primaryLabel"] == "问题"
+    assert result["ontologyJudgement"]["causes"] == []
+    assert result["ontologyJudgement"]["advice"] == []
+    assert "根因" not in result["summary"] and "建议" not in result["summary"]
     # 39 SQL metrics share 33 statements: a dashboard combination query runs
     # once and feeds every metric it carries.
     assert len(result["queryCatalog"]) == 33
@@ -156,7 +158,7 @@ def test_a_failed_query_is_a_data_problem_not_a_failed_card():
     findings = {f["riskCode"]: f for f in card["result"]["findings"]}
     assert findings["DQ01"]["issueType"] == "数据问题" and findings["DQ01"]["riskLevel"] == "高"
     assert "B01 目标销售额（failed·RuntimeError）" in findings["DQ01"]["description"]
-    assert {c["causeCode"] for c in card["result"]["causes"]} >= {"RC10"}
+    assert card["result"]["causes"] == [] and card["result"]["recommendations"] == []
     assert card["status"] == "limited"
     failed = [q for q in card["result"]["queryCatalog"] if q["status"] == "failed"]
     assert [q["metricCodes"] for q in failed] == [["B01"]] and failed[0]["error"]["code"] == "RuntimeError"
@@ -177,7 +179,7 @@ def test_empty_core_metric_and_inconsistent_rates_are_data_problems():
     assert "B01 目标销售额" in findings["DQ02"]["description"]
     # 出货量达成率 0.9 vs 实绩 30 ÷ 目标 50 = 0.6.
     assert "出货量达成率 90.0%，按实绩 ÷ 目标复算为 60.0%" in findings["DQ03"]["description"]
-    assert {"RC11", "RC12"} <= {c["causeCode"] for c in card["result"]["causes"]}
+    assert card["result"]["causes"] == [] and card["result"]["recommendations"] == []
 
 
 def test_rule_gaps_go_to_the_model_one_problem_at_a_time():

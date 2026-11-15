@@ -1,17 +1,19 @@
-"""销售额／出货量共同问题分析 card: indicator → problem → cause → advice.
+"""销售额／出货量共同问题分析 card: indicator → problem.
 
 The card is problem driven, not risk driven.  Problems are either metric
 anomalies (an indicator against its target or threshold) or data problems
 (the evidence itself failed, is empty or disagrees with itself).
 
+Delivery is problem-only: the card reports which problems are established and
+their evidence.  It does not run cause inference and publishes no causes or
+advice.
+
 Everything is read from ``assets/sales-shipment/config.json``, built from the
-card's ontology workbook: every metric's executable SQL, every problem and
-cause condition with its thresholds, the links and the advice.  The run is
-rule first, like the 商机获取 card: rule functions settle what the data can
-settle, each remaining item goes to the model on its own, and a problem that
-no ontology cause explains gets one inference call.  A query that fails is
-reported as a data problem instead of failing the card; only a card with no
-usable query at all fails.
+card's ontology workbook: every metric's executable SQL and every problem
+condition with its thresholds.  The run is rule first, like the 商机获取 card:
+rule functions settle what the data can settle and each remaining item goes to
+the model on its own.  A query that fails is reported as a data problem instead
+of failing the card; only a card with no usable query at all fails.
 """
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import opportunity_v2 as v2
-from .opportunity_judgement import ONTOLOGY_RULES, judge_card, link_queries, make_item_judge
+from .opportunity_judgement import judge_card, link_queries, make_item_judge
 
 SLOT_ID = "sales-shipment-issues"
 STAGE = "combined"
@@ -68,20 +70,8 @@ def config_digest():
 # ---------------------------------------------------------------- model roles
 ROLE_PROMPT = (
     "你是储能业务销售运营分析师，请用客观、简洁的经营汇报用语：问题说明影响对象、"
-    "实际值与目标或阈值的差距，数据问题说明受影响的指标与数据来源；根因仅在证据充分时表述为已确认、"
-    "证据不足时标注「待核实」；建议写清责任角色、具体措施和复检指标。"
-)
-INFER_PROMPT = (
-    "销售额与出货量共同问题的根因推理。下面这条问题（risk 字段，可能是指标异常或数据问题）已经成立，"
-    "但本体中与它关联的根因规则都没有命中。请只依据 risk（问题的本体定义、判定规则与判定数据）、"
-    "ontologyCauses（各本体候选根因的定义、判定规则、判定结果和原因）和 data.metrics（只含本问题及其"
-    "候选根因涉及的指标，附本体口径与本轮取值）推理最可能导致该问题的根因。" + ONTOLOGY_RULES +
-    "不要重复已判定未命中的本体根因，也不要把它换一种说法重新提出，除非 data 中有相反证据。"
-    "最多给出 3 条，按可能性从高到低排列；数据不足以推理时 causes 返回空数组，并在 note 中写明缺少什么。"
-    "推理出的根因都未经规则确认，description 以「待核实」开头。"
-    '只返回 JSON：{"causes": [{"title": "不超过20字的根因名称", '
-    '"description": "不超过160字的推理依据，引用 data 中的具体数值", '
-    '"dataGaps": "需要补充核实的数据，没有则为空字符串"}], "note": ""}，不要输出其他内容。'
+    "实际值与目标或阈值的差距，数据问题说明受影响的指标与数据来源。只描述问题本身，"
+    "不推理根因，也不给出建议。"
 )
 
 
@@ -97,7 +87,7 @@ def summary_role():
             "总结时一律称“问题”，不要称“风险”。")
 
 
-item_judge = make_item_judge(role_prompt, INFER_PROMPT)
+item_judge = make_item_judge(role_prompt)
 
 
 # ---------------------------------------------------------------- data fetching
@@ -692,16 +682,16 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
         error.phase, error.code = "database_query", "ALL_QUERIES_FAILED"
         error.diagnostic_message = str(error)
         raise error
-    v2._report_progress(progress, "rules", message="规则函数判定问题与根因")
+    v2._report_progress(progress, "rules", message="规则函数判定问题")
     evaluated = evaluate(data, config, measured)
-    v2._report_progress(progress, "analysing", message="逐条判定规则无法确定的问题与根因")
-    view = dict(config, risks=config["issues"])
+    v2._report_progress(progress, "analysing", message="逐条判定规则无法确定的问题")
+    # The rule engine keeps the full ontology in the trace, but this delivery
+    # evaluates the issue layer only.
+    view = dict(config, risks=config["issues"], causes={}, advice={}, links={})
     judged = judge_card(
         evaluated, view, judge=judge, progress=progress, primary="issue", id_prefix="ss",
-        cause_stage=lambda code: (config["causes"].get(code) or {}).get("stage") or "data",
-        advice_type=lambda code, spec, linked: (
-            "remediation" if any(c.get("kind") == "verified" and c.get("status") == "supported" for c in linked or [])
-            else "investigation"))
+        # Problem-only delivery: do not run or publish causes and advice.
+        include_downstream=False)
     issue_types = {code: spec["type"] for code, spec in config["issues"].items()}
     for finding in judged["findings"]:
         finding["issueType"] = issue_types.get(finding["riskCode"], "")

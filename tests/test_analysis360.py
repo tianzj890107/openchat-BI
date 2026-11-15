@@ -454,13 +454,13 @@ class TestHandoffEndpoints:
         self.web.STATE.admission = AdmissionController(get_limits())
         self.web.STATE.session_slots = SessionSlotRegistry()
 
-    def _chat(self, body):
+    def _chat(self, body, path="/api/chat"):
         def script(messages, system_prompt, allowed_tools=None, **kwargs):
             self.seen = dict(messages=messages, system=system_prompt, tools=allowed_tools)
             yield {"type": "text", "text": "好的"}
             yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
         with patch("bi_agent.web.session.stream_message", side_effect=script):
-            return self.client.post("/api/chat", json=body)
+            return self.client.post(path, json=body)
 
     def _handoff(self):
         response = self.client.post("/api/analysis360/handoff", json=dict(
@@ -493,6 +493,18 @@ class TestHandoffEndpoints:
         assert self.web.STATE.sessions["tab-360"] is session
         self._chat(dict(message="你好", session_id="tab-general"))
         assert self.web.STATE.sessions["tab-general"].agent_def.name == "bi-analyst"
+
+    def test_customer_entry_has_a_360_only_chat_route(self):
+        refused = self._chat(dict(message="通用问题", session_id="general-only"), path="/api/analysis360/chat")
+        assert refused.status_code == 403
+        created = self._handoff()
+        first = self._chat(dict(message="深度分析", session_id="customer-360",
+                                analysis360_handoff=created["id"]), path="/api/analysis360/chat")
+        assert first.status_code == 200
+        assert self.web.STATE.sessions["customer-360"].agent_def.name == "analysis360"
+        later = self._chat(dict(message="下钻根因", session_id="customer-360"), path="/api/analysis360/chat")
+        assert later.status_code == 200
+        assert self.web.STATE.sessions["customer-360"].agent_def.name == "analysis360"
 
     def test_a_reaped_or_new_conversation_stays_360_and_an_expired_handoff_is_refused(self):
         created = self._handoff()

@@ -3123,8 +3123,7 @@ def analysis360_handoff_get(handoff_id: str) -> JSONResponse:
                          "clause": context["clause"], "card": context["card"], "period": context["period"]})
 
 
-@app.post("/api/chat")
-def chat(req: ChatRequest):
+def _chat_response(req: ChatRequest, *, analysis360_only: bool = False):
     message = (req.message or "").strip()
     if not message:
         raise HTTPException(400, "empty message")
@@ -3145,7 +3144,13 @@ def chat(req: ChatRequest):
             session.generate_turn(a360_handoff.opening_message(context), a360_handoff.visible_text(context)),
             slot, lease, turn_id, ticket, cancel,
         )
+    if analysis360_only:
+        key = _session_key(req.session_id)
+        if key not in _ANALYSIS360_SESSIONS:
+            raise HTTPException(403, "此入口仅支持360智能分析")
     session = _ensure_session(req.session_id)
+    if analysis360_only and getattr(session, "analysis360_run", None) is None:
+        raise HTTPException(403, "此入口仅支持360智能分析")
     try:
         slot, lease, turn_id, ticket, cancel = _begin_turn("data", req.session_id)
     except HTTPException as exc:
@@ -3155,6 +3160,17 @@ def chat(req: ChatRequest):
         session.generate_turn(message, req.visible_user_text),
         slot, lease, turn_id, ticket, cancel,
     )
+
+
+@app.post("/api/chat")
+def chat(req: ChatRequest):
+    return _chat_response(req)
+
+
+@app.post("/api/analysis360/chat")
+def analysis360_chat(req: ChatRequest):
+    """The customer 360 workbench can chat without exposing the general agent."""
+    return _chat_response(req, analysis360_only=True)
 
 
 @app.post("/api/choice")
@@ -3176,6 +3192,16 @@ def choice(req: ChoiceRequest):
         session.continue_with_choice(ids, labels),
         slot, lease, turn_id, ticket, cancel,
     )
+
+
+@app.post("/api/analysis360/choice")
+def analysis360_choice(req: ChoiceRequest):
+    """Resume an AskUser choice only inside a 360 analysis session."""
+    key = _session_key(req.session_id)
+    session = STATE.sessions.get(key) if key else STATE.session
+    if session is None or getattr(session, "analysis360_run", None) is None:
+        raise HTTPException(403, "此入口仅支持360智能分析")
+    return choice(req)
 
 
 @app.post("/api/experimental/langgraph/chat")

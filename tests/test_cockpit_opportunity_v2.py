@@ -1845,7 +1845,7 @@ def test_rk11_holds_on_completed_overruns_of_at_least_half_the_mean():
     assert risk['level'] == '高'   # two stages hit
     assert risk['description'].startswith('3 条已结束商机的阶段周期超过同阶段同产品真实动态平均周期 50% 及以上（商机获取 2 条、技术交流 1 条）')
     assert '涉及预测金额 9.00 亿元、预测电量 4.50 GWh' in risk['description']
-    assert '另有 4 条超均值未满 50%，列为关注' in risk['description']
+    assert '另有 4 条超均值未满 50%，列为关注（商机获取 4 条）' in risk['description']
     facts = {f['id']: f for f in value['evidence']['facts']}
     assert facts['opp-v2:metric:R13']['value'] == 2 and facts['opp-v2:metric:R17']['value'] == 0
     assert facts['opp-v2:metric:R13-AMOUNT']['value'] == 6.0
@@ -1866,6 +1866,16 @@ def test_rk11_needs_a_severe_band_and_a_missing_query_is_undecided():
     assessment = next(a for a in failed['result']['riskAssessments'] if a['code'] == 'RK11')
     assert assessment['ruleStatus'] == 'insufficient'
     assert failed['causeOutcomes']['RC10']['ruleStatus'] == 'insufficient'
+
+
+def test_rk11_watch_band_names_every_stage_with_its_own_count():
+    value = _strategic_value(
+        stageBands=_stage_band_rows_parsed(R12=4, R13=1, R14=2, R16=3),
+        stageBandStatus='ok',
+    )
+    risk = next(r for r in value['risks'] if r['code'] == 'RK11')
+    assert '50% 及以上（商机获取 1 条）' in risk['description']
+    assert '另有 9 条超均值未满 50%，列为关注（商机获取 4 条、技术交流 2 条、方案推动 3 条）' in risk['description']
 
 
 def _stage_band_rows_parsed(**counts):

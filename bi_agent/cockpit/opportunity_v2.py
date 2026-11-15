@@ -2443,12 +2443,18 @@ def evaluate(data, config=None, measured=None):
         amount_high = thresholds.get("stageBandAmountHigh")
         level = ("高" if (stages_high is not None and len(severe_hits) >= stages_high)
                  or (amount_high is not None and (hit_amount or 0) >= amount_high) else "中")
-        parts = [f"{band_meta[code]['stage']} {stage_bands[code]['count']} 条" for code in severe_hits]
+        def stage_breakdown(codes):
+            return "、".join(f"{band_meta[code]['stage']} {stage_bands[code]['count']} 条"
+                            for code in codes if (stage_bands.get(code) or {}).get("count"))
+
+        watch_hits = [code for code in STAGE_BAND_CODES
+                      if not band_meta[code]["severe"] and (stage_bands.get(code) or {}).get("count")]
         description = (f"{hit_count} 条已结束商机的阶段周期超过同阶段同产品真实动态平均周期 50% 及以上（"
-                       + "、".join(parts) + "）"
+                       + stage_breakdown(severe_hits) + "）"
                        + (f"，涉及预测金额 {hit_amount:.2f} 亿元" if hit_amount is not None else "")
                        + (f"、预测电量 {hit_energy:.2f} GWh" if hit_energy is not None else "")
-                       + (f"；另有 {watch} 条超均值未满 50%，列为关注" if watch else "") + "。")
+                       + (f"；另有 {watch} 条超均值未满 50%，列为关注"
+                          f"（{stage_breakdown(watch_hits)}）" if watch else "") + "。")
         evidence = [fid for code in STAGE_BAND_CODES for fid in band_facts[code]]
         objects = []
         for code in severe_hits:

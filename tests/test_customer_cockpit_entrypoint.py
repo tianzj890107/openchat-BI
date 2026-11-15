@@ -13,17 +13,26 @@ from bi_agent.web.customer import CustomerSurface, prepare
 CATALOG=Path(__file__).resolve().parents[1]/'dataset/process360/ywln-v3.1/catalog.json'
 
 
-def test_customer_surface_blocks_other_tool_profiles_and_workbench():
+def test_customer_surface_exposes_only_cockpit_and_360_analysis_workbench():
     async def ready(request):return JSONResponse({'ok':True})
-    app=Starlette(routes=[Route('/healthz',ready),Route('/api/mcp/process360',ready),Route('/api/mcp/general',ready),Route('/workbench',ready)])
+    app=Starlette(routes=[Route('/healthz',ready),Route('/api/mcp/process360',ready),Route('/api/mcp/general',ready),
+                          Route('/workbench',ready),Route('/api/analysis360/chat',ready),
+                          Route('/api/chat',ready),Route('/static/analysis360-handoff.mjs',ready)])
     client=TestClient(CustomerSurface(app))
     assert client.get('/healthz').status_code==200
     assert client.get('/api/mcp/process360').status_code==200
     assert client.get('/api/mcp/general').status_code==404
     assert client.get('/api/mcp/tasks').status_code==404
-    assert client.get('/workbench').status_code==404
+    assert client.get('/workbench').status_code==200
+    assert client.get('/api/analysis360/chat').status_code==200
+    assert client.get('/static/analysis360-handoff.mjs').status_code==200
+    assert client.get('/api/chat').status_code==404
     assert client.get('/',follow_redirects=False).headers['location']=='/cockpit/overview'
-    assert TestClient(CustomerSurface(app,'/api/ontology-agentic-analytics')).get('/api/ontology-agentic-analytics/api/mcp/general').status_code==404
+    prefixed=TestClient(CustomerSurface(app,'/api/ontology-agentic-analytics'))
+    assert prefixed.get('/api/ontology-agentic-analytics/workbench').status_code==200
+    assert prefixed.get('/api/ontology-agentic-analytics/api/analysis360/chat').status_code==200
+    assert prefixed.get('/api/ontology-agentic-analytics/api/mcp/general').status_code==404
+    assert prefixed.get('/api/ontology-agentic-analytics/api/chat').status_code==404
 
 
 def test_customer_prepare_uses_env_and_prevents_remote_fallback(tmp_path,monkeypatch):

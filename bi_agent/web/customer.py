@@ -18,15 +18,17 @@ class CustomerSurface:
         path = scope['path']
         if self.prefix and (path == self.prefix or path.startswith(self.prefix+'/')):
             path = path[len(self.prefix):] or '/'
+            scope = dict(scope, path=path)
         if path in {'/','/cockpit','/cockpit/'}:
             from starlette.responses import RedirectResponse
             return await RedirectResponse(self.prefix+'/cockpit/overview',status_code=307)(scope,receive,send)
-        allowed = (path in {'/','/health','/healthz','/api/mcp','/api/mcp/health','/api/mcp/process360'}
+        allowed = (path in {'/','/health','/healthz','/workbench','/api/meta','/api/session/reset',
+                            '/api/mcp','/api/mcp/health','/api/mcp/process360'}
                    or path.startswith(('/cockpit/','/api/cockpit/','/api/process360/','/api/mcp/artifacts/',
-                                       '/static/cockpit/','/static/vendor/echarts/','/charts/')))
+                                       '/api/analysis360/','/static/','/charts/')))
         if not allowed:
             from starlette.responses import JSONResponse
-            return await JSONResponse({'detail':'此交付仅提供驾驶舱与Process360 MCP'},status_code=404)(scope,receive,send)
+            return await JSONResponse({'detail':'此交付仅提供驾驶舱、360智能分析与Process360 MCP'},status_code=404)(scope,receive,send)
         return await self.app(scope,receive,send)
 
 
