@@ -38,14 +38,17 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-8"
+RULES_VERSION = "opportunity-v3-rules-9"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
     "RC01": "opportunity", "RC02": "bid", "RC03": "opportunity",
     "RC04": "opportunity", "RC05": "opportunity", "RC06": "opportunity",
     "RC07": "opportunity", "RC08": "opportunity", "RC09": "opportunity",
+    "RC10": "opportunity", "RC11": "opportunity",
 }
+# R12–R17 阶段周期超时分档: three stages × (超均值未满 50% / 达到 50% 及以上).
+STAGE_BAND_CODES = ("R12", "R13", "R14", "R15", "R16", "R17")
 # Governance actions repair the measurement source itself; they must not take
 # the place of business remediation in the重点建议 slot.
 _GOVERNANCE_ADVICE = {"AC05"}
@@ -70,6 +73,8 @@ _RISK_FACT_CODES = {
     "RK08": ("R10", "BID-AMBIGUOUS"),
     "RK09": ("R11", "S03", "S03-P1", "S03-P2"),
     "RK10": ("P0-01", "P0-02", "P2-01"),
+    # BR-A11 is decided on the three "达到 50% 及以上" counts.
+    "RK11": ("R13", "R15", "R17"),
 }
 _CONFIG_CACHE: dict[str, tuple[int, dict]] = {}
 
@@ -239,6 +244,8 @@ def _thresholds(config):
         productRiskAmountHigh=_number(value["productRiskAmountHigh"]),
         productRiskAmountMedium=_number(value["productRiskAmountMedium"]),
         impactAmountHigh=_number(value["impactAmountHigh"]),
+        stageBandStagesHigh=_number(value.get("stageBandStagesHigh")),
+        stageBandAmountHigh=_number(value.get("stageBandAmountHigh")),
     )
 
 
@@ -431,6 +438,7 @@ _QUERY_METRICS = {
     "订单关联": [],
     "产品团队": [],
     "产品部销售缺口": ["C03", "C04", "C05"],
+    "阶段周期分档": list(STAGE_BAND_CODES),
 }
 
 _QUERY_AGGREGATION_NOTES = {
@@ -444,6 +452,9 @@ _QUERY_AGGREGATION_NOTES = {
     "订单关联": "BR-Q02：按订单明细关联商机，去重订单数 ≥ 1 为已签单；不限定审批、取消状态或订单日期。",
     "产品团队": "团队成员关系按商机归属去重；同一人属于多团队时不强行合并。",
     "商机聚合": "明细行被截断时用于恢复全量聚合；仅参与规则计算，不在明细表展示。",
+    "阶段周期分档": ("本体 R12～R17 调用SQL：商机获取、技术交流、方案推动三阶段已结束商机，按同期间同阶段同产品的"
+                     "真实动态平均周期先求均值再逐笔分档（超均值未满 50%／达到 50% 及以上）。六项 SQL 只差最后的指标筛选，"
+                     "合并为一次查询返回六行。"),
 }
 
 
@@ -531,6 +542,59 @@ def _ontology_metric_sql(config, code, year, measured, schema="ded_public"):
     # as a placeholder; text such as "超过平均周期 50%" or LIKE 'PHASE_%' is
     # doubled so the database receives it unchanged.
     return sql.replace("%", "%%")
+
+
+def _stage_band_sql(config, year, measured, schema="ded_public"):
+    """One query for R12–R17.
+
+    The ontology registers one SQL per band metric; the six statements are
+    identical except for their final ``WHERE code='R1x'`` filter.  R12's SQL
+    with that filter widened returns all six rows from one execution.
+    """
+    metrics = config.get("metrics") or {}
+    if not all(code in metrics for code in STAGE_BAND_CODES):
+        return ""
+    sql = _ontology_metric_sql(config, "R12", year, measured, schema)
+    if not sql:
+        return ""
+    wanted = "WHERE code IN (" + ", ".join(f"'{code}'" for code in STAGE_BAND_CODES) + ")"
+    sql, count = re.subn(r"WHERE\s+code\s*=\s*'R12'", wanted, sql)
+    return sql if count == 1 else ""
+
+
+def _stage_band_rows(rows):
+    """R12–R17 result rows → {code: count, amount, energy, status, stage means, opportunities}."""
+    bands = {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        code = _text(row.get("指标序号"))
+        if code not in STAGE_BAND_CODES:
+            continue
+        detail = row.get("分组明细及缺口")
+        if isinstance(detail, str):
+            try:
+                detail = json.loads(detail)
+            except ValueError:
+                detail = {}
+        detail = detail if isinstance(detail, dict) else {}
+        means = [dict(product=_text(item.get("产品类型")), days=_number(item.get("平均周期天")),
+                      samples=int(_number(item.get("参与平均样本数")) or 0))
+                 for item in detail.get("各产品动态平均周期及样本数") or [] if isinstance(item, dict)]
+        opportunities = [dict(
+            id=_text(item.get("商机ID")), product=_text(item.get("产品")), days=_number(item.get("实际天数")),
+            baseline=_number(item.get("基线天数")), excess=_number(item.get("超基线比例_原始小数")),
+            amount=_number(item.get("预测金额_亿元")), energy=_number(item.get("预测电量_GWh")),
+        ) for item in detail.get("商机明细") or [] if isinstance(item, dict)]
+        count = _number(row.get("数量"))
+        bands[code] = dict(
+            code=code, stage=_text(detail.get("阶段")), band=_text(detail.get("档位")),
+            count=int(count) if count is not None else None,
+            amount=_number(row.get("金额_亿元")), energy=_number(row.get("电量_GWh")),
+            status=_text(row.get("计算说明状态")), means=means,
+            meanKnown=any((item["days"] or 0) > 0 for item in means),
+            opportunities=opportunities[:40])
+    return bands
 
 
 def _strip_sql_comments(sql):
@@ -1076,6 +1140,10 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     team_gap_sql = _ontology_metric_sql(config, "C05", year, measured, schema)
     if team_gap_sql:
         specs.append(("产品部销售缺口", team_gap_sql, []))
+    # RK11 is judged on the ontology's own R12–R17 query.
+    band_sql = _stage_band_sql(config, year, measured, schema)
+    if band_sql:
+        specs.append(("阶段周期分档", band_sql, []))
     if strategic_ok:
         specs.insert(4, ("客户", accounts_sql, [measured, measured] + strategic_levels))
     else:
@@ -1342,6 +1410,8 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         measurementDate=measured.isoformat(),
         productTeamGaps=team_gap_rows,
         productTeamGapStatus=query_status.get("产品部销售缺口", "unavailable" if not team_gap_sql else ""),
+        stageBands=_stage_band_rows(results.get("阶段周期分档", [])),
+        stageBandStatus=query_status.get("阶段周期分档", "unavailable" if not band_sql else ""),
         targets=targets,
         productTypes=product_types,
         targetEnergyDivisor=target_energy_divisor,
@@ -1448,7 +1518,7 @@ def _risk(code, name, level, title, description, metric_codes, evidence_ids, imp
 def _cause_rule_outcomes(*, candidates, data, thresholds, source_ok, unsigned, opps, late_p0,
                          overall_p0, p2_mean_known, focus_ratio, rest_ratio,
                          product_pending_ratio, no_opportunity, activity_source_ready, progress,
-                         strategic_pending, record, fact):
+                         strategic_pending, record, fact, stage_bands=None):
     """Settle every ontology cause rule: triggered, not_triggered, insufficient
     or not_applicable.
 
@@ -1538,6 +1608,22 @@ def _cause_rule_outcomes(*, candidates, data, thresholds, source_ok, unsigned, o
                            observed=[dict(label="C09 其余占比", value=rest_ratio)])
                    if rest_ratio is not None else
                    outcome("RC07", "insufficient", reason="未签单预测为空，无法计算其余占比", missing=["C09"]))
+    def band(code):
+        return (stage_bands or {}).get(code) or {}
+
+    def band_observed(code):
+        item = band(code)
+        observed = [dict(label=f"{code} 商机数", value=item.get("count")),
+                    dict(label=f"{code} 预测金额（亿元）", value=item.get("amount")),
+                    dict(label=f"{code} 预测电量（GWh）", value=item.get("energy"))]
+        observed += [dict(label=f"{item.get('stage') or code} {mean['product']} 动态平均周期（天）",
+                          value=mean["days"]) for mean in item.get("means") or []]
+        observed += [dict(label=f"商机 {opp['id']}", value=dict(
+            实际天数=opp["days"], 均值天数=opp["baseline"], 超均值比例=opp["excess"],
+            预测金额亿元=opp["amount"], 预测电量GWh=opp["energy"])) for opp in (item.get("opportunities") or [])[:8]]
+        return observed
+
+    r13 = band("R13").get("count")
     if late_p0:
         # The P0 overrun is established by rule; which sub-step causes it
         # (P0-03~P0-08) has no structured events, so the model decides.
@@ -1545,12 +1631,42 @@ def _cause_rule_outcomes(*, candidates, data, thresholds, source_ok, unsigned, o
             "RC08", "insufficient",
             reason=f"{len(late_p0)} 条商机 P0 周期超过动态均值 1.5 倍；小环节缺少完成事件，卡点需结合进展判断",
             observed=[dict(label="P0 超期商机数", value=len(late_p0)),
-                      dict(label="P0 平均周期（天）", value=overall_p0)],
+                      dict(label="P0 平均周期（天）", value=overall_p0)] + (band_observed("R13") if r13 else []),
+            missing=["P0-05 选择协作团队完成事件", "P0-08 确认客户组织架构完成事件"])
+    elif r13:
+        # Entered from RK11: completed P0 stages at or above 1.5 × the mean.
+        out["RC08"] = outcome(
+            "RC08", "insufficient",
+            reason=f"{r13} 条已结束商机的商机获取阶段周期超同组动态均值 50% 及以上（R13）；小环节缺少完成事件，卡点需结合进展判断",
+            observed=band_observed("R13"),
             missing=["P0-05 选择协作团队完成事件", "P0-08 确认客户组织架构完成事件"])
     else:
         out["RC08"] = (outcome("RC08", "not_triggered", reason="没有 P0 阶段超期商机")
                        if opportunities_ok else
                        outcome("RC08", "insufficient", reason="商机数据未取到", missing=["P0-01", "P0-02"]))
+    # BR-C10 / BR-C11: a stage with completed overruns ≥ 50% is the rule's
+    # precondition; which sub-step holds it has no structured events, so the
+    # model decides from the overrun list and progress notes.
+    for code, severe, stage, steps, missing in (
+            ("RC10", "R15", "技术交流", "P1-03～P1-07 小环节",
+             ["P1-03～P1-07 小环节完成事件（客户准入、立项、送样评审、报价）"]),
+            ("RC11", "R17", "方案推动", "P2-03～P2-05 小环节",
+             ["P2-03 技术协议或规格书完成事件", "P2-04 质保协议完成事件", "P2-05 中信保限额完成事件"])):
+        item = band(severe)
+        if stage_bands is None or item.get("count") is None:
+            out[code] = outcome(code, "insufficient", reason=f"{stage}阶段周期分档未取到", missing=[severe])
+        elif item["count"] > 0:
+            out[code] = outcome(
+                code, "insufficient",
+                reason=(f"{item['count']} 条已结束商机的{stage}阶段周期超同组动态均值 50% 及以上（{severe}）；"
+                        f"{steps}缺少完成事件，卡点需结合进展判断"),
+                observed=band_observed(severe), missing=missing)
+        elif not item.get("meanKnown"):
+            out[code] = outcome(code, "insufficient", reason=f"{stage}阶段没有可用的动态平均周期，不能判为正常",
+                                missing=[f"{stage}阶段已结束样本"])
+        else:
+            out[code] = outcome(code, "not_triggered", reason=f"{stage}阶段没有超均值 50% 及以上的已结束商机",
+                                observed=band_observed(severe))
     if not no_opportunity:
         out["RC09"] = outcome("RC09", "not_triggered" if source_ok("客户") else "insufficient",
                               reason="没有无商机的战略客户" if source_ok("客户") else "客户数据未取到")
@@ -2100,6 +2216,32 @@ def evaluate(data, config=None, measured=None):
     f_rk10 = fact("P0-02", "商机获取阶段超期商机数", len(late_p0), "条", "单笔周期严格大于同阶段同产品平均周期 × 1.5")
     f_bid_amb = fact("BID-AMBIGUOUS", "投标同名歧义项目数", len(ambiguous_bid_names), "个", "同名多条投标记录；不据此判断未投标")
 
+    # R12–R17 (本体阶段周期超时分档 SQL).  A stage without any usable mean
+    # cannot be called normal: its zero count is reported as unknown.
+    stage_bands = data.get("stageBands") or {}
+    band_status = _text(data.get("stageBandStatus"))
+    band_ready = bool(stage_bands) and band_status in {"", "ok"}
+    band_meta = {}
+    band_facts = {}
+    for code in STAGE_BAND_CODES:
+        metric_name = _text(((config.get("metrics") or {}).get(code) or {}).get("name")) or code
+        severe = "及以上" in metric_name
+        stage = (stage_bands.get(code) or {}).get("stage") or metric_name.split("阶段")[0]
+        band_meta[code] = dict(name=metric_name, stage=stage, severe=severe)
+        item = stage_bands.get(code) or {} if band_ready else {}
+        count = item.get("count")
+        if count == 0 and not item.get("meanKnown"):
+            count = None
+        basis = ("实际周期 ≥ 同期间同阶段同产品真实动态平均周期 × 1.5" if severe else
+                 "实际周期 > 同期间同阶段同产品真实动态平均周期且 < × 1.5")
+        band_facts[code] = [
+            fact(code, metric_name, count, "个", f"{stage}阶段已结束商机，{basis}；先平均后分档，只计已结束"),
+            fact(f"{code}-AMOUNT", f"{stage}阶段{'超均值≥50%' if severe else '超均值<50%'}商机预测（金额）",
+                 item.get("amount"), "亿元", "命中商机的期间预测金额合计；预测缺失不剔除商机"),
+            fact(f"{code}-ENERGY", f"{stage}阶段{'超均值≥50%' if severe else '超均值<50%'}商机预测（电量）",
+                 item.get("energy"), "GWh", "命中商机的期间预测电量合计"),
+        ]
+
     risks = []
     top_opps = lambda values, limit=8: [record(
         f"opp-v2:opp:{opp.get('id')}", customer=opp.get("accountName"), department=opp.get("department"),
@@ -2288,6 +2430,43 @@ def evaluate(data, config=None, measured=None):
                            dict(count=len(late_p0), amount=affected_amount, energy=affected_energy),
                            [opp.get("id") for opp in late_p0]))
 
+    # RK11 (BR-A11): any stage with completed overruns ≥ 50% of its mean.
+    severe_hits = [code for code in STAGE_BAND_CODES
+                   if band_ready and band_meta[code]["severe"] and (stage_bands.get(code) or {}).get("count")]
+    if severe_hits:
+        hit_count = sum(stage_bands[code]["count"] for code in severe_hits)
+        hit_amount = _sum(stage_bands[code].get("amount") for code in severe_hits)
+        hit_energy = _sum(stage_bands[code].get("energy") for code in severe_hits)
+        watch = sum((stage_bands.get(code) or {}).get("count") or 0 for code in STAGE_BAND_CODES
+                    if not band_meta[code]["severe"])
+        stages_high = thresholds.get("stageBandStagesHigh")
+        amount_high = thresholds.get("stageBandAmountHigh")
+        level = ("高" if (stages_high is not None and len(severe_hits) >= stages_high)
+                 or (amount_high is not None and (hit_amount or 0) >= amount_high) else "中")
+        parts = [f"{band_meta[code]['stage']} {stage_bands[code]['count']} 条" for code in severe_hits]
+        description = (f"{hit_count} 条已结束商机的阶段周期超过同阶段同产品真实动态平均周期 50% 及以上（"
+                       + "、".join(parts) + "）"
+                       + (f"，涉及预测金额 {hit_amount:.2f} 亿元" if hit_amount is not None else "")
+                       + (f"、预测电量 {hit_energy:.2f} GWh" if hit_energy is not None else "")
+                       + (f"；另有 {watch} 条超均值未满 50%，列为关注" if watch else "") + "。")
+        evidence = [fid for code in STAGE_BAND_CODES for fid in band_facts[code]]
+        objects = []
+        for code in severe_hits:
+            for opp in stage_bands[code].get("opportunities") or []:
+                if not opp.get("id"):
+                    continue
+                objects.append(opp["id"])
+                if len(evidence) < 30:
+                    evidence.append(record(
+                        f"opp-v2:stage-band:{code}:{opp['id']}", name=opp["id"], product=opp.get("product"),
+                        status=(f"{band_meta[code]['stage']}实际 {opp['days']:.1f} 天，同组均值 {opp['baseline']:.1f} 天"
+                                if opp.get("days") is not None and opp.get("baseline") is not None
+                                else band_meta[code]["stage"]),
+                        value=opp.get("days"), unit="天", amount=opp.get("amount"), quantity=opp.get("energy")))
+        name = _risk_name(config, "RK11", "商机推进阶段周期超均值较多，拖慢签单")
+        risks.append(_risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],
+                           evidence, dict(count=hit_count, amount=hit_amount, energy=hit_energy), objects[:40]))
+
     # De-duplicate by code and sort by level, then normalised impact and code.
     # Money and energy remain separate fields; this is presentation order only.
     unique = {risk["code"]: risk for risk in risks}
@@ -2342,6 +2521,7 @@ def evaluate(data, config=None, measured=None):
         "RK08": strategic_scope or not source_ok("客户"),
         "RK09": bool(valid_bids) or not source_ok("投标"),
         "RK10": bool(opps) or not source_ok("商机预测"),
+        "RK11": bool(stage_bands) or not source_ok("阶段周期分档"),
     }
     risk_candidates = []
     for code, spec in (config.get("risks") or {}).items():
@@ -2484,7 +2664,24 @@ def evaluate(data, config=None, measured=None):
             title="商机获取环节卡点",
             description=f"{len(late_p0)} 条商机 P0 周期超过动态均值 1.5 倍；细分卡点缺少结构化事件字段，仅作环节定位。",
             evidence=[f_p0, f_rk10] + top_opps(late_p0, 6),
-            risks={"RK01", "RK10"} & {risk["code"] for risk in risks},
+            risks={"RK01", "RK10", "RK11"} & {risk["code"] for risk in risks},
+        )
+    # RK11's stage causes: the stage overrun is established, the sub-step is
+    # located by the model (BR-C08 / BR-C10 / BR-C11).
+    for cause, severe, title in (("RC08", "R13", "商机获取环节卡点"), ("RC10", "R15", "技术交流环节卡点"),
+                                 ("RC11", "R17", "方案推动环节卡点")):
+        item = stage_bands.get(severe) or {}
+        if not (band_ready and item.get("count")):
+            continue
+        if cause in candidates:
+            candidates[cause]["evidence"] = list(candidates[cause]["evidence"]) + band_facts[severe]
+            continue
+        candidates[cause] = dict(
+            kind="structure", status="hypothesis", stage="opportunity", title=title,
+            description=(f"{item['count']} 条已结束商机的{band_meta[severe]['stage']}阶段周期超同组动态均值 50% 及以上；"
+                         "细分卡点缺少结构化事件字段，仅作环节定位。"),
+            evidence=list(band_facts[severe]),
+            risks={"RK11"} & {risk["code"] for risk in risks},
         )
     if no_opportunity:
         activity_evidence = [f_r09]
@@ -2557,7 +2754,7 @@ def evaluate(data, config=None, measured=None):
         activity_source_ready=activity_source_ready, progress=progress,
         strategic_pending=[opp for opp in opps if opp.get("tier") == "strategic"
                            and opp.get("bidding") in {"no", "ambiguous"}],
-        record=record, fact=fact)
+        record=record, fact=fact, stage_bands=stage_bands if band_ready else None)
 
     # Candidate risks are always intersected with the reviewed
     # risk→cause link table.  The workbook's cause sheet still lists doubtful

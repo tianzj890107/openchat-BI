@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_储能客户口径修订.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_阶段周期超时分档版.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -207,6 +207,7 @@ def build_thresholds(workbook):
 
     a01, a02 = result("BR-A01"), result("BR-A02")
     a04, a05, a10 = result("BR-A04"), result("BR-A05"), result("BR-A10")
+    a11 = result("BR-A11")
     c05, c06, c07 = result("BR-C05"), result("BR-C06"), result("BR-C07")
 
     gap_high = int(_match(r"缺口率\s*≥\s*(\d+)%", a01, "BR-A01 缺口率高阈值").group(1))
@@ -226,6 +227,8 @@ def build_thresholds(workbook):
     if (product_high, product_medium) != (product_high_5, product_medium_5):
         raise SystemExit("本体 BR-A04 与 BR-A05 的待签阈值不一致，需先统一")
     impact_high = int(_match(r"影响预测\s*≥\s*(\d+)\s*亿元", a10, "BR-A10 影响金额高阈值").group(1))
+    band_stages = int(_match(r"覆盖\s*≥\s*(\d+)\s*个阶段", a11, "BR-A11 超期阶段数高阈值").group(1))
+    band_amount = int(_match(r"预测金额合计\s*≥\s*(\d+)\s*亿元", a11, "BR-A11 超期预测金额高阈值").group(1))
     product_pending = int(_match(r"≥\s*(\d+)%", c05, "BR-C05 产品待签占比").group(1))
     focus_ratio = int(_match(r"<\s*(\d+)%", c06, "BR-C06 重点跟踪占比").group(1))
     other_ratio = int(_match(r"≥\s*(\d+)%", c07, "BR-C07 其余占比").group(1))
@@ -242,6 +245,8 @@ def build_thresholds(workbook):
         "productRiskAmountHigh": product_high,
         "productRiskAmountMedium": product_medium,
         "impactAmountHigh": impact_high,
+        "stageBandStagesHigh": band_stages,
+        "stageBandAmountHigh": band_amount,
         "sources": {
             "gapRateHigh": "BR-A01", "gapRateMedium": "BR-A01",
             "signLagExtremePoints": "BR-A02", "signLagHighPoints": "BR-A02",
@@ -249,6 +254,7 @@ def build_thresholds(workbook):
             "productRiskAmountMedium": "BR-A04/BR-A05", "impactAmountHigh": "BR-A10",
             "productPendingRatio": "BR-C05", "focusTrackingRatio": "BR-C06",
             "otherPendingRatio": "BR-C07",
+            "stageBandStagesHigh": "BR-A11", "stageBandAmountHigh": "BR-A11",
         },
     }
 
@@ -689,8 +695,8 @@ def build_config(workbook):
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     config = dict(
-        version="opportunity-v3-rules-8",
-        ontology="商机获取节点 V3 储能客户口径修订",
+        version="opportunity-v3-rules-9",
+        ontology="商机获取节点 V3 阶段周期超时分档版",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,
