@@ -561,6 +561,17 @@ export function createStageRiskComponent(options = {}) {
         .map(group => (group.kind === 'risks' ? {...group, title: primaryLabel} : group)))
       const analysisDimensions = computed(() => riskDimensionLinks(
         props.analysis?.result?.analysisDimensions || [], insight.findings.value, primaryLabel))
+      const riskGroups = computed(() => {
+        const rows = insight.findings.value.map((finding, index) => ({finding, number: index + 1}))
+        const groups = insight.result.value?.riskGroups
+        if (!groups?.length) return [{category: '', rows}]
+        const byId = new Map(rows.map(row => [row.finding.id, row]))
+        return groups.map(group => ({
+          category: group.category,
+          rows: group.findingIds.map(id => byId.get(id)).filter(Boolean),
+        })).filter(group => group.rows.length)
+      })
+      const metricStatus = {triggered: '触发风险', watch: '关注', clear: '无命中', unknown: '无法判定'}
       ensureTaskOrderStyle()
       const taskOrder = createTaskOrderController({
         analysisId, insight, apiBase: () => taskApiBase.value,
@@ -600,7 +611,8 @@ export function createStageRiskComponent(options = {}) {
         }
       }
       return { ...insight, ...taskOrder, displayStage, primaryLabel, judgementGroups, analysisDimensions,
-               showOverallSummary, showSectionSummaries, showCauses, deepAnalysis, deepAnalysisError, deepAnalysisBusy }
+               riskGroups, metricStatus, showOverallSummary, showSectionSummaries, showCauses,
+               deepAnalysis, deepAnalysisError, deepAnalysisBusy }
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
@@ -620,11 +632,21 @@ export function createStageRiskComponent(options = {}) {
             </div>
             <div v-if="deepAnalysisError" class="stage-risk-analysis__deep-error">{{ deepAnalysisError }}</div>
             <div v-if="showSectionSummaries && riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
-            <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
-              <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">{{ primaryLabel }}{{ index+1 }}</span>
+            <div v-for="group in riskGroups" :key="group.category">
+              <h4 v-if="group.category" class="stage-risk-analysis__risk-group">{{ group.category }}</h4>
+              <div v-for="{finding, number} in group.rows" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
+              <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">{{ primaryLabel }}{{ number }}</span>
               <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ finding.issueType }}】</template>{{ finding.title }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
                 <button type="button" class="stage-risk-analysis__deep" :disabled="Boolean(deepAnalysisBusy)"
                         :title="'在 360 智能分析中打开这条' + primaryLabel" @click="deepAnalysis('risk', finding)">深度分析</button>
+                <ul v-if="finding.metricDetails?.length" class="stage-risk-analysis__metric-details" aria-label="阶段周期分档指标明细">
+                  <li v-for="metric in finding.metricDetails" :key="metric.code">
+                    <b>{{ metric.code }} {{ metric.stage }}阶段</b> · {{ metric.band }} · {{ metricStatus[metric.status] }}
+                    <template v-if="metric.count != null"> · <number-text :text="metric.count + ' 条'" /></template>
+                    · 预测金额 <number-text :text="metric.amount == null ? '—' : Number(metric.amount).toFixed(2) + ' 亿元'" />
+                    · 预测电量 <number-text :text="metric.energy == null ? '—' : Number(metric.energy).toFixed(2) + ' GWh'" />
+                  </li>
+                </ul>
                 <details v-if="traces[finding.id] && (traces[finding.id].rules.length || traces[finding.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ distinctEvidenceCount(finding) }} 条证据</summary>
                   <div class="stage-risk-analysis__trace-body">
@@ -677,6 +699,7 @@ export function createStageRiskComponent(options = {}) {
                     </template>
                   </div>
                 </details>
+              </div>
               </div>
             </div>
           </article>

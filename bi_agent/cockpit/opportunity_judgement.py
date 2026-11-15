@@ -144,8 +144,10 @@ def control_risk_rows(findings, config, rewrite, progress=None):
     rule-written row; otherwise, or when the call fails, the row stays as the
     rule wrote it.  Returns a report for the card's diagnostics.
     """
+    total = len(findings or [])
+    findings = [finding for finding in findings or [] if not finding.get("metricDetails")]
     if rewrite is None or not findings:
-        return dict(status="skipped", rewritten=0, kept=len(findings or []), issues=[])
+        return dict(status="skipped", rewritten=0, kept=total, issues=[])
     if progress is not None:
         progress("judging", message=f"模型对 {len(findings)} 条风险行做语义控制")
     specs = config.get("risks") or {}
@@ -163,7 +165,7 @@ def control_risk_rows(findings, config, rewrite, progress=None):
     except Exception as exc:  # noqa: BLE001 - the card keeps its rule-written rows
         for finding in findings:
             finding["semanticControl"] = "kept"
-        return dict(status="failed", rewritten=0, kept=len(findings), issues=[_model_error(exc)])
+        return dict(status="failed", rewritten=0, kept=total, issues=[_model_error(exc)])
     rows = {(_text(item.get("code"))): _text(item.get("description"))
             for item in (answer.get("items") if isinstance(answer, dict) else None) or []
             if isinstance(item, dict)}
@@ -183,7 +185,7 @@ def control_risk_rows(findings, config, rewrite, progress=None):
         finding["semanticControl"] = "model"
         rewritten += 1
     return dict(status="completed" if not issues else "partial", rewritten=rewritten,
-                kept=len(findings) - rewritten, issues=issues,
+                kept=total - rewritten, issues=issues,
                 model=_text(answer.get("_model")) if isinstance(answer, dict) else "")
 
 
@@ -425,7 +427,9 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
 
     # ---- risks ---------------------------------------------------------
     risk_entries = []
-    pending = [code for code in risk_specs if (candidates.get(code) or {}).get("ruleStatus") == "insufficient"]
+    pending = [code for code in risk_specs
+               if not (candidates.get(code) or {}).get("requiresRuleEvidence")
+               and (candidates.get(code) or {}).get("ruleStatus", "insufficient") == "insufficient"]
     for code, spec in risk_specs.items():
         candidate = candidates.get(code) or {}
         status = candidate.get("ruleStatus") or "insufficient"
@@ -442,6 +446,8 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
         elif status in {"not_triggered", "not_applicable"}:
             entry.update(decidedBy="rule", established=False,
                          reason="规则条件不成立" if status == "not_triggered" else "本轮没有适用对象")
+        elif candidate.get("requiresRuleEvidence"):
+            entry.update(decidedBy="unevaluated", established=None, reason="阶段周期分档数据不足，无法判定")
         else:
             request = dict(kind=primary, code=code, name=entry["name"], period=period,
                            rule=entry["rule"], ontologyDescription=_text(spec.get("description")),
@@ -585,6 +591,15 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                                        for item in entry["observed"] if item.get("id")][:11],
         evidenceIds=entry["evidenceIds"], riskDomain="sales", riskTotalCount=len(order),
     ) for entry in order]
+    for finding in findings:
+        code = finding["riskCode"]
+        category = (risk_specs.get(code) or {}).get("category")
+        if category:
+            finding["riskCategory"] = category
+        risk = triggered.get(code) or {}
+        if risk.get("metricDetails"):
+            finding["metricDetails"] = risk["metricDetails"]
+            finding["metricCodes"] = risk["metricCodes"]
     finding_id = {item["riskCode"]: item["id"] for item in findings}
     causes = []
     for entry in cause_entries:

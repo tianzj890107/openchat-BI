@@ -38,7 +38,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-9"
+RULES_VERSION = "opportunity-v3-rules-10"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -2443,31 +2443,27 @@ def evaluate(data, config=None, measured=None):
         amount_high = thresholds.get("stageBandAmountHigh")
         level = ("高" if (stages_high is not None and len(severe_hits) >= stages_high)
                  or (amount_high is not None and (hit_amount or 0) >= amount_high) else "中")
-        # One clause per stage: which stage, how many over the mean by 50% or
-        # more and by less than 50%, and the forecast behind each band.
-        def band_text(code, label):
-            item = stage_bands.get(code) or {}
-            count = item.get("count") or 0
-            text = f"{label} {count} 条"
-            if count and item.get("amount") is not None:
-                text += f"（预测 {item['amount']:.2f} 亿元"
-                text += f"、{item['energy']:.2f} GWh）" if item.get("energy") is not None else "）"
-            return text
-
-        stage_parts = []
-        for stage in dict.fromkeys(band_meta[code]["stage"] for code in STAGE_BAND_CODES):
-            codes = [code for code in STAGE_BAND_CODES if band_meta[code]["stage"] == stage]
-            if not any((stage_bands.get(code) or {}).get("count") for code in codes):
-                continue
-            severe = next(code for code in codes if band_meta[code]["severe"])
-            mild = next(code for code in codes if not band_meta[code]["severe"])
-            stage_parts.append(f"{stage}阶段：" + band_text(severe, "超均值 50% 及以上") + "，"
-                               + band_text(mild, "超均值 50% 以内"))
-        description = ("；".join(stage_parts)
-                       + f"。合计 {hit_count} 条已结束商机的阶段周期超过同阶段同产品真实动态平均周期 50% 及以上"
+        stage_counts = "、".join(f"{band_meta[code]['stage']} {stage_bands[code]['count']} 条"
+                               for code in severe_hits)
+        description = (f"{hit_count} 条已结束商机的阶段周期超过同阶段同产品真实动态平均周期 50% 及以上"
+                       + f"（{stage_counts}）"
                        + (f"，涉及预测金额 {hit_amount:.2f} 亿元" if hit_amount is not None else "")
                        + (f"、预测电量 {hit_energy:.2f} GWh" if hit_energy is not None else "")
-                       + (f"；另有 {watch} 条超均值 50% 以内，列为关注" if watch else "") + "。")
+                       + (f"；另有 {watch} 条超均值未满 50%，列为关注" if watch else "") + "。")
+        metric_details = []
+        for code in STAGE_BAND_CODES:
+            item = stage_bands.get(code) or {}
+            count = item.get("count")
+            if count == 0 and not item.get("meanKnown"):
+                count = None
+            severe = band_meta[code]["severe"]
+            status = ("unknown" if count is None else "clear" if not count else
+                      "triggered" if severe else "watch")
+            metric_details.append(dict(
+                code=code, stage=band_meta[code]["stage"],
+                band="超均值 50% 及以上" if severe else "超均值未满 50%",
+                status=status, count=count, amount=item.get("amount"), energy=item.get("energy"),
+            ))
         evidence = [fid for code in STAGE_BAND_CODES for fid in band_facts[code]]
         objects = []
         for code in severe_hits:
@@ -2485,8 +2481,9 @@ def evaluate(data, config=None, measured=None):
                                 else f"{band_meta[code]['stage']}阶段·超均值 50% 及以上"),
                         value=opp.get("days"), unit="天", amount=opp.get("amount"), quantity=opp.get("energy")))
         name = _risk_name(config, "RK11", "商机推进阶段周期超均值较多，拖慢签单")
-        risks.append(_risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],
-                           evidence, dict(count=hit_count, amount=hit_amount, energy=hit_energy), objects[:40]))
+        risk = _risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],
+                     evidence, dict(count=hit_count, amount=hit_amount, energy=hit_energy), objects[:40])
+        risks.append(dict(risk, metricDetails=metric_details))
 
     # De-duplicate by code and sort by level, then normalised impact and code.
     # Money and energy remain separate fields; this is presentation order only.
@@ -2573,6 +2570,7 @@ def evaluate(data, config=None, measured=None):
             title=(triggered or {}).get("title") or (spec or {}).get("name") or code,
             description=(triggered or {}).get("description") or (spec or {}).get("description") or "",
             metricCodes=(triggered or {}).get("metricCodes") or [],
+            requiresRuleEvidence=code == "RK11",
             impact=(triggered or {}).get("impact") or {},
             evidenceIds=list(dict.fromkeys(
                 (triggered or {}).get("evidenceIds") or [item["id"] for item in fact_items]))[:20],
@@ -3570,9 +3568,9 @@ def _ontology_trace(config):
         version=_text(config.get("version")),
         digest=config_digest()[:12],
         links=deepcopy(config.get("links") or {}),
-        metrics=entries("metrics", ("definition", "node", "stage", "unit",
+        metrics=entries("metrics", ("definition", "node", "stage", "category", "unit",
                                     "resultColumns", "sqlStatus")),
-        risks=entries("risks"),
+        risks=entries("risks", ("category",)),
         causes=entries("causes"),
         advice=entries("advice"),
         rules=entries("rules", ("description", "trigger", "result")),
@@ -3756,6 +3754,16 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     # Once every risk is settled the model words all risk rows as one set;
     # numbers must match the rule-written rows or the row is kept as is.
     semantic_report = control_risk_rows(judged["findings"], config, semantic, progress=progress)
+    groups = {}
+    for finding in judged["findings"]:
+        category = finding.get("riskCategory") or "未分类"
+        groups.setdefault(category, []).append(finding)
+    judged["findings"] = [finding for group in groups.values() for finding in group]
+    judged["riskCodes"] = [finding["riskCode"] for finding in judged["findings"]]
+    judged["riskGroups"] = [
+        dict(category=category, findingIds=[finding["id"] for finding in group])
+        for category, group in groups.items()
+    ]
     fetched_at = time.time()
     result = evaluated["result"]
     result.update(judged)

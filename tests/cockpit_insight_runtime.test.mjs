@@ -103,7 +103,8 @@ test('risk panels render individual findings instead of reducing them to summary
   const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
   // Every established risk is rendered; there is no display limit.
   assert.match(shared, /findings = computed\(\(\) => result\.value\?\.findings \|\| \[\]\)/);
-  assert.match(shared, /v-for="\(finding,index\) in findings"/);
+  assert.match(shared, /v-for="group in riskGroups"/);
+  assert.match(shared, /v-for="\{finding, number\} in group.rows"/);
   assert.match(shared, /finding\.title/);
   assert.match(shared, /finding\.description/);
 });

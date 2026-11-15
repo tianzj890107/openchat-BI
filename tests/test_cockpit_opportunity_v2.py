@@ -47,7 +47,7 @@ def _judge_no(request):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-9'
+    assert config_version() == 'opportunity-v3-rules-10'
     assert len(config_digest()) == 64
     # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) is excluded.
     assert len(config['metrics']) == 57
@@ -67,7 +67,7 @@ def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
     assert trace['ontology'] == '商机获取节点 V3 阶段周期超时分档版'
-    assert trace['version'] == 'opportunity-v3-rules-9'
+    assert trace['version'] == 'opportunity-v3-rules-10'
     assert len(trace['digest']) == 12
     assert len(trace['metrics']) == 57
     assert len(trace['risks']) == 9
@@ -1095,7 +1095,7 @@ def test_rules_decide_first_and_only_undecided_items_reach_the_model_one_by_one(
     value = _strategic_value(accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic'),
                                      dict(id='account-9', name='战略客户B', level='1', tier='strategic')])
     status = {item['code']: item['ruleStatus'] for item in value['riskCandidates']}
-    undecided = [code for code, state in status.items() if state == 'insufficient']
+    undecided = [code for code, state in status.items() if state == 'insufficient' and code != 'RK11']
     assert undecided
     requests = []
 
@@ -1866,6 +1866,46 @@ def test_rk11_needs_a_severe_band_and_a_missing_query_is_undecided():
     assessment = next(a for a in failed['result']['riskAssessments'] if a['code'] == 'RK11')
     assert assessment['ruleStatus'] == 'insufficient'
     assert failed['causeOutcomes']['RC10']['ruleStatus'] == 'insufficient'
+    judged = _judged(failed, lambda request: dict(established=True))
+    assessment = next(a for a in judged['riskAssessments'] if a['code'] == 'RK11')
+    assert not assessment['include'] and assessment['assessmentSource'] == 'unevaluated'
+
+
+def test_opportunity_card_groups_risks_and_keeps_all_rk11_metric_details(monkeypatch):
+    from bi_agent.cockpit import opportunity_v2
+    from bi_agent.cockpit.delivery import project_card
+    from bi_agent.cockpit.page_cache import compact_analysis
+
+    bands = _stage_band_rows_parsed(R12=4, R13=2, R15=1)
+    bands['R15']['energy'] = None
+    bands['R17']['meanKnown'] = False
+    data = _data(opportunities=[_opportunity()], allOpportunities=[_opportunity()],
+                 stageBands=bands, stageBandStatus='ok')
+    monkeypatch.setattr(opportunity_v2, 'collect', lambda *args, **kwargs: data)
+    rewritten_codes = []
+
+    def rewrite(payload):
+        rewritten_codes.extend(item['code'] for item in payload['items'])
+        return payload
+
+    card = build_card('2026', measurement_date='2026-11-11', judge=_judge_no, semantic=rewrite)
+    result = compact_analysis(project_card(card, 'opportunity-risk'))['result']
+    by_id = {finding['id']: finding for finding in result['findings']}
+    groups = {group['category']: [by_id[fid]['riskCode'] for fid in group['findingIds']]
+              for group in result['riskGroups']}
+    assert {'RK01', 'RK02'} <= set(groups['商机覆盖风险'])
+    assert 'RK11' in groups['商机转化风险']
+    assert [fid for group in result['riskGroups'] for fid in group['findingIds']] == list(by_id)
+    rk11 = next(f for f in by_id.values() if f['riskCode'] == 'RK11')
+    assert rk11['riskCategory'] == '商机转化风险' and rk11['decidedBy'] == 'rule'
+    assert 'RK01' in rewritten_codes and 'RK11' not in rewritten_codes
+    assert [(m['code'], m['status'], m['count']) for m in rk11['metricDetails']] == [
+        ('R12', 'watch', 4), ('R13', 'triggered', 2), ('R14', 'clear', 0),
+        ('R15', 'triggered', 1), ('R16', 'clear', 0), ('R17', 'unknown', None),
+    ]
+    assert rk11['metricDetails'][1]['amount'] == 6.0
+    assert rk11['metricDetails'][1]['energy'] == 3.0
+    assert rk11['metricDetails'][3]['energy'] is None
 
 
 def _stage_band_rows_parsed(**counts):

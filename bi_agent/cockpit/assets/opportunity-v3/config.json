@@ -1,9 +1,9 @@
 {
-  "version": "opportunity-v3-rules-9",
+  "version": "opportunity-v3-rules-10",
   "ontology": "商机获取节点 V3 阶段周期超时分档版",
   "source": {
     "path": "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_阶段周期超时分档版.xlsx",
-    "sha256": "9e3207b2d12fb43b59f710c48949d413c664c4a37116f5736fa53f473e538228"
+    "sha256": "cf21a053a3c1cf6abb9f0a1efc40e2aec66a214c560e49edc3467e721c3520b4"
   },
   "dictionary": {
     "path": "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx",
@@ -1246,6 +1246,7 @@
       "dimension": "D029",
       "sqlCodes": "YWLN_M0002；YWLN_M0007",
       "stage": "基准",
+      "category": "",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh",
       "aggregate": "sum",
@@ -1289,6 +1290,7 @@
       "dimension": "D001",
       "sqlCodes": "YWLN_M0022；YWLN_M0023",
       "stage": "基准",
+      "category": "",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh",
       "aggregate": "sum",
@@ -1332,6 +1334,7 @@
       "dimension": "D001",
       "sqlCodes": "YWLN_M0140",
       "stage": "风险 1",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh",
       "aggregate": "—",
@@ -1375,6 +1378,7 @@
       "dimension": "D001",
       "sqlCodes": "YWLN_M0195；YWLN_M0023＋YWLN_D015",
       "stage": "风险 1",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -1416,6 +1420,7 @@
       "dimension": "D001",
       "sqlCodes": "YWLN_M0009（仅时间进度基础）",
       "stage": "风险 1",
+      "category": "",
       "node": "商机获取",
       "resultColumns": "比率_原始小数",
       "aggregate": "—",
@@ -1461,6 +1466,7 @@
       "dimension": "D001",
       "sqlCodes": "YWLN_M0024；YWLN_D005；YWLN_D015（基础项）",
       "stage": "风险 1",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum / count",
@@ -1505,6 +1511,7 @@
       "dimension": "D001",
       "sqlCodes": "YWLN_M0195；YWLN_M0023；YWLN_D003/YWLN_D015",
       "stage": "风险 2",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -1550,6 +1557,7 @@
       "dimension": "D001",
       "sqlCodes": "YWLN_M0195；YWLN_M0023；YWLN_D003/YWLN_D015",
       "stage": "风险 2",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -1595,6 +1603,7 @@
       "dimension": "D001",
       "sqlCodes": "YWLN_M_CUSTOMER_TARGET_ENERGY；YWLN_M0194/YWLN_M0195；YWLN_M_CUSTOMER_OPPORTUNITY_GAP",
       "stage": "风险 3",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -1631,6 +1640,7 @@
       "dimension": "—",
       "sqlCodes": "YWLN_M0257",
       "stage": "风险 3",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "数量",
       "aggregate": "count",
@@ -1673,6 +1683,7 @@
       "dimension": "D001",
       "sqlCodes": "",
       "stage": "原因 1",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "count / sum",
@@ -1712,6 +1723,7 @@
       "dimension": "—",
       "sqlCodes": "",
       "stage": "原因 2（一）",
+      "category": "",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "count / sum",
@@ -1755,6 +1767,7 @@
       "dimension": "D029",
       "sqlCodes": "YWLN_M0002；YWLN_M0007＋YWLN_D004",
       "stage": "原因 2（二）",
+      "category": "",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh",
       "aggregate": "sum",
@@ -1798,6 +1811,7 @@
       "dimension": "发货期间",
       "sqlCodes": "YWLN_M0001；YWLN_M0006＋YWLN_D004",
       "stage": "原因 2（二）",
+      "category": "目标达成风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh",
       "aggregate": "sum",
@@ -1841,6 +1855,7 @@
       "dimension": "—",
       "sqlCodes": "YWLN_M0001/YWLN_M0002；YWLN_M0006/YWLN_M0007（基础项）",
       "stage": "原因 2（二）",
+      "category": "目标达成风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh",
       "aggregate": "—",
@@ -1885,6 +1900,7 @@
       "dimension": "D001",
       "sqlCodes": "",
       "stage": "原因 3（一）",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "比率_原始小数",
       "aggregate": "—",
@@ -1924,6 +1940,7 @@
       "dimension": "D001",
       "sqlCodes": "",
       "stage": "原因 3（二）",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "count / sum",
@@ -1967,6 +1984,7 @@
       "dimension": "D001",
       "sqlCodes": "",
       "stage": "原因 3 计算依据",
+      "category": "商机覆盖风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、比率_原始小数",
       "aggregate": "—",
@@ -2005,6 +2023,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "YWLN_M0038（名称相近，周期不同）",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2044,6 +2063,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -2086,6 +2106,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2124,6 +2145,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2159,6 +2181,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -2197,6 +2220,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2234,6 +2258,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2269,6 +2294,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -2305,6 +2331,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "技术交流",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2340,6 +2367,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "技术交流",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -2376,6 +2404,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "技术交流",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2412,6 +2441,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "技术交流",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2448,6 +2478,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "技术交流",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2484,6 +2515,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "技术交流",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -2520,6 +2552,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "技术交流",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2554,6 +2587,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "方案推动",
+      "category": "商机转化风险",
       "node": "方案推动（原因 2 引用）",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2591,6 +2625,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "方案推动",
+      "category": "商机转化风险",
       "node": "方案推动（原因 2 引用）",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -2631,6 +2666,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "方案推动",
+      "category": "商机转化风险",
       "node": "方案推动（原因 2 引用）",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2671,6 +2707,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "方案推动",
+      "category": "商机转化风险",
       "node": "方案推动（原因 2 引用）",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2709,6 +2746,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "方案推动",
+      "category": "商机转化风险",
       "node": "方案推动（原因 2 引用）",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -2745,6 +2783,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "合同签订",
+      "category": "商机转化风险",
       "node": "合同签订",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2780,6 +2819,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "合同签订",
+      "category": "商机转化风险",
       "node": "合同签订",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -2816,6 +2856,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "合同签订",
+      "category": "商机转化风险",
       "node": "合同签订",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -2848,6 +2889,7 @@
       "dimension": "SAP基准日期",
       "sqlCodes": "",
       "stage": "合同签订",
+      "category": "商机转化风险",
       "node": "合同签订",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2879,6 +2921,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "合同签订",
+      "category": "商机转化风险",
       "node": "合同签订",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -2913,6 +2956,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "合同签订",
+      "category": "商机转化风险",
       "node": "合同签订",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -2947,6 +2991,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "批量交付",
+      "category": "商机转化风险",
       "node": "批量交付",
       "resultColumns": "数量、平均周期_天",
       "aggregate": "avg",
@@ -2982,6 +3027,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "批量交付",
+      "category": "商机转化风险",
       "node": "批量交付",
       "resultColumns": "金额_亿元、电量_GWh、数量",
       "aggregate": "sum",
@@ -3016,6 +3062,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "批量交付",
+      "category": "商机转化风险",
       "node": "批量交付",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -3053,6 +3100,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "批量交付",
+      "category": "商机转化风险",
       "node": "批量交付",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -3084,6 +3132,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "补充流程",
+      "category": "",
       "node": "补充流程",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -3115,6 +3164,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "补充流程",
+      "category": "",
       "node": "补充流程",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -3146,6 +3196,7 @@
       "dimension": "本环节开始时间",
       "sqlCodes": "",
       "stage": "补充流程",
+      "category": "",
       "node": "补充流程",
       "resultColumns": "（暂无取值，结果为 NULL）",
       "aggregate": "avg",
@@ -3181,6 +3232,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、金额_亿元、电量_GWh",
       "aggregate": "count／sum",
@@ -3222,6 +3274,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "商机获取",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、金额_亿元、电量_GWh",
       "aggregate": "count／sum",
@@ -3263,6 +3316,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、金额_亿元、电量_GWh",
       "aggregate": "count／sum",
@@ -3304,6 +3358,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "技术交流",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、金额_亿元、电量_GWh",
       "aggregate": "count／sum",
@@ -3345,6 +3400,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "方案推动",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、金额_亿元、电量_GWh",
       "aggregate": "count／sum",
@@ -3386,6 +3442,7 @@
       "dimension": "进入阶段时间",
       "sqlCodes": "",
       "stage": "方案推动",
+      "category": "商机转化风险",
       "node": "商机获取",
       "resultColumns": "数量、金额_亿元、电量_GWh",
       "aggregate": "count／sum",
@@ -3766,7 +3823,8 @@
         "RC06",
         "RC07",
         "RC08"
-      ]
+      ],
+      "category": "商机覆盖风险"
     },
     "RK02": {
       "code": "RK02",
@@ -3782,7 +3840,8 @@
         "RC06",
         "RC07",
         "RC08"
-      ]
+      ],
+      "category": "商机覆盖风险"
     },
     "RK03": {
       "code": "RK03",
@@ -3796,7 +3855,8 @@
       "candidateCauses": [
         "RC01",
         "RC07"
-      ]
+      ],
+      "category": "商机覆盖风险"
     },
     "RK04": {
       "code": "RK04",
@@ -3811,7 +3871,8 @@
         "RC03",
         "RC04",
         "RC05"
-      ]
+      ],
+      "category": "商机覆盖风险"
     },
     "RK05": {
       "code": "RK05",
@@ -3826,7 +3887,8 @@
         "RC03",
         "RC04",
         "RC05"
-      ]
+      ],
+      "category": "商机覆盖风险"
     },
     "RK06": {
       "code": "RK06",
@@ -3839,7 +3901,8 @@
       "impact": "商机、客户、产品类型、产品团队",
       "candidateCauses": [
         "RC01"
-      ]
+      ],
+      "category": "商机覆盖风险"
     },
     "RK07": {
       "code": "RK07",
@@ -3853,7 +3916,8 @@
       "candidateCauses": [
         "RC09",
         "RC01"
-      ]
+      ],
+      "category": "商机覆盖风险"
     },
     "RK10": {
       "code": "RK10",
@@ -3867,7 +3931,8 @@
       "candidateCauses": [
         "RC01",
         "RC08"
-      ]
+      ],
+      "category": "商机转化风险"
     },
     "RK11": {
       "code": "RK11",
@@ -3882,7 +3947,8 @@
         "RC08",
         "RC10",
         "RC11"
-      ]
+      ],
+      "category": "商机转化风险"
     }
   },
   "causes": {
