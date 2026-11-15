@@ -177,19 +177,31 @@ def period_state(ui_scope, fallback='') -> dict:
 
 
 def period_range(period):
-    """Inclusive ISO date range for a period key, or ``None``."""
+    """Inclusive ISO date range for a period key, or ``None``.
+
+    The range never extends past :func:`snapshot_date`, so an AP date filter is
+    pinned to the same observation day as the SQL cards: a year period is
+    year-to-date (``2025-01-01`` .. ``2025-10-31``) instead of the full
+    calendar year, and a period starting after the observation day has no
+    observed rows and returns ``None``.
+    """
     value = normalise(period)
     try:
         if len(value) == 7:
             year, month = int(value[:4]), int(value[5:])
             start = dt.date(year, month, 1)
             end = dt.date(year + (month == 12), month % 12 + 1, 1) - dt.timedelta(days=1)
-            return start.isoformat(), end.isoformat()
-        if len(value) == 4:
-            return f'{value}-01-01', f'{value}-12-31'
+        elif len(value) == 4:
+            start = dt.date(int(value), 1, 1)
+            end = dt.date(int(value), 12, 31)
+        else:
+            return None
     except ValueError:
         return None
-    return None
+    cutoff = snapshot_date()
+    if start > cutoff:
+        return None
+    return start.isoformat(), min(end, cutoff).isoformat()
 
 
 def period_of_scope(ui_scope, fallback='') -> str:

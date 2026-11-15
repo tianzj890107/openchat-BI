@@ -947,10 +947,10 @@ def test_independent_combined_needs_no_published_stage_cards(tmp_path,monkeypatc
         return store.get_analysis(item['id'])
     manager=_manager(store,cfg,lambda i,k,p:queries.append(p) or {'value':42},start)
     manager.round_queries={}
-    result=manager.preheat_period(1,'analysis','combined','2026',force=True)
+    result=manager.preheat_period(1,'analysis','combined','2025',force=True)
     assert result['status'] in {'published','frozen'} and len(calls)==1 and len(queries)==1
     assert calls[0]['stage']=='combined'
-    assert '2026-01-01' in json.dumps(queries[0])
+    assert '2025-10-31' in json.dumps(queries[0])
     manager._query_requests(1,queries+queries)
     assert len(queries)==1  # exact same-round receipts reused
 

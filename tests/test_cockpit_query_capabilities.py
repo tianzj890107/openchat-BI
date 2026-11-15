@@ -12,17 +12,17 @@ def test_export_manifest_has_enabled_implementations_without_executable_sql():
 
 def test_all_stage_queries_use_registered_combination_and_actual_business_date():
     for stage in ('opportunity','order','shipment','quotation','bid'):
-        plans=implemented_stage_requests(stage,'2026-02')
+        plans=implemented_stage_requests(stage,'2025-02')
         assert plans and all(is_registered(q) for q in plans)
         for q in plans:
             conditions=q['commonConfig']['filters']['children']
-            assert len(conditions)==1 and conditions[0]['value']==['2026-02-01','2026-02-28']
-    shipment=implemented_stage_requests('shipment','2026')
+            assert len(conditions)==1 and conditions[0]['value']==['2025-02-01','2025-02-28']
+    shipment=implemented_stage_requests('shipment','2025')
     assert any(q['commonConfig']['filters']['children'][0]['identifierCode']!='YWLN_D044' for q in shipment)
 
 
 def test_partial_registered_metric_keeps_scope_and_rejects_missing_filter_mapping():
-    q=implemented_stage_requests('quotation','2026')[0];before=deepcopy(q)
+    q=implemented_stage_requests('quotation','2025')[0];before=deepcopy(q)
     q['analysisConfig']['indicators'].append(dict(identifierCode='YWLN_NOT_IMPLEMENTED'))
     accepted,excluded=project_requests([q])
     assert len(accepted)==1 and len(excluded)==1
@@ -40,7 +40,7 @@ def test_refresh_does_not_send_unimplemented_queries_to_ap(tmp_path):
     calls=[]
     manager=RefreshManager(Store(tmp_path/'history.sqlite3'),Config(),lambda *args:calls.append(args) or {'value':1},lambda *_:None)
     manager.implemented_only=True
-    q=implemented_stage_requests('quotation','2026')[0]
+    q=implemented_stage_requests('quotation','2025')[0]
     q['analysisConfig']['indicators'].append(dict(identifierCode='UNKNOWN_METRIC'))
     records,failures=manager._query_requests(1,[q])
     assert len(records)==1 and len(failures)==1 and len(calls)==1
@@ -57,16 +57,16 @@ def test_fixed_annual_never_supplements_unsupported_ap_with_sql(tmp_path):
 
 
 def test_combined_can_read_registered_actual_sales_and_target_without_polluting_nodes():
-    combined=implemented_stage_requests('combined','2026')
+    combined=implemented_stage_requests('combined','2025')
     codes={x['identifierCode'] for q in combined for x in q['analysisConfig']['indicators']}
     assert {'YWLN_M0001','YWLN_M0002'}<=codes
     for stage in ('opportunity','order','shipment','quotation','bid'):
-        stage_codes={x['identifierCode'] for q in implemented_stage_requests(stage,'2026') for x in q['analysisConfig']['indicators']}
+        stage_codes={x['identifierCode'] for q in implemented_stage_requests(stage,'2025') for x in q['analysisConfig']['indicators']}
         assert 'YWLN_M0001' not in stage_codes
 
 
 def test_duplicate_dimensions_are_rejected_before_ap_not_silently_rewritten():
-    q=next(q for q in implemented_stage_requests('shipment','2026') if q['analysisConfig']['dimensions'])
+    q=next(q for q in implemented_stage_requests('shipment','2025') if q['analysisConfig']['dimensions'])
     q['analysisConfig']['dimensions'].append(deepcopy(q['analysisConfig']['dimensions'][0]))
     assert not is_registered(q)
     assert project_requests([q])==([],[q])

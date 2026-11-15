@@ -50,5 +50,22 @@ def test_annual_stage_queries_are_bounded_to_the_requested_year():
         dates = [child for child in plan['commonConfig']['filters']['children']
                  if child['operator'] == {'code': 'BETWEEN', 'type': 'DATE'}]
         assert len(dates) == 1
-        assert dates[0]['value'][0].startswith('2025-01-01')
-        assert '2026' not in dates[0]['value'][0]
+        assert dates[0]['value'] == ['2025-01-01', '2025-10-31']
+
+
+def test_period_range_stops_at_the_delivery_snapshot():
+    from bi_agent.cockpit.periods import period_range
+    assert period_range('2025') == ('2025-01-01', '2025-10-31')
+    assert period_range('2025-10') == ('2025-10-01', '2025-10-31')
+    assert period_range('2025-09') == ('2025-09-01', '2025-09-30')
+    assert period_range('2024') == ('2024-01-01', '2024-12-31')
+    assert period_range('2025-11') is None
+    assert period_range('2026') is None
+
+
+def test_period_range_follows_the_snapshot_override(monkeypatch):
+    from bi_agent.cockpit.periods import period_range
+    monkeypatch.setenv('COCKPIT_SNAPSHOT_DATE', '2025-09-30')
+    assert period_range('2025') == ('2025-01-01', '2025-09-30')
+    assert period_range('2025-10') is None
+    assert period_range('2025-09') == ('2025-09-01', '2025-09-30')
