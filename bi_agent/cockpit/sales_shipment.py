@@ -694,10 +694,11 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
         raise error
     v2._report_progress(progress, "rules", message="规则函数判定问题与根因")
     evaluated = evaluate(data, config, measured)
-    v2._report_progress(progress, "analysing", message="逐条判定规则无法确定的问题与根因")
+    v2._report_progress(progress, "analysing", message="逐条判定规则无法确定的问题")
     view = dict(config, risks=config["issues"])
+    # The card lists problems only: causes and advice are neither judged nor shown.
     judged = judge_card(
-        evaluated, view, judge=judge, progress=progress, primary="issue", id_prefix="ss",
+        evaluated, view, judge=judge, progress=progress, primary="issue", id_prefix="ss", with_causes=False,
         cause_stage=lambda code: (config["causes"].get(code) or {}).get("stage") or "data",
         advice_type=lambda code, spec, linked: (
             "remediation" if any(c.get("kind") == "verified" and c.get("status") == "supported" for c in linked or [])

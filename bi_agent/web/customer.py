@@ -8,6 +8,25 @@ import os
 BUILTIN_CATALOG_PATH = Path('/app/builtin-ontology/catalog.json')
 
 
+# 360 智能分析 (opened from a cockpit card's 深度分析): the analysis page, its
+# assets and the APIs it uses.  Chat in this delivery only serves 360
+# sessions (see app.STATE.analysis360_only); server-wide settings stay closed.
+ANALYSIS360_PAGES = {'/workbench', '/static/url-prompt.mjs', '/static/analysis360-handoff.mjs'}
+ANALYSIS360_PREFIXES = ('/static/vendor/antd/', '/api/analysis360/', '/api/conversations')
+ANALYSIS360_READ = {'/api/meta', '/api/config', '/api/sources', '/api/roles', '/api/system-prompt',
+                    '/api/report/status', '/api/report/list'}
+ANALYSIS360_WRITE = {'/api/chat', '/api/choice', '/api/session/reset', '/api/roles'}
+
+
+def analysis360_allowed(path, method='GET'):
+    method = method.upper()
+    if path in ANALYSIS360_PAGES or path.startswith(ANALYSIS360_PREFIXES):
+        return True
+    if path in ANALYSIS360_READ and method in {'GET', 'HEAD'}:
+        return True
+    return path in ANALYSIS360_WRITE and method == 'POST'
+
+
 class CustomerSurface:
     def __init__(self, app, prefix=''):
         self.app, self.prefix = app, prefix.rstrip('/')
@@ -23,7 +42,8 @@ class CustomerSurface:
             return await RedirectResponse(self.prefix+'/cockpit/overview',status_code=307)(scope,receive,send)
         allowed = (path in {'/','/health','/healthz','/api/mcp','/api/mcp/health','/api/mcp/process360'}
                    or path.startswith(('/cockpit/','/api/cockpit/','/api/process360/','/api/mcp/artifacts/',
-                                       '/static/cockpit/','/static/vendor/echarts/','/charts/')))
+                                       '/static/cockpit/','/static/vendor/echarts/','/charts/'))
+                   or analysis360_allowed(path, scope.get('method') or 'GET'))
         if not allowed:
             from starlette.responses import JSONResponse
             return await JSONResponse({'detail':'此交付仅提供驾驶舱与Process360 MCP'},status_code=404)(scope,receive,send)

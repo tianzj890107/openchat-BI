@@ -34,6 +34,8 @@ STAGES = ('opportunity', 'order', 'shipment', 'quotation', 'bid', 'combined')
 # The 商机获取 risk card shows its rows only: its risk rows get one semantic
 # control pass instead (see opportunity_judgement.control_risk_rows).
 SECTION_SUMMARY_STAGES = ('order', 'shipment', 'combined')
+# Cards that list problems only; their cause / advice sections stay empty.
+PROBLEMS_ONLY_STAGES = ('combined',)
 INDEPENDENT_ITEMS = ('opportunity-risk',)
 PUBLICATION_KEYS = STAGES + INDEPENDENT_ITEMS
 

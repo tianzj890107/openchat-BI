@@ -57,9 +57,71 @@ export function deepAnalysisPayload(kind, item, context = {}) {
   }
 }
 
-export async function openDeepAnalysis(payload, {root = appRootPath(), win = window} = {}) {
-  // Open the tab inside the click, before any await, so it is not blocked.
-  const tab = win.open('about:blank', '_blank')
+const DEEP_STYLE_ID = 'cockpit-analysis360-window-style'
+const DEEP_STYLE = `
+.a360-window-mask{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;
+  background:rgba(15,23,42,.45)}
+.a360-window{display:flex;flex-direction:column;width:min(1440px,94vw);height:min(920px,92vh);
+  background:var(--cockpit-surface);border-radius:10px;box-shadow:0 18px 48px rgba(15,23,42,.28);overflow:hidden}
+.a360-window__head{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--cockpit-divider)}
+.a360-window__title{flex:1;min-width:0;font-weight:600;color:var(--cockpit-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.a360-window__close{border:0;background:transparent;color:var(--cockpit-text-secondary);font-size:20px;line-height:1;cursor:pointer}
+.a360-window__body{position:relative;flex:1;min-height:0}
+.a360-window__frame{width:100%;height:100%;border:0;display:block}
+.a360-window__state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:var(--cockpit-text-help);font-size:14px}
+.a360-window__state--error{color:var(--cockpit-error)}`
+
+function ensureDeepStyle(doc) {
+  if (doc.getElementById(DEEP_STYLE_ID)) return
+  const style = doc.createElement('style')
+  style.id = DEEP_STYLE_ID
+  style.textContent = DEEP_STYLE
+  doc.head.appendChild(style)
+}
+
+// The 360 智能分析 window: chat and board of the analysis page, in the cockpit.
+export function openDeepAnalysisWindow(title, {doc = document} = {}) {
+  ensureDeepStyle(doc)
+  const mask = doc.createElement('div')
+  mask.className = 'a360-window-mask'
+  mask.innerHTML = '<div class="a360-window" role="dialog" aria-modal="true">'
+    + '<div class="a360-window__head"><div class="a360-window__title"></div>'
+    + '<button type="button" class="a360-window__close" aria-label="关闭">×</button></div>'
+    + '<div class="a360-window__body"><div class="a360-window__state">正在打开 360 智能分析…</div></div></div>'
+  mask.querySelector('.a360-window__title').textContent = `360 智能分析 · ${title || '深度分析'}`
+  const body = mask.querySelector('.a360-window__body')
+  const state = mask.querySelector('.a360-window__state')
+  const onKey = event => { if (event.key === 'Escape') close() }
+  function close() {
+    doc.removeEventListener('keydown', onKey)
+    mask.remove()
+  }
+  mask.querySelector('.a360-window__close').addEventListener('click', close)
+  doc.addEventListener('keydown', onKey)
+  doc.body.appendChild(mask)
+  return {
+    element: mask,
+    close,
+    load(url) {
+      const frame = doc.createElement('iframe')
+      frame.className = 'a360-window__frame'
+      frame.title = '360 智能分析'
+      frame.src = url
+      frame.addEventListener('load', () => { state.remove() }, {once: true})
+      body.appendChild(frame)
+    },
+    fail(message) {
+      state.textContent = message
+      state.classList.add('a360-window__state--error')
+    },
+  }
+}
+
+export async function openDeepAnalysis(payload, {root = appRootPath(), win = window, doc = win.document} = {}) {
+  // The window opens at once (no pop-up blocker involved) and shows the
+  // analysis page — chat and board only — once the clause is handed over.
+  const view = openDeepAnalysisWindow(payload?.clause?.title || payload?.clause?.code, {doc})
   try {
     const response = await win.fetch(`${root}/api/analysis360/handoff`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
@@ -69,16 +131,11 @@ export async function openDeepAnalysis(payload, {root = appRootPath(), win = win
       throw new Error(detail.detail || `深度分析暂不可用（${response.status}）`)
     }
     const {id} = await response.json()
-    const url = `${root}/workbench?a360=${encodeURIComponent(id)}`
-    if (tab) {
-      tab.opener = null
-      tab.location.replace(url)
-    } else {
-      win.location.assign(url)
-    }
+    const url = `${root}/workbench?a360=${encodeURIComponent(id)}&embed=1`
+    view.load(url)
     return url
   } catch (error) {
-    if (tab) tab.close()
+    view.fail(error?.message || '深度分析暂不可用')
     throw error
   }
 }
@@ -497,8 +554,11 @@ export function createStageRiskComponent(options = {}) {
       const primaryLabel = options.primaryLabel || '风险'
       // The 商机获取 card lists each row only: no per-section summary line.
       const showSectionSummaries = options.sectionSummaries !== false
-      const judgementGroups = computed(() => insight.judgementGroups.value.map(group => (
-        group.kind === 'risks' ? {...group, title: primaryLabel} : group)))
+      // The 共同问题 card lists its problems only: no cause and no advice.
+      const showCauses = options.problemsOnly !== true
+      const judgementGroups = computed(() => insight.judgementGroups.value
+        .filter(group => options.problemsOnly !== true || group.kind === 'risks')
+        .map(group => (group.kind === 'risks' ? {...group, title: primaryLabel} : group)))
       const analysisDimensions = computed(() => riskDimensionLinks(
         props.analysis?.result?.analysisDimensions || [], insight.findings.value, primaryLabel))
       ensureTaskOrderStyle()
@@ -540,7 +600,7 @@ export function createStageRiskComponent(options = {}) {
         }
       }
       return { ...insight, ...taskOrder, displayStage, primaryLabel, judgementGroups, analysisDimensions,
-               showOverallSummary, showSectionSummaries, deepAnalysis, deepAnalysisError, deepAnalysisBusy }
+               showOverallSummary, showSectionSummaries, showCauses, deepAnalysis, deepAnalysisError, deepAnalysisBusy }
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
@@ -621,7 +681,7 @@ export function createStageRiskComponent(options = {}) {
             </div>
           </article>
 
-          <article v-if="analysisDimensions.length" class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
+          <article v-if="showCauses && analysisDimensions.length" class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
               按 {{ analysisDimensions.length }} 个业务环节展开原因分析
@@ -689,7 +749,7 @@ export function createStageRiskComponent(options = {}) {
             </div>
           </article>
 
-          <article v-if="recommendations.length" class="stage-risk-analysis__card stage-risk-analysis__card--suggest stage-risk-analysis__panel">
+          <article v-if="showCauses && recommendations.length" class="stage-risk-analysis__card stage-risk-analysis__card--suggest stage-risk-analysis__panel">
             <div class="stage-risk-analysis__head">
               <div class="stage-risk-analysis__title">
                 <span class="stage-risk-analysis__mark stage-risk-analysis__mark--suggest">【建议】</span>
@@ -734,8 +794,8 @@ export function createStageRiskComponent(options = {}) {
                 <div>调用本体：{{ ontologyTrace.ontology }}（{{ ontologyTrace.version }}，配置 {{ ontologyTrace.digest }}）</div>
                 <div>指标 {{ ontologyTrace.metrics.length }} 项：{{ ontologyText(ontologyTrace.metrics) }}</div>
                 <div>{{ primaryLabel }}规则 {{ ontologyTrace.risks.length }} 条：{{ ontologyText(ontologyTrace.risks) }}</div>
-                <div>原因库 {{ ontologyTrace.causes.length }} 类：{{ ontologyText(ontologyTrace.causes) }}</div>
-                <div>建议库 {{ ontologyTrace.advice.length }} 条：{{ ontologyText(ontologyTrace.advice) }}</div>
+                <div v-if="showCauses">原因库 {{ ontologyTrace.causes.length }} 类：{{ ontologyText(ontologyTrace.causes) }}</div>
+                <div v-if="showCauses">建议库 {{ ontologyTrace.advice.length }} 条：{{ ontologyText(ontologyTrace.advice) }}</div>
               </div>
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>

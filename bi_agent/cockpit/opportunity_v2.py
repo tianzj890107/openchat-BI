@@ -2424,8 +2424,8 @@ def evaluate(data, config=None, measured=None):
         evidence.extend(top_opps(late_p0))
         name = _risk_name(config, "RK10", "商机获取阶段超期较多，影响签单")
         risks.append(_risk("RK10", name, level, f"RK10 {name}",
-                           f"{len(late_p0)} 条商机单笔周期超过同阶段同产品{cycle_basis}平均周期 1.5 倍；"
-                           f"平均周期 {overall_p0:.1f} 天。",
+                           f"商机获取阶段：{len(late_p0)} 条商机单笔周期超过同产品{cycle_basis}平均周期 50% 以上"
+                           f"（> 1.5 倍，含在途）；平均周期 {overall_p0:.1f} 天。",
                            ["RK10", "P0-01", "P0-02"], evidence,
                            dict(count=len(late_p0), amount=affected_amount, energy=affected_energy),
                            [opp.get("id") for opp in late_p0]))
@@ -2443,12 +2443,31 @@ def evaluate(data, config=None, measured=None):
         amount_high = thresholds.get("stageBandAmountHigh")
         level = ("高" if (stages_high is not None and len(severe_hits) >= stages_high)
                  or (amount_high is not None and (hit_amount or 0) >= amount_high) else "中")
-        parts = [f"{band_meta[code]['stage']} {stage_bands[code]['count']} 条" for code in severe_hits]
-        description = (f"{hit_count} 条已结束商机的阶段周期超过同阶段同产品真实动态平均周期 50% 及以上（"
-                       + "、".join(parts) + "）"
+        # One clause per stage: which stage, how many over the mean by 50% or
+        # more and by less than 50%, and the forecast behind each band.
+        def band_text(code, label):
+            item = stage_bands.get(code) or {}
+            count = item.get("count") or 0
+            text = f"{label} {count} 条"
+            if count and item.get("amount") is not None:
+                text += f"（预测 {item['amount']:.2f} 亿元"
+                text += f"、{item['energy']:.2f} GWh）" if item.get("energy") is not None else "）"
+            return text
+
+        stage_parts = []
+        for stage in dict.fromkeys(band_meta[code]["stage"] for code in STAGE_BAND_CODES):
+            codes = [code for code in STAGE_BAND_CODES if band_meta[code]["stage"] == stage]
+            if not any((stage_bands.get(code) or {}).get("count") for code in codes):
+                continue
+            severe = next(code for code in codes if band_meta[code]["severe"])
+            mild = next(code for code in codes if not band_meta[code]["severe"])
+            stage_parts.append(f"{stage}阶段：" + band_text(severe, "超均值 50% 及以上") + "，"
+                               + band_text(mild, "超均值 50% 以内"))
+        description = ("；".join(stage_parts)
+                       + f"。合计 {hit_count} 条已结束商机的阶段周期超过同阶段同产品真实动态平均周期 50% 及以上"
                        + (f"，涉及预测金额 {hit_amount:.2f} 亿元" if hit_amount is not None else "")
                        + (f"、预测电量 {hit_energy:.2f} GWh" if hit_energy is not None else "")
-                       + (f"；另有 {watch} 条超均值未满 50%，列为关注" if watch else "") + "。")
+                       + (f"；另有 {watch} 条超均值 50% 以内，列为关注" if watch else "") + "。")
         evidence = [fid for code in STAGE_BAND_CODES for fid in band_facts[code]]
         objects = []
         for code in severe_hits:
@@ -2459,9 +2478,11 @@ def evaluate(data, config=None, measured=None):
                 if len(evidence) < 30:
                     evidence.append(record(
                         f"opp-v2:stage-band:{code}:{opp['id']}", name=opp["id"], product=opp.get("product"),
-                        status=(f"{band_meta[code]['stage']}实际 {opp['days']:.1f} 天，同组均值 {opp['baseline']:.1f} 天"
+                        status=(f"{band_meta[code]['stage']}阶段·超均值 50% 及以上：实际 {opp['days']:.1f} 天，"
+                                f"同组均值 {opp['baseline']:.1f} 天"
+                                + (f"，超 {opp['excess'] * 100:.0f}%" if opp.get("excess") is not None else "")
                                 if opp.get("days") is not None and opp.get("baseline") is not None
-                                else band_meta[code]["stage"]),
+                                else f"{band_meta[code]['stage']}阶段·超均值 50% 及以上"),
                         value=opp.get("days"), unit="天", amount=opp.get("amount"), quantity=opp.get("energy")))
         name = _risk_name(config, "RK11", "商机推进阶段周期超均值较多，拖慢签单")
         risks.append(_risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],

@@ -8,6 +8,23 @@
 import { waitForWorkbench } from "./url-prompt.mjs";
 
 export const HANDOFF_PARAM = "a360";
+export const EMBED_PARAM = "embed";
+const EMBED_STYLE_ID = "analysis360-embed-style";
+// Opened from a cockpit card the page shows the conversation and the board
+// only: the navigation rail and its resizer are hidden.
+const EMBED_STYLE = [
+  "#antd-sidebar-root,#sidebar,#sidebar-resizer,#sidebar-reopen,.layout-resizer-sidebar{display:none!important}",
+  ".app-main{flex:1 1 auto!important;width:100%!important;max-width:none!important}",
+].join("\n");
+
+export function applyEmbed(document) {
+  if (document.getElementById(EMBED_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = EMBED_STYLE_ID;
+  style.textContent = EMBED_STYLE;
+  document.head.appendChild(style);
+  if (document.body) document.body.dataset.analysis360Embed = "1";
+}
 export const HANDOFF_FIELD = "analysis360_handoff";
 const MODE_KEY = "eimosp-analysis360-mode";
 
@@ -48,6 +65,7 @@ export function markMode(document, storage) {
 
 export async function bootHandoff(window, document) {
   const url = new URL(window.location.href);
+  if (url.searchParams.get(EMBED_PARAM) === "1") applyEmbed(document);
   const handoffId = (url.searchParams.get(HANDOFF_PARAM) || "").trim();
   let stored = false;
   try { stored = window.sessionStorage.getItem(MODE_KEY) === "1"; } catch (_) { /* ignore */ }

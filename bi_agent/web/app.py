@@ -552,6 +552,8 @@ def configure(
     STATE.ontology_path = ontology_path
     STATE.use_doris = use_doris
     remote_mode = STATE.ontology_backend in {"production", "remote"}
+    # The customer delivery opens chat for 360 智能分析 sessions only.
+    STATE.analysis360_only = bool(process360_only)
     if process360_only:
         # Customer cockpit/MCP boot has no remote ontology or Doris dependency.
         STATE.ontology_backend = "local"
@@ -4023,6 +4025,8 @@ def _ensure_session(session_id: Optional[str] = None) -> WebSession:
             STATE.session_slots.ensure(_slot_key("data", key)).touch()
             return existing
         analysis360_context = _ANALYSIS360_SESSIONS.get(key)
+    if key not in _ANALYSIS360_SESSIONS and getattr(STATE, "analysis360_only", False):
+        raise HTTPException(403, "此交付仅提供 360 智能分析：请从驾驶舱卡片的“深度分析”进入")
     if key in _ANALYSIS360_SESSIONS:
         # The 360 session object was reaped; the id stays a 360 session.
         session = _build_analysis360_session(key, analysis360_context)

@@ -62,7 +62,8 @@ SLOT_SPECS = {
     'sales-shipment-issues': dict(
         question='销售额与出货量的共同问题是什么，能否形成管理结论',
         kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'),
-        actions=True, max_causes=5,
+        # Problems only: the card owes no cause and no action.
+        actions=False, max_causes=0, causes_required=False,
         note='跨环节结论必须同口径；口径冲突未对账前只交付各自观察，不汇总缺口。'),
     'opportunity-risk': dict(
         question='哪些商机风险已由本体规则触发，原因与行动是否有证据',

@@ -365,7 +365,7 @@ def _status_label(entry):
 
 
 def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", id_prefix="opp-v2",
-               cause_stage=None, advice_type=None):
+               cause_stage=None, advice_type=None, with_causes=True):
     """Settle risks (or problems), causes and advice; return the card fields and the trace.
 
     ``primary`` names the first layer ("risk" for the stage cards, "issue" for
@@ -384,8 +384,10 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
         if isinstance(config.get("rules"), dict) else {
             item.get("code"): item for item in config.get("rules") or []}
     risk_specs = config.get("risks") or {}
-    cause_specs = config.get("causes") or {}
-    advice_specs = config.get("advice") or {}
+    # with_causes=False: the card shows its risks / problems only; no cause is
+    # judged or inferred and no advice is produced (no model calls for them).
+    cause_specs = (config.get("causes") or {}) if with_causes else {}
+    advice_specs = (config.get("advice") or {}) if with_causes else {}
     links = config.get("links") or {}
     triggered = {risk["code"]: risk for risk in evaluated.get("risks") or []}
     candidates = {item["code"]: item for item in evaluated.get("riskCandidates") or []}
@@ -497,7 +499,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                  for risk_code in entry["linkedRisks"]}
     risk_order = sorted(established_risks.values(),
                         key=lambda item: (_LEVEL_RANK.get(item.get("level") or "", 4), item["code"]))
-    orphans = [entry for entry in risk_order if entry["code"] not in explained]
+    orphans = [entry for entry in risk_order if entry["code"] not in explained] if with_causes else []
     inference_calls = 0
     for position, risk in enumerate(orphans, 1):
         linked = (links.get(risk["code"]) or {}).get("causes") or []
@@ -633,7 +635,8 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
     by_rule = sum(1 for entry in order if entry["decidedBy"] == "rule")
     summary = (f"本轮 {len(risk_entries)} 项本体{label}中 {len(order)} 项成立"
                f"（规则判定 {by_rule} 项，模型判定 {len(order) - by_rule} 项）"
-               + (f"，成立{label}涉及 {len(causes)} 项根因、{len(recommendations)} 条建议" if order else "")
+               + (f"，成立{label}涉及 {len(causes)} 项根因、{len(recommendations)} 条建议"
+                  if order and with_causes else "")
                + (f"（其中 {inferred_count} 项根因由模型在本体根因未命中时推理）" if inferred_count else "")
                + (f"；{len(failures)} 项模型判断失败已跳过" if failures else "") + "。")
     assessments = [dict(
