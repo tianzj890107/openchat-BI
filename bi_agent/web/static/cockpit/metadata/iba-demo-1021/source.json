@@ -1,14 +1,8 @@
 {
-  "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
+  "activateRules": 6,
+  "activatedAt": "2026-11-02",
   "branch": "feature/demo_1021",
   "commit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
-  "umdCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
-  "importedAt": "2026-11-10",
-  "mode": "active-runtime-adapter",
-  "notes": "Synchronized components, templates and ProBIUI from cba36d8. The delivered date filter is pinned to the 2025 business year: empty default, 2025/annual and 2025 months for monthly grain, restoreDefault reset behavior retained. Existing host activation rules, AP/AI adapters, palette and null-instance fitView guard are preserved. Three adapted AP-backed lists carry 5bbfcf7 sort semantics through the shared adapter; mock enrichment is not imported.",
-  "rootComponents": 2,
-  "templates": 13,
-  "totalComponents": 142,
   "componentTypes": {
     "bar": 3,
     "bar-line": 2,
@@ -32,26 +26,14 @@
     "ap": 102,
     "mock": 40
   },
-  "insights": 15,
-  "insightComponents": 15,
-  "activateRules": 6,
-  "queryContract": {
-    "gatewayPrefix": "/api/gateway2/x360",
-    "singlePath": "/v1/ontology/data/query",
-    "helmetPath": "/api/gateway2/x360/v1/graphs/helmet-view",
-    "helmetUrlSource": "host-rewritten",
-    "repositoryId": "8",
-    "batchAdapterInjected": false,
-    "batchFallback": "ProUI concurrent single queries"
-  },
   "files": [
     {
       "file": "components.json",
-      "sha256": "903c38c06a8fcffc67e401e306108392637567edf4686765cbb55cab3ea831e9"
+      "sha256": "6d2793d414c20d05443d8ba02c153bce8009fe4ea62a3f59d8091cbfd9225052"
     },
     {
       "file": "template-registry.json",
-      "sha256": "f31215756b5bd1a087863678eabaef65b3cd820f2f4d9d8ba3e56d67564128c4"
+      "sha256": "a84861324df5c17ccdd0920e73a906650c5adae28c225ac18791696e3ce4bf8a"
     },
     {
       "file": "insights.js",
@@ -66,14 +48,32 @@
       "sha256": "58764642830522388eb545f594b43d990c491bfb8906c864870c0fa9ef41ed35"
     }
   ],
+  "importedAt": "2026-11-10",
+  "insightComponents": 15,
+  "insightSortCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
+  "insights": 15,
   "knownIssues": [
     {
-      "templateId": "2112062888320483329",
       "componentId": "group-9ypz7vwt",
+      "description": "Upstream child definition is absent; runtime reports the gap and keeps the original position empty.",
       "missingChildId": "share-bar-79fsomq9",
-      "description": "Upstream child definition is absent; runtime reports the gap and keeps the original position empty."
+      "templateId": "2112062888320483329"
     }
   ],
-  "activatedAt": "2026-11-02",
-  "insightSortCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290"
+  "mode": "active-runtime-adapter",
+  "notes": "Synchronized components, templates and ProBIUI from cba36d8. The delivered date filter is pinned to 2025-10: the month grain offers the twelve 2025 months, the filter default is 2025-10, and restoreDefault reset behavior is retained. Existing host activation rules, AP/AI adapters, palette and null-instance fitView guard are preserved. Three adapted AP-backed lists carry 5bbfcf7 sort semantics through the shared adapter; mock enrichment is not imported.",
+  "queryContract": {
+    "batchAdapterInjected": false,
+    "batchFallback": "ProUI concurrent single queries",
+    "gatewayPrefix": "/api/gateway2/x360",
+    "helmetPath": "/api/gateway2/x360/v1/graphs/helmet-view",
+    "helmetUrlSource": "host-rewritten",
+    "repositoryId": "8",
+    "singlePath": "/v1/ontology/data/query"
+  },
+  "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
+  "rootComponents": 2,
+  "templates": 13,
+  "totalComponents": 142,
+  "umdCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290"
 }

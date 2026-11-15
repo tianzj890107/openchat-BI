@@ -149,26 +149,28 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     ]
 
 
-def test_delivered_filter_defaults_to_empty_and_only_offers_2025():
+def test_delivered_filter_defaults_to_2025_10_and_offers_twelve_months():
     payload = runtime_payload()
     filter_component = next(
         component for component in payload["dashboard"]["components"]
         if component.get("type") == "composite-filter"
     )
     base = filter_component["baseConfig"]
-    assert base["defaultValue"]["values"] == {}
+    assert base["defaultValue"]["values"] == {"YWLN_D044": "2025-10"}
     assert base["nonClearableDimensions"] == []
     assert base["resetBehavior"] == "restoreDefault"
     config = filter_component["dataConfig"]
     assert config["sourceType"] == "mock"
     mock = config["mockData"]
     assert mock["filters"] == [{"id": "YWLN_D044", "name": "日期", "type": "date"}]
-    assert mock["options"] == [{"label": "2025", "value": "2025"}]
+    assert mock["options"] == [
+        {"label": f"2025-{month:02d}", "value": f"2025-{month:02d}"} for month in range(1, 13)
+    ]
     operations = next(
         component for component in payload["pages"]["operations"]["components"]
         if component.get("type") == "button-group"
     )
-    assert next(item for item in operations["buttonGroupConfig"]["items"] if item.get("default"))["grain"] == "year"
+    assert next(item for item in operations["buttonGroupConfig"]["items"] if item.get("default"))["grain"] == "month"
 
 
 def test_metadata_api_exposes_delivered_rules_and_keeps_legacy_analysis_endpoints(tmp_path):

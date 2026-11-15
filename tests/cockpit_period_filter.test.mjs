@@ -4,21 +4,26 @@ import {readFile} from 'node:fs/promises';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
+const MONTHS = Array.from({length: 12}, (_, index) => {
+  const month = String(index + 1).padStart(2, '0');
+  return {label: `2025-${month}`, value: `2025-${month}`};
+});
+
 const assertFilter = filter => {
   assert.equal(filter.dataConfig.sourceType, 'mock');
-  assert.deepEqual(filter.baseConfig.defaultValue, {values: {}});
+  assert.deepEqual(filter.baseConfig.defaultValue, {values: {YWLN_D044: '2025-10'}});
   assert.deepEqual(filter.baseConfig.nonClearableDimensions, []);
   const mock = filter.dataConfig.mockData;
   assert.deepEqual(mock.filters, [{id: 'YWLN_D044', name: '日期', type: 'date'}]);
-  assert.deepEqual(mock.options, [{label: '2025', value: '2025'}]);
+  assert.deepEqual(mock.options, MONTHS);
 };
 
-test('delivered date filter starts empty and only offers the 2025 business year', async () => {
+test('delivered date filter opens on 2025-10 and offers the twelve 2025 months', async () => {
   const components = JSON.parse(await read('bi_agent/web/static/cockpit/metadata/iba-demo-1021/components.json'));
   assertFilter(components.find(component => component.type === 'composite-filter'));
 });
 
-test('generated runtime keeps the same 2025-only filter contract', async () => {
+test('generated runtime keeps the same 2025-10 default filter contract', async () => {
   const runtime = JSON.parse(await read('bi_agent/web/static/cockpit/metadata/runtime.json'));
   assertFilter(runtime.dashboard.components.find(component => component.type === 'composite-filter'));
 });

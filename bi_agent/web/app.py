@@ -4575,11 +4575,12 @@ app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd()
 COCKPIT_PAGES = frozenset({"overview", "operations", "analysis"})
 
 
-def _cockpit_business_year() -> str:
-    # The page's first-paint year comes from the server configuration
-    # (COCKPIT_BUSINESS_YEAR / COCKPIT_ACTIVE_PERIOD), never the browser clock.
+def _cockpit_business_period() -> str:
+    # The page's first-paint period comes from the server configuration
+    # (COCKPIT_BUSINESS_YEAR / COCKPIT_ACTIVE_PERIOD), never the browser
+    # clock: it is 2025-10 for this delivery.
     from ..cockpit.periods import default_period
-    return default_period()[:4]
+    return default_period()
 
 
 def _cockpit_html(page: str) -> HTMLResponse:
@@ -4608,7 +4609,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
         html.replace("@@APP_ROOT_PATH@@", APP_ROOT_PATH)
         .replace("@@COCKPIT_PAGE@@", page)
         .replace("@@COCKPIT_VERSION@@", asset_version)
-        .replace("@@COCKPIT_BUSINESS_YEAR@@", _cockpit_business_year())
+        .replace("@@COCKPIT_BUSINESS_PERIOD@@", _cockpit_business_period())
     )
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 

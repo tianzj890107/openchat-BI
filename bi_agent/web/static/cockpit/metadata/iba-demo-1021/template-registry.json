@@ -498,14 +498,14 @@
               "id": "1792487894533",
               "grain": "year",
               "label": "年度",
-              "default": true,
+              "default": false,
               "templateSwitchTargets": []
             },
             {
               "id": "1792487919825",
               "grain": "month",
               "label": "月度",
-              "default": false,
+              "default": true,
               "templateSwitchTargets": []
             }
           ]
@@ -3454,14 +3454,15 @@
               "id": "option-1",
               "grain": "year",
               "label": "年度",
-              "default": true,
+              "default": false,
               "templateSwitchTargets": []
             },
             {
               "id": "option-2",
               "grain": "month",
               "label": "月度",
-              "templateSwitchTargets": []
+              "templateSwitchTargets": [],
+              "default": true
             }
           ]
         }
@@ -10496,7 +10497,7 @@
         "buttonGroupConfig": {
           "items": [
             {
-              "default": true,
+              "default": false,
               "id": "option-1",
               "label": "年度",
               "templateSwitchTargets": [],
@@ -10506,7 +10507,8 @@
               "id": "option-2",
               "label": "月度",
               "templateSwitchTargets": [],
-              "grain": "month"
+              "grain": "month",
+              "default": true
             }
           ]
         }

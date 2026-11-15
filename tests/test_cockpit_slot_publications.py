@@ -250,7 +250,10 @@ def test_preheated_years_and_months_survive_restart_and_serve_each_range(tmp_pat
             assert slot['payload']['id'] == analysis_id
 
 
-def test_non_default_grain_view_and_business_filters_do_not_reuse_default_scope(tmp_path, monkeypatch):
+def test_year_grain_and_business_filters_do_not_reuse_default_month_scope(tmp_path, monkeypatch):
+    # The delivered default grain is now 2025-10 (month), so a bare month-grain
+    # selection is the default view and is covered by the reuse test below.
+    # A year-grain or business-filter view still has no publication of its own.
     cfg = Config()
     store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
     for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
@@ -260,7 +263,6 @@ def test_non_default_grain_view_and_business_filters_do_not_reuse_default_scope(
     client = _client(tmp_path, monkeypatch, cfg)
     for scope in (
         json.dumps([["setButtonGrainSelection:grain:{}", '"YEAR"']]),
-        json.dumps([["setButtonGrainSelection:other:{}", '"MONTH"']]),
         json.dumps([["setContainerActiveNode:node:{}", '{"nodeId":"quote-node"}']]),
         json.dumps([["setFilterConditions:filter:{}", '{"label":"时间","value":"2026"}']]),
     ):

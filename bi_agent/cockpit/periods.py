@@ -198,6 +198,7 @@ def period_of_scope(ui_scope, fallback='') -> str:
 
 
 DEFAULT_BUSINESS_YEAR = '2025'
+DEFAULT_BUSINESS_MONTH = '2025-10'
 
 
 def business_year() -> str:
@@ -212,22 +213,40 @@ def business_year() -> str:
     return match.group(1) if match else DEFAULT_BUSINESS_YEAR
 
 
+def business_month() -> str:
+    """Business month the delivery is scoped to (2025-10).
+
+    ``COCKPIT_ACTIVE_PERIOD`` still wins when it names a month; otherwise the
+    fixed business year pairs with 10 月 so the delivered page opens on
+    2025 年 10 月 even when the wall clock has moved on.
+    """
+    override = normalise(os.getenv('COCKPIT_ACTIVE_PERIOD', ''))
+    if len(override) == 7:
+        return override
+    year = business_year()
+    if year == DEFAULT_BUSINESS_YEAR:
+        return DEFAULT_BUSINESS_MONTH
+    return f'{year}-10'
+
+
 def default_period(now=None, period_type: str = '') -> str:
     """Period used when the delivered date filter is empty.
 
     The delivered dashboard ships an empty filter.  An empty filter resolves
-    to the fixed business year rather than the wall-clock year.  A month-grain
-    selection without an explicit date resolves to the last month of that
-    year.  An explicit backfill period still wins so operators can replay a
-    named range without changing the delivered metadata.
+    to the fixed business month (2025 年 10 月) rather than the wall-clock
+    month; year-grain requests resolve to that delivery's year (2025).  An
+    explicit backfill period still wins so operators can replay a named range
+    without changing the delivered metadata.
     """
     override = normalise(os.getenv('COCKPIT_ACTIVE_PERIOD', ''))
     grain = str(period_type or '').strip().lower()
     if grain == 'month':
-        return override if len(override) == 7 else f'{business_year()}-12'
+        return business_month()
+    if grain == 'year':
+        return override[:4] if override else business_year()
     if override:
         return override[:4] if len(override) == 7 else override
-    return business_year()
+    return business_month()
 
 
 def period_mode() -> str:
@@ -246,7 +265,7 @@ def active_period(now=None) -> str:
     override = normalise(os.getenv('COCKPIT_ACTIVE_PERIOD', ''))
     if override:
         return override
-    return business_year()
+    return business_month()
 
 
 def business_timezone():

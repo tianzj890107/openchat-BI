@@ -38,7 +38,7 @@ import uuid
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-9"
+RULES_VERSION = "opportunity-v3-rules-10"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -347,12 +347,37 @@ def _columns(config, entity):
     return result
 
 
+def _period_bounds(period):
+    """``(year, month)`` of a period; month is ``None`` for a whole year."""
+    value = _text(period)
+    match = re.fullmatch(r"(\d{4})(?:-(\d{2}))?", value)
+    if not match:
+        raise OpportunityV2Unavailable("商机 V3 只接受四位年度或年月期间")
+    month = int(match.group(2)) if match.group(2) else None
+    if month is not None and not 1 <= month <= 12:
+        raise OpportunityV2Unavailable("商机 V3 的月份期间必须在 01～12")
+    return int(match.group(1)), month
+
+
 def _measurement_date(period, requested=None):
+    """Observation date the SQL snapshot is pinned to.
+
+    A month period reports its own month end (the delivered page defaults to
+    ``2025-10`` → ``2025-10-31``); a year period keeps the previous end-of-year
+    behaviour.  ``requested`` still wins so tests and operators can replay an
+    explicit date.
+    """
     if requested:
         value = _day(requested)
         if value:
             return value
-    year = int(period)
+    year, month = _period_bounds(period)
+    if month is not None:
+        last = date(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
+        today = date.today()
+        if (year, month) > (today.year, today.month):
+            return date(year, 1, 1)
+        return min(last, today) if (year, month) == (today.year, today.month) else last
     today = date.today()
     if year < today.year:
         return date(year, 12, 31)
@@ -363,9 +388,9 @@ def _measurement_date(period, requested=None):
 
 def _safe_year(period):
     value = _text(period)
-    if not re.fullmatch(r"\d{4}", value):
-        raise OpportunityV2Unavailable("商机 V3 只接受四位年度期间")
-    return int(value)
+    if not re.fullmatch(r"\d{4}(-\d{2})?", value):
+        raise OpportunityV2Unavailable("商机 V3 只接受四位年度或年月期间")
+    return int(value[:4])
 
 
 def _report_progress(progress, phase, **detail):
@@ -438,7 +463,6 @@ _QUERY_METRICS = {
     "订单关联": [],
     "产品团队": [],
     "产品部销售缺口": ["C03", "C04", "C05"],
-    "阶段周期分档": list(STAGE_BAND_CODES),
 }
 
 _QUERY_AGGREGATION_NOTES = {
@@ -452,9 +476,6 @@ _QUERY_AGGREGATION_NOTES = {
     "订单关联": "BR-Q02：按订单明细关联商机，去重订单数 ≥ 1 为已签单；不限定审批、取消状态或订单日期。",
     "产品团队": "团队成员关系按商机归属去重；同一人属于多团队时不强行合并。",
     "商机聚合": "明细行被截断时用于恢复全量聚合；仅参与规则计算，不在明细表展示。",
-    "阶段周期分档": ("本体 R12～R17 调用SQL：商机获取、技术交流、方案推动三阶段已结束商机，按同期间同阶段同产品的"
-                     "真实动态平均周期先求均值再逐笔分档（超均值未满 50%／达到 50% 及以上）。六项 SQL 只差最后的指标筛选，"
-                     "合并为一次查询返回六行。"),
 }
 
 
@@ -505,11 +526,15 @@ def _query_result_meta(rows: list[dict]) -> dict:
     )
 
 def _ontology_metric_sql(config, code, year, measured, schema="ded_public"):
-    """The ontology's registered SQL for ``code``, bound to one year.
+    """The ontology's registered SQL for ``code``, bound to one period.
 
     The workbook SQL has no bind parameters: the period lives in its
-    ``parameters`` CTE and the observation time is ``CURRENT_TIMESTAMP``.
-    Both are replaced so a run is reproducible for its measurement date.
+    ``parameters`` CTE and the observation time is either ``CURRENT_TIMESTAMP``
+    or, from the 2025-10-31 snapshot version on, a pinned ``TIMESTAMP`` literal.
+    Both are replaced so a run is reproducible for its measurement date; the
+    year bounds stay whole-year, and the SQL's own
+    ``LEAST(observed_at, end_exclusive)`` cutoff truncates the range at the
+    measurement date (YTD for a month period).
     """
     metric = next((item for item in (config.get("metrics") or {}).values()
                    if isinstance(item, dict) and item.get("code") == code), None) \
@@ -528,8 +553,19 @@ def _ontology_metric_sql(config, code, year, measured, schema="ded_public"):
         if count != 1:
             return ""
     observed = f"TIMESTAMP '{measured.isoformat()} 23:59:59'"
-    sql = re.sub(r"CAST\(\s*CURRENT_TIMESTAMP\s+AS\s+TIMESTAMP\s*\)|CURRENT_TIMESTAMP::timestamp",
-                 observed, sql, flags=re.I)
+    pattern = (r"CAST\(\s*CURRENT_TIMESTAMP\s+AS\s+TIMESTAMP\s*\)"
+               r"|CURRENT_TIMESTAMP(?:::timestamp)?"
+               r"|TIMESTAMP\s+'[^']+'\s+AS\s+observed_at\b")
+
+    def _bind_observed(match):
+        text = match.group(0)
+        if re.search(r"\bAS\s+observed_at\b", text, flags=re.I):
+            return observed + " AS observed_at"
+        return observed
+
+    sql, count = re.subn(pattern, _bind_observed, sql, flags=re.I)
+    if count != 1:
+        return ""
     if re.search(r"\bCURRENT_TIMESTAMP\b", sql, flags=re.I):
         return ""
     if schema and schema != "ded_public" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema):
@@ -2221,9 +2257,12 @@ def evaluate(data, config=None, measured=None):
     stage_bands = data.get("stageBands") or {}
     band_status = _text(data.get("stageBandStatus"))
     band_ready = bool(stage_bands) and band_status in {"", "ok"}
+    # 精简关联版没有 R12–R17 分档指标：整套分档判断（RK11、RC10/RC11）
+    # 在该本体下不适用，也不能把缺失当成"未命中"。
+    band_available = all(code in (config.get("metrics") or {}) for code in STAGE_BAND_CODES)
     band_meta = {}
     band_facts = {}
-    for code in STAGE_BAND_CODES:
+    for code in (STAGE_BAND_CODES if band_available else ()):
         metric_name = _text(((config.get("metrics") or {}).get(code) or {}).get("name")) or code
         severe = "及以上" in metric_name
         stage = (stage_bands.get(code) or {}).get("stage") or metric_name.split("阶段")[0]
@@ -2431,8 +2470,10 @@ def evaluate(data, config=None, measured=None):
                            [opp.get("id") for opp in late_p0]))
 
     # RK11 (BR-A11): any stage with completed overruns ≥ 50% of its mean.
-    severe_hits = [code for code in STAGE_BAND_CODES
-                   if band_ready and band_meta[code]["severe"] and (stage_bands.get(code) or {}).get("count")]
+    # Only the stage-band ontology provides the six band metrics.
+    severe_hits = ([code for code in STAGE_BAND_CODES
+                    if band_ready and band_meta[code]["severe"] and (stage_bands.get(code) or {}).get("count")]
+                   if band_available else [])
     if severe_hits:
         hit_count = sum(stage_bands[code]["count"] for code in severe_hits)
         hit_amount = _sum(stage_bands[code].get("amount") for code in severe_hits)
@@ -2527,8 +2568,9 @@ def evaluate(data, config=None, measured=None):
         "RK08": strategic_scope or not source_ok("客户"),
         "RK09": bool(valid_bids) or not source_ok("投标"),
         "RK10": bool(opps) or not source_ok("商机预测"),
-        "RK11": bool(stage_bands) or not source_ok("阶段周期分档"),
     }
+    if band_available:
+        applicable["RK11"] = bool(stage_bands) or not source_ok("阶段周期分档")
     risk_candidates = []
     for code, spec in (config.get("risks") or {}).items():
         triggered = triggered_by_code.get(code)

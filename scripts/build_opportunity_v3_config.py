@@ -23,9 +23,34 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_阶段周期超时分档版.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_精简关联版.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
+
+# 交付快照 2025-10-31：看板分析时间固定为 2025 年 10 月，SQL 的观察时点也
+# 固定在该日 23:59:59，而不是执行时的 CURRENT_TIMESTAMP。统计期间仍是
+# 2025 全年（start_date 2025-01-01，end_exclusive 2026-01-01），由
+# LEAST(observed_at, end_exclusive) 把 cutoff 截到 10 月 31 日，得到
+# “2025 年截至 10 月 31 日”的 YTD 口径。
+SNAPSHOT_DATE = "2025-10-31"
+OBSERVED_AT = f"{SNAPSHOT_DATE} 23:59:59"
+_OBSERVED_AT_RE = re.compile(
+    r"(?:CAST\(\s*CURRENT_TIMESTAMP\s+AS\s+TIMESTAMP\s*\)|CURRENT_TIMESTAMP(?:::timestamp)?)")
+_PINNED_OBSERVED = f"TIMESTAMP '{OBSERVED_AT}'"
+
+
+def pin_sql_snapshot(sql):
+    """Pin the observed timestamp of a metric SQL to the delivery snapshot.
+
+    Every metric SQL starts from the same ``parameters`` CTE; only the observed
+    timestamp moves, so the YTD range keeps its year bounds and the cutoff
+    truncates at the snapshot date.  A SQL with no observed timestamp, or one
+    that names several, is left untouched instead of being rewritten blindly.
+    """
+    if not sql or "observed_at" not in sql:
+        return sql
+    pinned, count = _OBSERVED_AT_RE.subn(_PINNED_OBSERVED, sql)
+    return pinned if count == 1 else sql
 
 
 FIELD_NAMES = {
@@ -199,15 +224,19 @@ def build_thresholds(workbook):
     """
     rules = build_rule_index(workbook)
 
-    def result(code):
+    def result(code, required=True):
         row = rules.get(code)
         if not row:
-            raise SystemExit(f"本体缺少业务规则：{code}")
+            if required:
+                raise SystemExit(f"本体缺少业务规则：{code}")
+            return ""
         return clean(row.get("判断或结果")) or clean(row.get("规则描述"))
 
     a01, a02 = result("BR-A01"), result("BR-A02")
     a04, a05, a10 = result("BR-A04"), result("BR-A05"), result("BR-A10")
-    a11 = result("BR-A11")
+    # BR-A11 只存在于阶段周期超时分档版本体。精简关联版没有 R12–R17 分档指标，
+    # 也就没有该规则；此时不产出分档阈值，运行时同样不判定 RK11。
+    a11 = result("BR-A11", required=False)
     c05, c06, c07 = result("BR-C05"), result("BR-C06"), result("BR-C07")
 
     gap_high = int(_match(r"缺口率\s*≥\s*(\d+)%", a01, "BR-A01 缺口率高阈值").group(1))
@@ -227,13 +256,23 @@ def build_thresholds(workbook):
     if (product_high, product_medium) != (product_high_5, product_medium_5):
         raise SystemExit("本体 BR-A04 与 BR-A05 的待签阈值不一致，需先统一")
     impact_high = int(_match(r"影响预测\s*≥\s*(\d+)\s*亿元", a10, "BR-A10 影响金额高阈值").group(1))
-    band_stages = int(_match(r"覆盖\s*≥\s*(\d+)\s*个阶段", a11, "BR-A11 超期阶段数高阈值").group(1))
-    band_amount = int(_match(r"预测金额合计\s*≥\s*(\d+)\s*亿元", a11, "BR-A11 超期预测金额高阈值").group(1))
+    band_stages = band_amount = None
+    if a11:
+        band_stages = int(_match(r"覆盖\s*≥\s*(\d+)\s*个阶段", a11, "BR-A11 超期阶段数高阈值").group(1))
+        band_amount = int(_match(r"预测金额合计\s*≥\s*(\d+)\s*亿元", a11, "BR-A11 超期预测金额高阈值").group(1))
     product_pending = int(_match(r"≥\s*(\d+)%", c05, "BR-C05 产品待签占比").group(1))
     focus_ratio = int(_match(r"<\s*(\d+)%", c06, "BR-C06 重点跟踪占比").group(1))
     other_ratio = int(_match(r"≥\s*(\d+)%", c07, "BR-C07 其余占比").group(1))
 
-    return {
+    sources = {
+        "gapRateHigh": "BR-A01", "gapRateMedium": "BR-A01",
+        "signLagExtremePoints": "BR-A02", "signLagHighPoints": "BR-A02",
+        "quarterWindows": "BR-A02", "productRiskAmountHigh": "BR-A04/BR-A05",
+        "productRiskAmountMedium": "BR-A04/BR-A05", "impactAmountHigh": "BR-A10",
+        "productPendingRatio": "BR-C05", "focusTrackingRatio": "BR-C06",
+        "otherPendingRatio": "BR-C07",
+    }
+    thresholds = {
         "gapRateHigh": gap_high / 100,
         "gapRateMedium": gap_medium / 100,
         "signLagExtremePoints": sign_extreme,
@@ -245,18 +284,14 @@ def build_thresholds(workbook):
         "productRiskAmountHigh": product_high,
         "productRiskAmountMedium": product_medium,
         "impactAmountHigh": impact_high,
-        "stageBandStagesHigh": band_stages,
-        "stageBandAmountHigh": band_amount,
-        "sources": {
-            "gapRateHigh": "BR-A01", "gapRateMedium": "BR-A01",
-            "signLagExtremePoints": "BR-A02", "signLagHighPoints": "BR-A02",
-            "quarterWindows": "BR-A02", "productRiskAmountHigh": "BR-A04/BR-A05",
-            "productRiskAmountMedium": "BR-A04/BR-A05", "impactAmountHigh": "BR-A10",
-            "productPendingRatio": "BR-C05", "focusTrackingRatio": "BR-C06",
-            "otherPendingRatio": "BR-C07",
-            "stageBandStagesHigh": "BR-A11", "stageBandAmountHigh": "BR-A11",
-        },
     }
+    if a11:
+        thresholds["stageBandStagesHigh"] = band_stages
+        thresholds["stageBandAmountHigh"] = band_amount
+        sources["stageBandStagesHigh"] = "BR-A11"
+        sources["stageBandAmountHigh"] = "BR-A11"
+    thresholds["sources"] = sources
+    return thresholds
 
 
 def build_dynamic_cycle(workbook):
@@ -494,7 +529,7 @@ def build_config(workbook):
                 role=clean(row.get("链路角色")),
                 cteCount=clean(row.get("调用SQL依赖CTE数")),
                 ctes=clean(row.get("调用SQL依赖CTE")),
-                sql=clean(row.get("调用SQL")),
+                sql=pin_sql_snapshot(clean(row.get("调用SQL"))),
             )
     rules = {}
     for row in rows(workbook, "业务规则"):
@@ -695,8 +730,8 @@ def build_config(workbook):
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     config = dict(
-        version="opportunity-v3-rules-9",
-        ontology="商机获取节点 V3 阶段周期超时分档版",
+        version="opportunity-v3-rules-10",
+        ontology="商机获取节点 V3 精简关联版",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,

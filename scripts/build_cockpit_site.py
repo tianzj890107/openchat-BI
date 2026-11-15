@@ -7,8 +7,11 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def build_site(output: Path, root: Path = ROOT):
@@ -28,7 +31,11 @@ def build_site(output: Path, root: Path = ROOT):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(p.read_bytes())
     html = (source / 'index.html').read_text()
-    html = html.replace('@@APP_ROOT_PATH@@', '').replace('@@COCKPIT_PAGE@@', 'overview').replace('@@COCKPIT_VERSION@@', version)
+    from bi_agent.cockpit.periods import default_period
+    html = (html.replace('@@APP_ROOT_PATH@@', '')
+            .replace('@@COCKPIT_PAGE@@', 'overview')
+            .replace('@@COCKPIT_VERSION@@', version)
+            .replace('@@COCKPIT_BUSINESS_PERIOD@@', default_period()))
     html = html.replace('/static/cockpit/', prefix + '/').replace('content="/static/cockpit"', f'content="{prefix}"')
     if '@@' in html:
         raise ValueError('Unresolved HTML template placeholder')

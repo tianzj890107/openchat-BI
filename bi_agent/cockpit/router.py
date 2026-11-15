@@ -412,7 +412,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def bootstrap():
         return dict(roles=[dict(id=1,name="总裁"),dict(id=2,name="分析员")],identityParameter="id",periods=PERIODS,departments=DEPARTMENTS,
             stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode=("ap" if main_context is not None and data_mode()=="ap" else "demo"),supportsLiveSource=main_context is not None and data_mode()=="ap",
-            periodConfig=dict(defaultPeriod=periods.default_period(),defaultPeriodType='year',mode=periods.period_mode(),activePeriod=periods.active_period(),preheatPeriods=periods.period_catalog()),
+            periodConfig=dict(defaultPeriod=periods.default_period(period_type='month'),defaultPeriodType='month',mode=periods.period_mode(),activePeriod=periods.active_period(),preheatPeriods=periods.period_catalog()),
             notice="看板数据来源以data/config为准；任务流转仍为模拟，不写入业务系统。两个 id 当前使用相同看板与功能，仅为将来差异化预留。")
 
     @router.get('/engines')

@@ -16,18 +16,18 @@ def _html(monkeypatch, **env):
     return web._cockpit_html('analysis').body.decode('utf-8')
 
 
-def test_page_carries_the_configured_business_year(monkeypatch):
+def test_page_carries_the_configured_business_period(monkeypatch):
     html = _html(monkeypatch)
-    assert '<meta name="cockpit-business-year" content="2025">' in html
+    assert '<meta name="cockpit-business-period" content="2025-10">' in html
     assert '@@' not in html
-    assert '<meta name="cockpit-business-year" content="2024">' in _html(
+    assert '<meta name="cockpit-business-period" content="2024-10">' in _html(
         monkeypatch, COCKPIT_BUSINESS_YEAR='2024')
 
 
-def test_first_paint_year_comes_from_the_server_not_the_browser_clock():
+def test_first_paint_period_comes_from_the_server_not_the_browser_clock():
     source = (ROOT / 'bi_agent/web/static/cockpit/cockpit.js').read_text(encoding='utf-8')
-    assert "meta[name=\"cockpit-business-year\"]" in source
-    assert re.search(r"let defaultPeriod = /\^\\d\{4\}\$/\.test\(configuredYear\) \? configuredYear", source)
+    assert "meta[name=\"cockpit-business-period\"]" in source
+    assert re.search(r"let defaultPeriod = /\^\\d\{4\}\(-\\d\{2\}\)\?\$/\.test\(configuredPeriod\)", source)
 
 
 def test_asset_version_changes_when_a_card_component_changes(monkeypatch):

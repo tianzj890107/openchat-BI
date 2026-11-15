@@ -508,7 +508,7 @@ def test_active_period_is_pinned_to_the_fixed_business_year(monkeypatch):
     monkeypatch.delenv('COCKPIT_PERIOD_MODE', raising=False)
     monkeypatch.delenv('COCKPIT_BUSINESS_YEAR', raising=False)
     monkeypatch.setenv('COCKPIT_BUSINESS_TIMEZONE', 'Asia/Shanghai')
-    assert periods.active_period(dt.datetime(2026, 12, 1, 0, 30)) == '2025'
+    assert periods.active_period(dt.datetime(2026, 12, 1, 0, 30)) == '2025-10'
 
 
 def test_default_period_is_the_fixed_business_year_not_the_wall_clock(monkeypatch):
@@ -517,9 +517,9 @@ def test_default_period_is_the_fixed_business_year_not_the_wall_clock(monkeypatc
     monkeypatch.delenv('COCKPIT_PERIOD_MODE', raising=False)
     monkeypatch.delenv('COCKPIT_BUSINESS_YEAR', raising=False)
     monkeypatch.setenv('COCKPIT_BUSINESS_TIMEZONE', 'Asia/Shanghai')
-    assert periods.default_period(dt.datetime(2026, 12, 1, 0, 30)) == '2025'
+    assert periods.default_period(dt.datetime(2026, 12, 1, 0, 30)) == '2025-10'
     assert periods.default_period(dt.datetime(2026, 12, 1, 0, 30),
-                                  period_type='month') == '2025-12'
+                                  period_type='month') == '2025-10'
 
 
 def test_business_year_can_be_overridden_explicitly(monkeypatch):
@@ -527,8 +527,8 @@ def test_business_year_can_be_overridden_explicitly(monkeypatch):
     monkeypatch.delenv('COCKPIT_ACTIVE_PERIOD', raising=False)
     monkeypatch.setenv('COCKPIT_BUSINESS_YEAR', '2024')
     assert periods.business_year() == '2024'
-    assert periods.default_period(dt.datetime(2026, 12, 1)) == '2024'
-    assert periods.active_period(dt.datetime(2026, 12, 1)) == '2024'
+    assert periods.default_period(dt.datetime(2026, 12, 1)) == '2024-10'
+    assert periods.active_period(dt.datetime(2026, 12, 1)) == '2024-10'
 
 
 def test_default_period_honours_an_explicit_backfill_range(monkeypatch):
