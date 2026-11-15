@@ -199,6 +199,26 @@ def period_of_scope(ui_scope, fallback='') -> str:
 
 DEFAULT_BUSINESS_YEAR = '2025'
 DEFAULT_BUSINESS_MONTH = '2025-10'
+DEFAULT_SNAPSHOT_DATE = '2025-10-31'
+_DAY_RE = re.compile(r'(20\d{2})-(\d{1,2})-(\d{1,2})')
+
+
+def snapshot_date() -> dt.date:
+    """Observation cutoff every query of this delivery is frozen to.
+
+    The page is delivered on 2025 年 10 月, so the data is observed as it
+    stood at 2025-10-31 23:59:59 — including year-grain and node requests,
+    which must not read November or December facts.  ``COCKPIT_SNAPSHOT_DATE``
+    replays another day for tests or an operator-run historical export.
+    """
+    match = _DAY_RE.search(os.getenv('COCKPIT_SNAPSHOT_DATE', '') or '')
+    if match:
+        try:
+            return dt.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            pass
+    year, month, day = (int(part) for part in DEFAULT_SNAPSHOT_DATE.split('-'))
+    return dt.date(year, month, day)
 
 
 def business_year() -> str:

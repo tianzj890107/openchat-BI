@@ -730,7 +730,7 @@ def build_config(workbook):
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     config = dict(
-        version="opportunity-v3-rules-10",
+        version="opportunity-v3-rules-11",
         ontology="商机获取节点 V3 精简关联版",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),

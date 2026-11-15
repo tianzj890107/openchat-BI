@@ -36,9 +36,11 @@ import re
 import time
 import uuid
 
+from . import periods
+
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-10"
+RULES_VERSION = "opportunity-v3-rules-11"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -360,12 +362,14 @@ def _period_bounds(period):
 
 
 def _measurement_date(period, requested=None):
-    """Observation date the SQL snapshot is pinned to.
+    """Observation date every query of the delivery is pinned to.
 
-    A month period reports its own month end (the delivered page defaults to
-    ``2025-10`` → ``2025-10-31``); a year period keeps the previous end-of-year
-    behaviour.  ``requested`` still wins so tests and operators can replay an
-    explicit date.
+    The page observes the data as it stood at :func:`periods.snapshot_date`
+    (2025-10-31): a month period reports its own month end, and a later
+    observation — including the year-end default of a year period such as
+    ``2025`` — is clamped to that snapshot so no query reads November or
+    December facts.  ``requested`` still wins so tests and operators can replay
+    an explicit date.
     """
     if requested:
         value = _day(requested)
@@ -376,14 +380,18 @@ def _measurement_date(period, requested=None):
         last = date(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
         today = date.today()
         if (year, month) > (today.year, today.month):
-            return date(year, 1, 1)
-        return min(last, today) if (year, month) == (today.year, today.month) else last
-    today = date.today()
-    if year < today.year:
-        return date(year, 12, 31)
-    if year > today.year:
-        return date(year, 1, 1)
-    return today
+            last = date(year, 1, 1)
+        elif (year, month) == (today.year, today.month):
+            last = min(last, today)
+    else:
+        today = date.today()
+        if year < today.year:
+            last = date(year, 12, 31)
+        elif year > today.year:
+            last = date(year, 1, 1)
+        else:
+            last = today
+    return min(last, periods.snapshot_date())
 
 
 def _safe_year(period):

@@ -47,7 +47,7 @@ def _judge_no(request):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-10'
+    assert config_version() == 'opportunity-v3-rules-11'
     assert len(config_digest()) == 64
     # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) is excluded,
     # and the 精简关联版 lineage carries no R12–R17 stage-band layer.
@@ -68,7 +68,7 @@ def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
     assert trace['ontology'] == '商机获取节点 V3 精简关联版'
-    assert trace['version'] == 'opportunity-v3-rules-10'
+    assert trace['version'] == 'opportunity-v3-rules-11'
     assert len(trace['digest']) == 12
     assert len(trace['metrics']) == 51
     assert len(trace['risks']) == 8
@@ -1290,6 +1290,52 @@ def test_ontology_metric_sql_is_bound_to_the_period_and_measurement_date():
     other = _ontology_metric_sql(load_config(), 'C05', 2026, date(2026, 11, 11), schema='crm_copy')
     assert 'crm_copy.' in other and 'ded_public.' not in other
     assert _ontology_metric_sql(load_config(), 'NOPE', 2026, date(2026, 11, 11)) == ''
+
+
+def test_measurement_date_is_clamped_to_the_delivery_snapshot():
+    from bi_agent.cockpit.opportunity_v2 import _measurement_date
+    # 交付页面固定在 2025 年 10 月：年度与今后期间都只观察到 2025-10-31。
+    assert _measurement_date('2025') == date(2025, 10, 31)
+    assert _measurement_date('2025-10') == date(2025, 10, 31)
+    assert _measurement_date('2025-11') == date(2025, 10, 31)
+    assert _measurement_date('2026') == date(2025, 10, 31)
+    # 快照之前的历史期间保持自己的期末。
+    assert _measurement_date('2025-09') == date(2025, 9, 30)
+    assert _measurement_date('2024') == date(2024, 12, 31)
+    # 显式日期（测试/回放）仍然优先。
+    assert _measurement_date('2025', '2025-12-31') == date(2025, 12, 31)
+
+
+def test_snapshot_date_defaults_to_the_delivery_day_and_accepts_an_override(monkeypatch):
+    from bi_agent.cockpit import periods
+    monkeypatch.delenv('COCKPIT_SNAPSHOT_DATE', raising=False)
+    assert periods.snapshot_date() == date(2025, 10, 31)
+    monkeypatch.setenv('COCKPIT_SNAPSHOT_DATE', '2025-09-30')
+    assert periods.snapshot_date() == date(2025, 9, 30)
+    monkeypatch.setenv('COCKPIT_SNAPSHOT_DATE', 'not-a-date')
+    assert periods.snapshot_date() == date(2025, 10, 31)
+
+
+def test_year_grain_card_observes_the_delivery_snapshot_instead_of_the_year_end():
+    class EmptyResult:
+        truncated = False
+        rows = []
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def run(self, sql, params, timeout_ms=0):
+            return EmptyResult()
+
+    card = build_card('2025', database=Database(), judge=_judge_no)
+    catalog = card['result']['queryCatalog']
+    forecast = next(item for item in catalog if item['label'] == '商机预测')
+    # 年度粒度也必须观察 2025-10-31，而不是 2025-12-31。
+    assert forecast['params'] == [2025, date(2025, 10, 31)]
+    for item in catalog:
+        assert 'CURRENT_TIMESTAMP' not in item['sql'], item['label']
+        assert date(2025, 12, 31) not in item['params'], item['label']
 
 
 def test_every_ontology_metric_sql_binds_in_either_period_format():
