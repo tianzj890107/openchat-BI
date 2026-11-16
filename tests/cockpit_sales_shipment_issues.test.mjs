@@ -84,6 +84,8 @@ test('the 商机获取 card nests each risk\'s causes under it and hides advice'
   assert.doesNotMatch(nested, /riskLinks/);
   // Hidden advice also drops its acceptance lines from the footer.
   assert.match(shared, /in \(showRecommendations \? openRecommendations : \[\]\)/);
+  // Causes from the AI global analysis are labelled as such, not as an ontology miss.
+  assert.equal((shared.match(/dimension\.analysis === 'ai' \? '（AI 分析 · 待核实）'/g) || []).length, 2);
   // Risk and cause evidence share one component.
   assert.equal((shared.match(/<trace-details /g) || []).length, 3);
   assert.match(shared, /name: 'StageTraceDetails'/);

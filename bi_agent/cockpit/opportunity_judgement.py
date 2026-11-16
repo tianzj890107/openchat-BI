@@ -13,6 +13,10 @@ The ontology chain is applied in three layers, each one rule first:
    model call: the model infers likely causes from this round's data and
    the misses of the ontology causes.  Inferred causes are added to the
    cause list as model hypotheses (never as verified ontology causes).
+   When the ontology decides every cause by AI (overrides.causeAnalysis
+   mode "ai", BR-L01), none of that runs: one model pass over all
+   established risks and their metric results gives each risk its own
+   1–2 causes, without matching the ontology cause sheet.
 3. Advice.  An ontology advice applies when its cause is established.  This
    is fully decided by the ontology link, so advice never needs the model;
    inferred causes have no ontology advice.
@@ -86,6 +90,24 @@ INFER_PROMPT = (
     '"description": "不超过160字的推理依据，引用 data 中的具体数值", '
     '"dataGaps": "需要补充核实的数据，没有则为空字符串"}], "note": ""}，不要输出其他内容。'
 )
+
+
+GLOBAL_CAUSE_PROMPT = (
+    "商机获取环节根因全局分析。输入 risks 是本卡片本轮已经成立的全部风险，每条给出风险编码、名称、等级、"
+    "判定结果（judgement）、本体定义与判定规则，以及该风险涉及指标的本体口径与本轮取值（metrics、observed）。"
+    "请把这些风险放在一起做一次全局分析：结合各风险的指标结果和风险之间的关联，为每一条风险推理最可能导致它的根因。"
+    "根因的分析维度由你依据数据自行确定（例如客户结构、产品结构、阶段推进节奏、签单节奏、预测质量、目标分解等），"
+    "不要套用或匹配任何固定的根因清单。"
+    + ONTOLOGY_RULES.replace("{", "{{").replace("}", "}}") +
+    "每条风险给出 {low}～{high} 条根因，按可能性从高到低排列；不同风险可以指向同一方向，"
+    "但每条根因的说明必须落到该风险自己的指标数据上。description 写清推理依据并引用输入中的具体数值，"
+    "不得引入输入中没有的数字；需要补充核实的数据写在 dataGaps。"
+    '只返回 JSON：{{"risks": [{{"code": "风险编码", "causes": [{{"title": "不超过20字的根因名称", '
+    '"description": "不超过160字的推理依据，引用输入中的具体数值", '
+    '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，不要输出其他内容。'
+)
+GLOBAL_CAUSE_RULE = dict(code="BR-L01", name="AI 全局根因分析", levelRule="",
+                         condition="大模型依据本轮已成立风险及其指标结果全局分析，不匹配本体根因库")
 
 
 SEMANTIC_PROMPT = (
@@ -271,9 +293,16 @@ def _item_judge(request, role, infer_prompt):
     started = time.monotonic()
     label = KIND_LABELS.get(request.get("kind"), "条目")
     inference = request.get("kind") == "inference"
-    prompt = compose_system_prompt(role(), infer_prompt if inference else JUDGE_PROMPT.format(kind=label))
-    max_tokens = 1200 if inference else 800
-    step = f"{label} {request.get('code')}" if inference else f"判定{label} {request.get('code')}"
+    if request.get("kind") == "global_causes":
+        limits = request.get("causesPerRisk") or {}
+        task = GLOBAL_CAUSE_PROMPT.format(low=limits.get("min", 1), high=limits.get("max", 2))
+        prompt = compose_system_prompt(role(), task)
+        max_tokens = min(4000, 600 + 450 * len(request.get("risks") or []))
+        step = "AI 全局根因分析"
+    else:
+        prompt = compose_system_prompt(role(), infer_prompt if inference else JUDGE_PROMPT.format(kind=label))
+        max_tokens = 1200 if inference else 800
+        step = f"{label} {request.get('code')}" if inference else f"判定{label} {request.get('code')}"
     try:
         text, _, usage = v2._read_model_stream(
             provider, messages, prompt, key,
@@ -348,9 +377,98 @@ def _infer(judge, request, progress, position):
                 model=_text(answer.get("_model")), elapsedSeconds=answer.get("_elapsed"))
 
 
+def _untraceable_numbers(text, allowed):
+    """Numbers in ``text`` that the input does not carry (BR-D02).
+
+    Small integers up to 12 (months, quarters, item counts in prose) are
+    wording, not facts.
+    """
+    from .opportunity_v2 import _model_numbers
+
+    bad = []
+    for token in _model_numbers(text):
+        try:
+            value = float(token)
+        except ValueError:
+            continue
+        if value.is_integer() and 0 <= value <= 12:
+            continue
+        if token not in allowed and f"{value:g}" not in allowed:
+            bad.append(token)
+    return sorted(bad)
+
+
+def _global_causes(judge, request, progress, *, low, high):
+    """One model pass over every established risk; never raises.
+
+    Returns {risk code: [cause, …]} plus a note, a model name, the number of
+    calls and, when nothing usable came back, an error.  An answer that
+    misses a risk or quotes a number not in the input is asked once more
+    with the reasons; what still fails afterwards is dropped.
+    """
+    from .opportunity_v2 import _allowed_model_numbers
+
+    codes = [risk["code"] for risk in request["risks"]]
+    if progress is not None:
+        progress("judging", message=f"模型全局分析 {len(codes)} 条风险的根因")
+    if judge is None:
+        return dict(causes={}, calls=0, error="未启用模型判断，已跳过")
+    allowed = _allowed_model_numbers(request)
+    feedback = None
+    best, calls, note, model, error = {}, 0, "", "", ""
+    for _ in range(2):
+        ask = dict(request, validationFeedback=feedback) if feedback else request
+        calls += 1
+        try:
+            answer = judge(ask)
+        except Exception as exc:  # noqa: BLE001 - the causes are skipped, the card goes on
+            error = _model_error(exc) + "，已跳过"
+            break
+        if not isinstance(answer, dict) or not isinstance(answer.get("risks"), list):
+            error = "模型返回的不是约定的 JSON 对象，已跳过"
+            feedback = ["只返回约定的 JSON：risks 为数组，每项含 code 与 causes"]
+            continue
+        error = ""
+        model = _text(answer.get("_model")) or model
+        note = _text(answer.get("note"))[:300] or note
+        problems = []
+        found = {}
+        for item in answer["risks"]:
+            if not isinstance(item, dict) or _text(item.get("code")) not in codes:
+                continue
+            kept = []
+            for cause in item.get("causes") or []:
+                if not isinstance(cause, dict) or not _text(cause.get("title")):
+                    continue
+                cause = dict(title=_text(cause.get("title"))[:40],
+                             description=_text(cause.get("description"))[:400],
+                             dataGaps=_text(cause.get("dataGaps"))[:200])
+                bad = _untraceable_numbers(f"{cause['title']} {cause['description']}", allowed)
+                if bad:
+                    problems.append(f"{item['code']}「{cause['title']}」引用了输入中没有的数字 {'、'.join(bad)}")
+                    continue
+                kept.append(cause)
+            if kept:
+                found[_text(item["code"])] = kept[:high]
+        for code, causes in found.items():
+            if len(causes) >= len(best.get(code) or []):
+                best[code] = causes
+        missing = [code for code in codes if len(best.get(code) or []) < low]
+        if missing:
+            problems.append("以下风险没有给出合格的根因：" + "、".join(missing))
+        if not problems:
+            break
+        feedback = problems
+    if not best and not error:
+        error = "模型没有给出可用的根因"
+    return dict(causes=best, calls=calls, note=note, model=model, error=error)
+
+
 def _status_label(entry):
     if entry.get("error"):
         return "判断失败，已跳过"
+    if entry.get("aiAnalysis"):
+        return "AI 全局分析" if entry.get("established") is True else "AI 未给出根因"
     if entry.get("inferred"):
         if entry.get("dataGap"):
             return "待补数据，未推理"
@@ -461,6 +579,13 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
     established_risks = {entry["code"]: entry for entry in risk_entries if entry.get("established") is True}
 
     # ---- causes --------------------------------------------------------
+    # BR-L01 (2026-11-16): when every ontology cause is decided by AI, the
+    # causes come from one global model analysis of the established risks
+    # and their metric results; the ontology cause sheet is not matched.
+    cause_analysis = (config.get("overrides") or {}).get("causeAnalysis") or {}
+    ai_causes = include_downstream and _text(cause_analysis.get("mode")) == "ai"
+    matched_specs = {} if ai_causes else cause_specs
+
     def linked_risks(cause_code):
         codes = []
         for risk_code in established_risks:
@@ -469,9 +594,9 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
         return codes
 
     cause_entries = []
-    cause_pending = [code for code in cause_specs
+    cause_pending = [code for code in matched_specs
                      if linked_risks(code) and (cause_outcomes.get(code) or {}).get("ruleStatus") == "insufficient"]
-    for code, spec in cause_specs.items():
+    for code, spec in matched_specs.items():
         outcome = cause_outcomes.get(code) or dict(ruleStatus="insufficient", reason="缺少该根因的规则实现")
         related = linked_risks(code)
         entry = dict(kind="cause", code=code, name=_text(spec.get("name")) or code,
@@ -506,7 +631,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                  for risk_code in entry["linkedRisks"]}
     risk_order = sorted(established_risks.values(),
                         key=lambda item: (_LEVEL_RANK.get(item.get("level") or "", 4), item["code"]))
-    orphans = ([] if not include_downstream
+    orphans = ([] if not include_downstream or ai_causes
                else [entry for entry in risk_order if entry["code"] not in explained])
     inference_calls = 0
     for position, risk in enumerate(orphans, 1):
@@ -561,6 +686,42 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                                       reason=item["description"] or item["title"],
                                       missingEvidence=[item["dataGaps"]] if item["dataGaps"] else [],
                                       model=answer.get("model")))
+    if ai_causes and risk_order:
+        low = max(1, int(cause_analysis.get("minPerRisk") or 1))
+        high = max(low, int(cause_analysis.get("maxPerRisk") or 2))
+        request = dict(
+            kind="global_causes", code="BR-L01", period=period,
+            causesPerRisk=dict(min=low, max=high),
+            analysisRule=_text(cause_analysis.get("description")),
+            risks=[dict(code=risk["code"], name=risk["name"], level=risk.get("level") or "",
+                        judgement=risk.get("reason") or "", rule=risk["rule"],
+                        ontology=element(risk_specs.get(risk["code"]) or {}, risk),
+                        observed=risk["observed"],
+                        metrics=_metric_context(config, indicator_codes(risk_specs.get(risk["code"])), facts))
+                   for risk in risk_order])
+        answer = _global_causes(judge, request, progress, low=low, high=high)
+        inference_calls += answer["calls"]
+        base = dict(kind="cause", rule=dict(GLOBAL_CAUSE_RULE), ruleStatus="inferred", inferred=True,
+                    aiAnalysis=True, observed=[])
+        for risk in risk_order:
+            found = answer["causes"].get(risk["code"]) or []
+            if not found:
+                cause_entries.append(dict(
+                    base, code=f"{risk['code']}-AI", name=f"{risk['name']}·AI 根因分析",
+                    linkedRisks=[risk["code"]], evidenceIds=list(risk["evidenceIds"])[:3],
+                    decidedBy="model" if not answer.get("error") else "none", established=None,
+                    missingEvidence=[], model=answer.get("model"),
+                    **({"error": answer["error"]} if answer.get("error")
+                       else {"reason": answer.get("note") or "模型没有给出该风险的根因"})))
+                continue
+            for index, item in enumerate(found, 1):
+                cause_entries.append(dict(
+                    base, code=f"{risk['code']}-AI{index}", name=item["title"],
+                    linkedRisks=[risk["code"]], evidenceIds=list(risk["evidenceIds"])[:3],
+                    decidedBy="model", established=True,
+                    reason=item["description"] or item["title"],
+                    missingEvidence=[item["dataGaps"]] if item["dataGaps"] else [],
+                    model=answer.get("model")))
     established_causes = {entry["code"]: entry for entry in cause_entries if entry.get("established") is True}
 
     # ---- advice --------------------------------------------------------
@@ -574,7 +735,12 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                      rule=dict(code="", name="行动建议对应根因", condition="对应根因成立即采用",
                                levelRule=""),
                      linkedCauses=hit or causes, decidedBy="rule")
-        if hit:
+        if ai_causes:
+            # AI causes carry no ontology cause code, so no ontology advice
+            # can be linked to them.
+            entry.update(decidedBy="unevaluated", established=None,
+                         reason="根因由 AI 全局分析给出，未关联本体行动建议")
+        elif hit:
             entry.update(established=True, reason="对应根因 " + "、".join(hit) + " 已成立")
         elif skipped:
             entry.update(established=None, error="对应根因判断失败，已跳过")
@@ -618,6 +784,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
             findingIds=[finding_id[code] for code in entry["linkedRisks"] if code in finding_id],
             riskCodes=list(entry["linkedRisks"]), evidenceIds=evidence[:20],
             missingEvidence=list(entry["missingEvidence"]) if entry.get("inferred") else [],
+            **({"analysis": "ai"} if entry.get("aiAnalysis") else {}),
         ))
     cause_by_code = {item["causeCode"]: item for item in causes}
     recommendations = []
@@ -653,7 +820,9 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                f"（规则判定 {by_rule} 项，模型判定 {len(order) - by_rule} 项）"
                + (f"，成立{label}涉及 {len(causes)} 项根因、{len(recommendations)} 条建议"
                   if order and include_downstream else "")
-               + (f"（其中 {inferred_count} 项根因由模型在本体根因未命中时推理）"
+               + ("（根因由 AI 依据成立风险及其指标结果全局分析给出，待核实）"
+                  if ai_causes and causes else
+                  f"（其中 {inferred_count} 项根因由模型在本体根因未命中时推理）"
                   if include_downstream and inferred_count else "")
                + (f"；{len(failures)} 项模型判断失败已跳过" if failures else "") + "。")
     assessments = [dict(
@@ -715,14 +884,18 @@ def link_queries(result, config):
 
 
 def _indicators(spec):
-    """Trigger metrics an ontology risk names, e.g. "R01、B01、B02"."""
-    return [code for code in re.split(r"[、,，;；\s]+", _text(spec.get("indicators"))) if code]
+    """Trigger metrics an ontology risk names, e.g. "R01、B01、B02".
+
+    The cell may add prose ("R03、B01、B02；R02作为待签规模证据"); only the
+    metric codes are taken from it.
+    """
+    return list(dict.fromkeys(re.findall(r"[A-Z]+\d+(?:-\d+)?", _text(spec.get("indicators")))))
 
 
 def _public(entry):
     keep = ("kind", "code", "name", "rule", "ruleStatus", "decidedBy", "established", "level",
             "reason", "error", "statusLabel", "linkedRisks", "linkedCauses", "missingEvidence", "model",
-            "inferred")
+            "inferred", "aiAnalysis")
     value = {key: entry[key] for key in keep if key in entry and entry[key] not in (None, "", [])}
     value["established"] = entry.get("established")
     return value

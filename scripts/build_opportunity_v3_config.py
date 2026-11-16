@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_阶段周期超时分档版.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_缺口口径及AI根因版.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -233,7 +233,9 @@ def build_thresholds(workbook):
         return clean(row.get("判断或结果")) or clean(row.get("规则描述"))
 
     a01, a02 = result("BR-A01"), result("BR-A02")
-    a04, a05, a10 = result("BR-A04"), result("BR-A05"), result("BR-A10")
+    # 风险规则修订版删除了电芯独立风险 RK04（BR-A04）；PACK 风险 RK05 的待签
+    # 分档和全年目标缺口率门槛都写在 BR-A05。
+    a05, a10 = result("BR-A05"), result("BR-A10")
     # BR-A11 只存在于阶段周期超时分档版本体。精简关联版没有 R12–R17 分档指标，
     # 也就没有该规则；此时不产出分档阈值，运行时同样不判定 RK11。
     a11 = result("BR-A11", required=False)
@@ -241,20 +243,18 @@ def build_thresholds(workbook):
 
     gap_high = int(_match(r"缺口率\s*≥\s*(\d+)%", a01, "BR-A01 缺口率高阈值").group(1))
     gap_medium = int(_match(r"(\d+)%\s*[~～–-]\s*\d+%\s*中", a01, "BR-A01 缺口率中阈值").group(1))
-    sign_extreme = int(_match(r"≥\s*(\d+)\s*个百分点", a02, "BR-A02 签单落后极高阈值").group(1))
-    sign_high = int(_match(r"(\d+)\s*[~～–-]\s*\d+\s*高", a02, "BR-A02 签单落后高阈值").group(1))
-    quarter_q3 = int(_match(r"7\s*[~～–-]\s*9\s*月[^>]*>\s*(\d+)%", a02,
-                            "BR-A02 三季度窗口").group(1))
-    quarter_q4 = int(_match(r"10\s*[~～–-]\s*12\s*月[^>]*>\s*(\d+)%", a02,
-                            "BR-A02 四季度窗口").group(1))
-    product_high = int(_match(r"≥\s*(\d+)\s*亿元\s*高", a04, "BR-A04 待签高阈值").group(1))
-    product_medium = int(_match(r"(\d+)\s*[~～–-]\s*\d+\s*中", a04,
-                                "BR-A04 待签中阈值").group(1))
-    product_high_5 = int(_match(r"≥\s*(\d+)\s*亿元\s*高", a05, "BR-A05 待签高阈值").group(1))
-    product_medium_5 = int(_match(r"(\d+)\s*[~～–-]\s*\d+\s*中", a05,
-                                  "BR-A05 待签中阈值").group(1))
-    if (product_high, product_medium) != (product_high_5, product_medium_5):
-        raise SystemExit("本体 BR-A04 与 BR-A05 的待签阈值不一致，需先统一")
+    # BR-A02（风险规则修订）：签单达成率＝已签单商机预测÷年度目标，按落后
+    # 百分点“≥15为极高；≥10且＜15为高；＞0且＜10为中”；另有全年金额覆盖率
+    # ＜120% 预警，替换原季度未签比例窗口。
+    sign_extreme = int(_match(r"≥\s*(\d+)\s*为极高", a02, "BR-A02 签单落后极高阈值").group(1))
+    sign_high = int(_match(r"≥\s*(\d+)\s*且\s*[＜<]\s*\d+\s*为高", a02, "BR-A02 签单落后高阈值").group(1))
+    coverage = int(_match(r"全年金额覆盖率\s*[＜<]\s*(\d+)%", a02, "BR-A02 全年金额覆盖率预警").group(1))
+    # BR-A05：PACK 待签＞0 且全年目标缺口率＞20% 触发；等级按待签预测金额
+    # “≥30亿元为高；≥10且＜30亿元为中”，＜10 亿元原口径未定义等级。
+    product_high = int(_match(r"≥\s*(\d+)\s*亿元\s*为?高", a05, "BR-A05 待签高阈值").group(1))
+    product_medium = int(_match(r"≥\s*(\d+)\s*且\s*[＜<]\s*\d+\s*亿元\s*为?中", a05,
+                                "BR-A05 待签中阈值").group(1))
+    pack_gap = int(_match(r"缺口率[^。；]*?[＞>]\s*(\d+)%\s*时触发", a05, "BR-A05 全年目标缺口率门槛").group(1))
     impact_high = int(_match(r"影响预测\s*≥\s*(\d+)\s*亿元", a10, "BR-A10 影响金额高阈值").group(1))
     band_stages = band_amount = None
     if a11:
@@ -267,8 +267,8 @@ def build_thresholds(workbook):
     sources = {
         "gapRateHigh": "BR-A01", "gapRateMedium": "BR-A01",
         "signLagExtremePoints": "BR-A02", "signLagHighPoints": "BR-A02",
-        "quarterWindows": "BR-A02", "productRiskAmountHigh": "BR-A04/BR-A05",
-        "productRiskAmountMedium": "BR-A04/BR-A05", "impactAmountHigh": "BR-A10",
+        "annualCoverageRatio": "BR-A02", "productRiskAmountHigh": "BR-A05",
+        "productRiskAmountMedium": "BR-A05", "productGapRate": "BR-A05", "impactAmountHigh": "BR-A10",
         "productPendingRatio": "BR-C05", "focusTrackingRatio": "BR-C06",
         "otherPendingRatio": "BR-C07",
     }
@@ -277,7 +277,8 @@ def build_thresholds(workbook):
         "gapRateMedium": gap_medium / 100,
         "signLagExtremePoints": sign_extreme,
         "signLagHighPoints": sign_high,
-        "quarterWindows": {"3": quarter_q3 / 100, "4": quarter_q4 / 100},
+        "annualCoverageRatio": coverage / 100,
+        "productGapRate": pack_gap / 100,
         "focusTrackingRatio": focus_ratio / 100,
         "productPendingRatio": product_pending / 100,
         "otherPendingRatio": other_ratio / 100,
@@ -292,6 +293,28 @@ def build_thresholds(workbook):
         sources["stageBandAmountHigh"] = "BR-A11"
     thresholds["sources"] = sources
     return thresholds
+
+
+def build_cause_analysis(workbook, causes):
+    """How root causes are produced, read from the cause sheet and BR-L01.
+
+    When every cause's 判定方式 is AI the card runs one global model analysis
+    over the established risks (BR-L01) instead of matching the cause sheet;
+    the per-risk count comes from the rule text, e.g. “1～2 条根因”.
+    """
+    methods = {cause["method"] for cause in causes.values()}
+    if methods != {"AI"}:
+        return {"mode": "ontology", "source": "根因.判定方式"}
+    row = build_rule_index(workbook).get("BR-L01") or {}
+    text = " ".join(clean(row.get(key)) for key in ("规则描述", "判断或结果"))
+    found = _match(r"(\d+)\s*[～~–-]\s*(\d+)\s*条根因", text, "BR-L01 每条风险根因数")
+    return {
+        "mode": "ai",
+        "minPerRisk": int(found.group(1)),
+        "maxPerRisk": int(found.group(2)),
+        "source": "BR-L01 / 根因.判定方式",
+        "description": clean(row.get("规则描述")),
+    }
 
 
 def build_dynamic_cycle(workbook):
@@ -724,6 +747,7 @@ def build_config(workbook):
             "leadProgressCreatedField": "createdon",
         },
         "thresholds": thresholds,
+        "causeAnalysis": build_cause_analysis(workbook, causes),
     }
     # The resolved link table must already reflect the explicit business
     # overrides; the UI and task drafting never re-interpret the workbook.
@@ -737,8 +761,8 @@ def build_config(workbook):
             raise SystemExit(f"本体 {code} 未找到唯一的关联指标分类：{sorted(categories)}")
         risk["category"] = categories.pop()
     config = dict(
-        version="opportunity-v3-rules-12",
-        ontology="商机获取节点 V3 阶段周期超时分档版",
+        version="opportunity-v3-rules-13",
+        ontology="商机获取节点 V3 缺口口径及AI根因版",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,

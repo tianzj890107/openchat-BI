@@ -189,13 +189,39 @@
 - 风险与根因改为一对多展示：每条风险下增加可展开的「N 项根因」列表，列出与该风险关联的全部根因（同一根因关联多条风险时
   在每条风险下都出现），根因保留环节、名称、描述、模型推理标注与证据；不再单独展示【原因】分区，也不再显示
   「风险N—原因M」对应关系文字。
-- 建议暂时隐藏：建议分区、底部「建议 N 验收」行与建议库统计均不显示（后端仍生成，便于恢复）。
+- 建议暂时隐藏：建议分区、底部「建议 N 验收」行与建议库统计均不显示（根因改为 AI 全局分析后不再关联本体建议，见下条）。
 - 仅作用于该卡片（`opportunity-risk` 的 `causesUnderRisks: true`、`showRecommendations: false`）；订单、发货等其他
   环节卡片版式不变。风险与根因的证据（识别的规则、取数 SQL）抽为共用组件 `StageTraceDetails`，三处展示一致。
 - 主要文件：`bi_agent/web/static/cockpit/insight-components/{shared.js,opportunity-risk/index.js}`、
   `bi_agent/web/static/cockpit/cockpit.css`、`tests/cockpit_sales_shipment_issues.test.mjs`。
 - 验证：前端 Node 测试 142 项中 140 项通过（2 项为基线失败）；读取前端组件的 Python 测试 50 项通过，3 项为既有失败。
   已发布卡片无需重新分析即按新版式展示。未在浏览器中实际查看。
+
+### 2026-11-16 商机获取 · 销售额口径明细：风险规则修订本体、缺口口径与 AI 根因
+
+- 本体：收录客户新版《亿纬锂能_本体_商机获取节点_V3_风险规则及周期SQL修复》（根目录与 `docs/亿纬锂能/` 各一份），
+  并由新脚本 `scripts/build_opportunity_ai_cause_ontology.py` 生成《…_V3_缺口口径及AI根因版》作为卡片本体，
+  配置重生成为 `opportunity-v3-rules-13`（57 指标 / 8 风险 / 10 根因 / 12 建议 / 21 条链路）。
+- 风险规则（客户修订）：RK02 签单达成率改为已签单商机预测 ÷ 年度目标，并新增全年金额覆盖率 < 120% 预警（仅因此成立时
+  不定级），取消季度未签比例窗口；删除电芯独立风险 RK04；RK05 改为 PACK 待签 > 0 且 PACK 全年目标缺口率 > 20% 触发，
+  待签 < 10 亿元不定级。
+- 缺口类风险统一给出“目标、进度＋预测 → 缺口”：RK01、RK05、RK06 的缺口 ＝ 目标 −（进度＋预测），进度为观察月以前已签单
+  商机预测、预测为观察月至 12 月全部商机预测（本体 R03 全年覆盖预测分支）；本体 R01、R08 的定义、规则与调用 SQL 同步改写。
+  卡片新增查询“全年覆盖预测”，失败时这些风险记“无法判定”，不回退旧口径。RK02 领先时间进度时写“未落后时间进度”，
+  不再出现负的“落后”点数。
+- RK11（商机转化风险 · 阶段风险）描述改为“{n}条商机的阶段周期超均值50%及以上。”。
+- 根因全部改为 AI：本体根因表、链路“判定方式”统一为 AI，BR-L01 改为“AI 全局根因分析”。卡片对本轮全部已成立风险及其
+  指标结果调用一次模型做全局分析，每条风险给出 1～2 条根因（维度由模型自定，不匹配本体根因库；数字须来自输入，
+  漏答或越界数字重试一次），根因标注“（AI 分析 · 待核实）”，不关联本体建议。
+- 根因文档复核：RC04 改名“产品部商机储备与目标不匹配”、RC06 改名“待签商机重点跟踪覆盖不足”；删除不成立的关联
+  RC01—RK07、RC06—RK01、RC07—RK03（链路 L024、L002、L012），新增 RC03—RK02（L035）。
+- 文档：重写 `docs/亿纬锂能/商机获取卡片_风险输出模板.md`，`docs/specs/cockpit-opportunity-v3-rules.md` 增加本次口径说明。
+- 主要文件：`bi_agent/cockpit/{opportunity_v2.py,opportunity_judgement.py}`、`bi_agent/cockpit/assets/opportunity-v3/config.json`、
+  `scripts/{build_opportunity_ai_cause_ontology.py,build_opportunity_v3_config.py}`、
+  `bi_agent/web/static/cockpit/insight-components/shared.js`、`tests/test_cockpit_opportunity_v2.py`、
+  `tests/cockpit_sales_shipment_issues.test.mjs`。
+- 验证：商机获取相关 Python 测试 170 项通过（1 项为缺少 `psycopg` 的既有失败）；Node 测试 143 项中 141 项通过（2 项为基线
+  失败）。未连接客户数据库实跑新查询（SQL 已用 pglast 做语法解析），未在浏览器中查看；已发布卡片需重新分析后才显示新口径。
 
 ## 补齐说明
 

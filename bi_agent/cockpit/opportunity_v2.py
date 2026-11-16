@@ -40,7 +40,7 @@ from . import periods
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-12"
+RULES_VERSION = "opportunity-v3-rules-13"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -61,15 +61,16 @@ _AP_SUPPLEMENT_CODES = {
     "B02.energy": "YWLN_M0022",
 }
 _RISK_FACT_CODES = {
-    "RK01": ("B01-AMOUNT", "B01-ENERGY", "B02-AMOUNT", "B02-ENERGY",
+    # Gap risks (RK01 / RK05 / RK06) state target, progress and forecast:
+    # 缺口 ＝ 目标 −（进度 ＋ 预测）, the R03 全年覆盖预测 branch.
+    "RK01": ("B01-AMOUNT", "B01-ENERGY", "R01-PROGRESS-AMOUNT", "R01-PROGRESS-ENERGY",
+             "R01-FORECAST-AMOUNT", "R01-FORECAST-ENERGY",
              "R01-AMOUNT", "R01-ENERGY", "R01-RATE-AMOUNT", "R01-RATE-ENERGY"),
-    "RK02": ("R03-LAG", "R03-LAG-ENERGY", "R02-AMOUNT", "R02-ENERGY",
-             "R02-CONFIRMED-AMOUNT", "R02-CONFIRMED-ENERGY", "B02-AMOUNT", "B02-ENERGY"),
+    "RK02": ("R03-LAG", "R03-LAG-ENERGY", "R03-COVERAGE-RATE", "B01-AMOUNT", "B01-ENERGY",
+             "R02-CONFIRMED-AMOUNT", "R02-CONFIRMED-ENERGY", "R02-AMOUNT", "R02-ENERGY"),
     "RK03": ("R04-COUNT", "R04-AMOUNT", "R04-ENERGY", "R01-AMOUNT", "R01-ENERGY"),
-    "RK04": ("R05-AMOUNT", "R05-ENERGY", "B01-AMOUNT", "B01-ENERGY",
-             "B02-AMOUNT", "B02-ENERGY", "R03-LAG", "R03-LAG-ENERGY"),
-    "RK05": ("R06-AMOUNT", "R06-ENERGY", "B01-AMOUNT", "B01-ENERGY",
-             "B02-AMOUNT", "B02-ENERGY", "R03-LAG", "R03-LAG-ENERGY"),
+    "RK05": ("R06-AMOUNT", "R06-ENERGY", "R06-TARGET-AMOUNT", "R06-PROGRESS-AMOUNT",
+             "R06-FORECAST-AMOUNT", "R06-GAP-RATE-AMOUNT", "R06-GAP-RATE-ENERGY"),
     "RK06": ("R08",),
     "RK07": ("R09",),
     "RK08": ("R10", "BID-AMBIGUOUS"),
@@ -223,15 +224,13 @@ def _stage_name(value, config=None):
 _THRESHOLD_KEYS = ("gapRateHigh", "gapRateMedium", "signLagExtremePoints",
                    "signLagHighPoints", "focusTrackingRatio", "productPendingRatio",
                    "otherPendingRatio", "productRiskAmountHigh",
-                   "productRiskAmountMedium", "impactAmountHigh")
+                   "productRiskAmountMedium", "impactAmountHigh",
+                   "annualCoverageRatio", "productGapRate")
 
 
 def _thresholds(config):
     value = ((config or {}).get("overrides") or {}).get("thresholds") or {}
     missing = [key for key in _THRESHOLD_KEYS if _number(value.get(key)) is None]
-    quarters = value.get("quarterWindows") or {}
-    if _number(quarters.get("3")) is None or _number(quarters.get("4")) is None:
-        missing.append("quarterWindows")
     if missing:
         raise OpportunityV2Unavailable("本体业务规则未定义阈值：" + "、".join(missing))
     return dict(
@@ -239,7 +238,8 @@ def _thresholds(config):
         gapRateMedium=_number(value["gapRateMedium"]),
         signLagExtremePoints=_number(value["signLagExtremePoints"]),
         signLagHighPoints=_number(value["signLagHighPoints"]),
-        quarterWindows={"3": _number(quarters["3"]), "4": _number(quarters["4"])},
+        annualCoverageRatio=_number(value["annualCoverageRatio"]),
+        productGapRate=_number(value["productGapRate"]),
         focusTrackingRatio=_number(value["focusTrackingRatio"]),
         productPendingRatio=_number(value["productPendingRatio"]),
         otherPendingRatio=_number(value["otherPendingRatio"]),
@@ -472,6 +472,7 @@ _QUERY_METRICS = {
     "产品团队": [],
     "产品部销售缺口": ["C03", "C04", "C05"],
     "阶段周期分档": list(STAGE_BAND_CODES),
+    "全年覆盖预测": ["R01", "R03", "R06", "R08"],
 }
 
 _QUERY_AGGREGATION_NOTES = {
@@ -485,6 +486,8 @@ _QUERY_AGGREGATION_NOTES = {
     "订单关联": "BR-Q02：按订单明细关联商机，去重订单数 ≥ 1 为已签单；不限定审批、取消状态或订单日期。",
     "产品团队": "团队成员关系按商机归属去重；同一人属于多团队时不强行合并。",
     "商机聚合": "明细行被截断时用于恢复全量聚合；仅参与规则计算，不在明细表展示。",
+    "全年覆盖预测": "本体 R03 全年覆盖预测分支：先筛截至观察日可用的预测记录，再按商机＋月份取最新；进度＝观察月以前已签单商机预测，"
+                  "预测＝观察月至 12 月全部商机预测；按全部、产品类型及有目标的客户×产品类型汇总，供缺口与覆盖率使用。",
 }
 
 
@@ -648,6 +651,78 @@ def _stage_band_rows(rows):
             meanKnown=any((item["days"] or 0) > 0 for item in means),
             opportunities=opportunities[:40])
     return bands
+
+
+# 进度 / 预测 split of the R03 全年覆盖预测 branch.  进度 is the signed forecast
+# of the months before the observation month, 预测 every forecast from the
+# observation month to December; their sum is the ontology's
+# annual_coverage.  Rows: the whole scope, each product type, and each
+# customer × product type that has a target (RK06 pairs them).
+_ANNUAL_SPLIT_SQL = """
+), annual_split AS MATERIALIZED (
+  SELECT
+    o.account_id,
+    f.product_type,
+    f.signed,
+    f.forecast_month >= DATE_TRUNC('MONTH', p.cutoff - INTERVAL '1 MICROSECOND') AS forward,
+    f.amount_yi,
+    f.energy_gwh
+  FROM annual_risk_forecast_facts AS f
+  JOIN opportunity_flags AS o USING (opportunity_id)
+  CROSS JOIN context AS p
+)
+SELECT
+  CASE WHEN GROUPING(s.account_id) = 1 THEN 'product' ELSE 'account' END AS scope,
+  CASE WHEN GROUPING(s.product_type) = 1 THEN '全部' ELSE s.product_type END AS product_type,
+  s.account_id,
+  COUNT(*) AS forecast_rows,
+  COALESCE(SUM(s.amount_yi) FILTER (WHERE s.signed AND NOT s.forward), 0) AS progress_amount,
+  COALESCE(SUM(s.energy_gwh) FILTER (WHERE s.signed AND NOT s.forward), 0) AS progress_energy,
+  COALESCE(SUM(s.amount_yi) FILTER (WHERE s.forward), 0) AS forecast_amount,
+  COALESCE(SUM(s.energy_gwh) FILTER (WHERE s.forward), 0) AS forecast_energy,
+  COUNT(*) FILTER (WHERE (s.signed OR s.forward) AND s.amount_yi IS NULL) AS missing_amount_rows,
+  COUNT(*) FILTER (WHERE (s.signed OR s.forward) AND s.energy_gwh IS NULL) AS missing_energy_rows
+FROM annual_split AS s
+GROUP BY GROUPING SETS ((), (s.product_type), (s.account_id, s.product_type))
+HAVING GROUPING(s.account_id) = 1
+  OR s.account_id IN (SELECT t.account_id FROM target_facts AS t WHERE t.account_id IS NOT NULL)
+ORDER BY 1 DESC, 2, 3"""
+
+
+def _annual_coverage_sql(config, year, measured, schema="ded_public"):
+    """R03's own CTE chain with the 进度 / 预测 split as the result.
+
+    Only an R03 statement that carries the 全年覆盖预测 branch qualifies; an
+    older ontology without it returns "" and the gap risks stay undecided.
+    """
+    sql = _ontology_metric_sql(config, "R03", year, measured, schema)
+    marker = "), metric_results AS MATERIALIZED ("
+    if not sql or sql.count(marker) != 1 or "annual_risk_forecast_facts AS MATERIALIZED" not in sql:
+        return ""
+    return sql.split(marker)[0].rstrip() + _ANNUAL_SPLIT_SQL
+
+
+def _annual_coverage_rows(rows):
+    """Coverage rows → {products: {all/1/2/unknown: …}, accounts: {"id|key": …}}."""
+    products, accounts = {}, {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        product = _text(row.get("product_type"))
+        item = dict(
+            progressAmount=_number(row.get("progress_amount")),
+            progressEnergy=_number(row.get("progress_energy")),
+            forecastAmount=_number(row.get("forecast_amount")),
+            forecastEnergy=_number(row.get("forecast_energy")),
+            rows=int(_number(row.get("forecast_rows")) or 0),
+            missingAmountRows=int(_number(row.get("missing_amount_rows")) or 0),
+            missingEnergyRows=int(_number(row.get("missing_energy_rows")) or 0),
+        )
+        if _text(row.get("scope")) == "product":
+            products["all" if product == "全部" else _product_key(product)] = item
+        elif _text(row.get("account_id")):
+            accounts[f"{_text(row.get('account_id'))}|{_product_key(product)}"] = item
+    return dict(products=products, accounts=accounts)
 
 
 def _strip_sql_comments(sql):
@@ -1197,6 +1272,11 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     band_sql = _stage_band_sql(config, year, measured, schema)
     if band_sql:
         specs.append(("阶段周期分档", band_sql, []))
+    # RK01 / RK05 / RK06 gaps and RK02's annual coverage use the ontology's
+    # 全年覆盖预测 branch (目标 −（进度 ＋ 预测）).
+    coverage_sql = _annual_coverage_sql(config, year, measured, schema)
+    if coverage_sql:
+        specs.append(("全年覆盖预测", coverage_sql, []))
     if strategic_ok:
         specs.insert(4, ("客户", accounts_sql, [measured, measured] + strategic_levels))
     else:
@@ -1465,6 +1545,8 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         productTeamGapStatus=query_status.get("产品部销售缺口", "unavailable" if not team_gap_sql else ""),
         stageBands=_stage_band_rows(results.get("阶段周期分档", [])),
         stageBandStatus=query_status.get("阶段周期分档", "unavailable" if not band_sql else ""),
+        annualCoverage=dict(_annual_coverage_rows(results.get("全年覆盖预测", [])),
+                            status=query_status.get("全年覆盖预测", "unavailable" if not coverage_sql else "")),
         targets=targets,
         productTypes=product_types,
         targetEnergyDivisor=target_energy_divisor,
@@ -1499,6 +1581,34 @@ def _avg(values):
     found = [_number(value) for value in values]
     found = [value for value in found if value is not None and value >= 0]
     return sum(found) / len(found) if found else None
+
+
+def _coverage_parts(item):
+    """进度 / 预测 / 覆盖 of one 全年覆盖预测 row; all None when it is missing."""
+    item = item or {}
+    progress_amount, progress_energy = _number(item.get("progressAmount")), _number(item.get("progressEnergy"))
+    forecast_amount, forecast_energy = _number(item.get("forecastAmount")), _number(item.get("forecastEnergy"))
+    return dict(
+        progress_amount=progress_amount, progress_energy=progress_energy,
+        forecast_amount=forecast_amount, forecast_energy=forecast_energy,
+        coverage_amount=(progress_amount + forecast_amount
+                         if progress_amount is not None and forecast_amount is not None else None),
+        coverage_energy=(progress_energy + forecast_energy
+                         if progress_energy is not None and forecast_energy is not None else None),
+    )
+
+
+def _gap(target, coverage):
+    """目标 −（进度 ＋ 预测）; unknown when either side is unknown."""
+    target, coverage = _number(target), _number(coverage)
+    return target - coverage if target is not None and coverage is not None else None
+
+
+def _month_span(first, last):
+    """“1—9月” / “10—12月” / “10月”; empty when the span is empty."""
+    if first > last:
+        return ""
+    return f"{first}月" if first == last else f"{first}—{last}月"
 
 
 def _product_key(value):
@@ -1869,10 +1979,21 @@ def evaluate(data, config=None, measured=None):
         total_energy = _number(supplement["B02"].get("energy"))
         if total_energy is not None:
             forecast_source = supplement["B02"].get("source") or "AP 补充"
-    gap_amount = (target_amount - total_amount) if target_amount is not None and total_amount is not None else None
-    gap_energy = (target_energy - total_energy) if target_energy is not None and total_energy is not None else None
-    gap_rate_amount = _div(gap_amount, target_amount) if gap_amount is not None else None
-    gap_rate_energy = _div(gap_energy, target_energy) if gap_energy is not None else None
+    # R01 (2026-11-16 缺口口径): 缺口 ＝ 目标 −（进度 ＋ 预测）.  进度 is the signed
+    # forecast before the observation month, 预测 every forecast from that
+    # month to December — the R03 全年覆盖预测 branch, shared with RK02's
+    # coverage and RK05 / RK06.  B02 stays the plain total forecast.  Without
+    # that branch the gap is unknown, never the old target − B02.
+    annual = data.get("annualCoverage") or {}
+    annual_status = _text(annual.get("status"))
+    annual_ok = annual_status in {"ok", "truncated"} and bool(annual.get("products"))
+    annual_accounts_ok = annual_status == "ok"
+    observed_month = measured.month
+    cover = _coverage_parts((annual.get("products") or {}).get("all") if annual_ok else None)
+    gap_amount = _gap(target_amount, cover["coverage_amount"])
+    gap_energy = _gap(target_energy, cover["coverage_energy"])
+    gap_rate_amount = _div(gap_amount, target_amount) if gap_amount is not None and target_amount else None
+    gap_rate_energy = _div(gap_energy, target_energy) if gap_energy is not None and target_energy else None
 
     confirmed = [opp for opp in opps if opp.get("contract") == "confirmed"]
     unsigned = [opp for opp in opps if opp.get("contract") == "not_confirmed"]
@@ -1900,24 +2021,23 @@ def evaluate(data, config=None, measured=None):
         unknown_amount = _sum(opp.get("forecastAmount") for opp in unknown_contract) if unknown_contract else (0.0 if has_opp_data else None)
         unknown_energy = _sum(opp.get("forecastEnergy") for opp in unknown_contract) if unknown_contract else (0.0 if has_opp_data else None)
     # A contract whose state is unknown is neither signed nor explicitly
-    # unsigned.  It therefore stays out of both the pending/quarter window and
-    # the confirmed signing coverage.
-    # R03 / BR-A02 (ontology 2026-11-14): signed coverage = signed forecast ÷
-    # total opportunity forecast, unsigned share = unsigned forecast ÷ total
-    # forecast; amount and energy separately.  The annual target is not the
-    # denominator and its gap is not added.  A total that is empty or 0
-    # leaves the ratio NULL.
-    unsigned_ratio_amount = _div(unsigned_amount, total_amount)
-    unsigned_ratio_energy = _div(unsigned_energy, total_energy)
-    sign_progress_amount = _div(confirmed_amount, total_amount)
-    sign_progress_energy = _div(confirmed_energy, total_energy)
+    # unsigned.  It therefore stays out of the pending forecast and the
+    # signed achievement.
+    # R03 / BR-A02 (风险规则修订): 签单达成率 = signed forecast ÷ the annual
+    # target of the same scope, amount and energy separately; a target that
+    # is empty or 0 leaves the rate NULL.  The annual amount coverage
+    # (进度 ＋ 预测) ÷ target below 120% is a second, independent trigger; the
+    # old quarterly unsigned-share windows are gone.
+    sign_progress_amount = _div(confirmed_amount, target_amount) if target_amount else None
+    sign_progress_energy = _div(confirmed_energy, target_energy) if target_energy else None
     year_start = date(measured.year, 1, 1)
     year_end = date(measured.year, 12, 31)
     time_progress = ((measured - year_start).days + 1) / ((year_end - year_start).days + 1)
     lag_amount = (time_progress - sign_progress_amount) * 100 if sign_progress_amount is not None else None
     lag_energy = (time_progress - sign_progress_energy) * 100 if sign_progress_energy is not None else None
-    quarter = (measured.month - 1) // 3 + 1
-    quarter_window = _number((thresholds.get("quarterWindows") or {}).get(str(quarter)))
+    coverage_rate_amount = (_div(cover["coverage_amount"], target_amount)
+                            if cover["coverage_amount"] is not None and target_amount else None)
+    coverage_floor = _number(thresholds.get("annualCoverageRatio"))
 
     # R04: 战略 + 重点 unsigned opportunities of customers in the 储能客户名单 (BR-Q04).
     focus = [opp for opp in unsigned if opp.get("tier") in {"strategic", "priority"} and _in_storage(opp)]
@@ -1986,11 +2106,24 @@ def evaluate(data, config=None, measured=None):
                               if product_target_amount is not None and product_total_amount is not None else None)
         product_gap_energy = (product_target_energy - product_total_energy
                               if product_target_energy is not None and product_total_energy is not None else None)
-        # R05 / R06 condition ② uses the same product's signed forecast ÷ its
-        # total forecast; condition ① (forecast below target) keeps the target.
-        product_sign_progress_amount = _div(confirmed_product_amount, product_total_amount)
-        product_sign_progress_energy = _div(confirmed_product_energy, product_total_energy)
+        # R06 / BR-A05 (风险规则修订): the product's 签单达成率 is its signed
+        # forecast ÷ its annual target (progress note only); the trigger is
+        # the annual gap rate 目标 −（进度 ＋ 预测）÷ 目标.
+        product_sign_progress_amount = (_div(confirmed_product_amount, product_target_amount)
+                                        if product_target_amount else None)
+        product_sign_progress_energy = (_div(confirmed_product_energy, product_target_energy)
+                                        if product_target_energy else None)
+        product_cover = _coverage_parts((annual.get("products") or {}).get(key) if annual_ok else None)
+        annual_gap_amount = _gap(product_target_amount, product_cover["coverage_amount"])
+        annual_gap_energy = _gap(product_target_energy, product_cover["coverage_energy"])
         products[key] = dict(
+            cover=product_cover,
+            annual_gap_amount=annual_gap_amount,
+            annual_gap_energy=annual_gap_energy,
+            annual_gap_rate_amount=(_div(annual_gap_amount, product_target_amount)
+                                    if annual_gap_amount is not None and product_target_amount else None),
+            annual_gap_rate_energy=(_div(annual_gap_energy, product_target_energy)
+                                    if annual_gap_energy is not None and product_target_energy else None),
             pending=subset,
             pending_count=pending_count,
             pending_amount=pending_amount,
@@ -2046,20 +2179,32 @@ def evaluate(data, config=None, measured=None):
     target_pairs = {(item.get("accountId"), item.get("productType") or "unknown"): item
                     for item in (target.get("byAccountProduct") or {}).values()
                     if isinstance(item, dict) and item.get("accountId")}
+    # R08 (2026-11-16 缺口口径): the customer's gap is its target −（进度 ＋ 预测）
+    # from the same 全年覆盖预测 branch, paired per customer × product type.
+    # A customer counts only when it has opportunity forecasts (BR-A06).
+    # Without complete customer coverage rows the gap is unknown.
     customer_gaps = []
-    for key in sorted(set(target_pairs) & set(forecast_pairs)):
+    annual_accounts = annual.get("accounts") or {}
+    for key in sorted(set(target_pairs) & set(forecast_pairs)) if annual_accounts_ok else []:
         goal, forecast = target_pairs[key], forecast_pairs[key]
         if not _in_storage(goal):
             continue  # R08 covers the 储能客户名单 only (BR-Q04)
-        amount_gap = (_number(goal.get("amount")) - forecast["amount"]
-                      if _number(goal.get("amount")) is not None and forecast["amount"] is not None else None)
-        energy_gap = (_number(goal.get("energy")) - forecast["energy"]
-                      if _number(goal.get("energy")) is not None and forecast["energy"] is not None else None)
+        account_id, product = key
+        pair_cover = _coverage_parts(annual_accounts.get(f"{account_id}|{product}")
+                                     or dict(progressAmount=0, progressEnergy=0,
+                                             forecastAmount=0, forecastEnergy=0))
+        amount_gap = _gap(goal.get("amount"), pair_cover["coverage_amount"])
+        energy_gap = _gap(goal.get("energy"), pair_cover["coverage_energy"])
         if (amount_gap or 0) > 0 or (energy_gap or 0) > 0:
-            account_id, product = key
             customer_gaps.append(dict(accountId=account_id, productType=product,
                                       productName=_product_name(product, config),
                                       accountName=forecast["accountName"], tier=forecast["tier"],
+                                      targetAmount=_number(goal.get("amount")),
+                                      targetEnergy=_number(goal.get("energy")),
+                                      progressAmount=pair_cover["progress_amount"],
+                                      progressEnergy=pair_cover["progress_energy"],
+                                      forecastAmount=pair_cover["forecast_amount"],
+                                      forecastEnergy=pair_cover["forecast_energy"],
                                       amount=amount_gap, energy=energy_gap, count=forecast["count"]))
     gap_accounts = {gap["accountId"] for gap in customer_gaps}
 
@@ -2211,21 +2356,52 @@ def evaluate(data, config=None, measured=None):
     f_b02_e = fact("B02-ENERGY", "商机总预测（电量）", total_energy, "GWh",
                    "预测金额 ÷ new_whprice（元/Wh）÷ 10^9；本体 BR-Q01，new_forcastpower 实库为空",
                    source=forecast_source)
-    gap_source = target_source if target_source == forecast_source else f"derived（{target_source} / {forecast_source}）"
-    f_r01_a = fact("R01-AMOUNT", "商机预测缺口（金额）", gap_amount, "亿元", "B01 − B02，金额单独计算", source=gap_source)
-    f_r01_e = fact("R01-ENERGY", "商机预测缺口（电量）", gap_energy, "GWh", "B01 − B02，电量单独计算", source=gap_source)
-    f_gap_rate_a = fact("R01-RATE-AMOUNT", "商机预测缺口率（金额）", gap_rate_amount * 100 if gap_rate_amount is not None else None, "%")
-    f_gap_rate_e = fact("R01-RATE-ENERGY", "商机预测缺口率（电量）", gap_rate_energy * 100 if gap_rate_energy is not None else None, "%")
+    coverage_source = "customer PostgreSQL · ded_public · 本体 R03 全年覆盖预测"
+    gap_source = (coverage_source if target_source.startswith("customer PostgreSQL")
+                  else f"derived（{target_source} / {coverage_source}）")
+    progress_months = _month_span(1, observed_month - 1)
+    forecast_months = _month_span(observed_month, 12)
+    progress_definition = (f"进度：{progress_months or '观察月以前'}已签单商机预测（观察月以前各月，已关联订单）"
+                           if progress_months else "进度：观察月为 1 月，没有已历月份")
+    forecast_definition = f"预测：{forecast_months}全部商机预测（含已签、未签），截至观察日可用的最新版本"
+    f_r01_progress_a = fact("R01-PROGRESS-AMOUNT", "进度：已历月份已签单商机预测（金额）",
+                            cover["progress_amount"], "亿元", progress_definition, source=coverage_source)
+    f_r01_progress_e = fact("R01-PROGRESS-ENERGY", "进度：已历月份已签单商机预测（电量）",
+                            cover["progress_energy"], "GWh", progress_definition, source=coverage_source)
+    f_r01_forecast_a = fact("R01-FORECAST-AMOUNT", "预测：观察月至年底商机预测（金额）",
+                            cover["forecast_amount"], "亿元", forecast_definition, source=coverage_source)
+    f_r01_forecast_e = fact("R01-FORECAST-ENERGY", "预测：观察月至年底商机预测（电量）",
+                            cover["forecast_energy"], "GWh", forecast_definition, source=coverage_source)
+    f_r01_a = fact("R01-AMOUNT", "商机预测缺口（金额）", gap_amount, "亿元",
+                   "B01 年度目标 −（进度 ＋ 预测），金额单独计算", source=gap_source)
+    f_r01_e = fact("R01-ENERGY", "商机预测缺口（电量）", gap_energy, "GWh",
+                   "B01 年度目标 −（进度 ＋ 预测），电量单独计算", source=gap_source)
+    f_gap_rate_a = fact("R01-RATE-AMOUNT", "商机预测缺口率（金额）", gap_rate_amount * 100 if gap_rate_amount is not None else None, "%",
+                        "缺口 ÷ 年度目标")
+    f_gap_rate_e = fact("R01-RATE-ENERGY", "商机预测缺口率（电量）", gap_rate_energy * 100 if gap_rate_energy is not None else None, "%",
+                        "缺口 ÷ 年度目标")
     f_r02_a = fact("R02-AMOUNT", "明确未签单商机预测（金额）", unsigned_amount, "亿元", "BR-Q02：未关联到订单")
     f_r02_e = fact("R02-ENERGY", "明确未签单商机预测（电量）", unsigned_energy, "GWh", "BR-Q02：未关联到订单")
     f_r02_unknown_a = fact("R02-UNKNOWN-AMOUNT", "签单状态未知商机预测（金额）", unknown_amount, "亿元", "签单状态无法判定")
     f_r02_unknown_e = fact("R02-UNKNOWN-ENERGY", "签单状态未知商机预测（电量）", unknown_energy, "GWh", "签单状态无法判定")
     f_r02_confirmed_a = fact("R02-CONFIRMED-AMOUNT", "已签单商机预测（金额）", confirmed_amount, "亿元", "BR-Q02：已关联至少 1 张订单")
     f_r02_confirmed_e = fact("R02-CONFIRMED-ENERGY", "已签单商机预测（电量）", confirmed_energy, "GWh", "BR-Q02：已关联至少 1 张订单")
-    f_r03 = fact("R03-LAG", "已签单覆盖率落后时间进度（金额）", lag_amount, "百分点",
-                 "已签单覆盖率 = 已签单商机预测金额 ÷ 商机预测总金额；总预测为空或为 0 时不计算")
-    f_r03_e = fact("R03-LAG-ENERGY", "已签单覆盖率落后时间进度（电量）", lag_energy, "百分点",
-                   "已签单覆盖率 = 已签单商机预测电量 ÷ 商机预测总电量；总预测为空或为 0 时不计算")
+    f_r03 = fact("R03-LAG", "签单达成率落后时间进度（金额）", lag_amount, "百分点",
+                 "签单达成率 = 已签单商机预测金额 ÷ 年度目标金额；目标为空或为 0 时不计算")
+    f_r03_e = fact("R03-LAG-ENERGY", "签单达成率落后时间进度（电量）", lag_energy, "百分点",
+                   "签单达成率 = 已签单商机预测电量 ÷ 年度目标电量；目标为空或为 0 时不计算")
+    f_r03_rate = fact("R03-RATE-AMOUNT", "签单达成率（金额）",
+                      sign_progress_amount * 100 if sign_progress_amount is not None else None, "%",
+                      "已签单商机预测金额 ÷ 年度目标金额")
+    f_r03_rate_e = fact("R03-RATE-ENERGY", "签单达成率（电量）",
+                        sign_progress_energy * 100 if sign_progress_energy is not None else None, "%",
+                        "已签单商机预测电量 ÷ 年度目标电量")
+    f_time = fact("R03-TIME", "年度时间进度", time_progress * 100, "%", "已过去天数 ÷ 全年天数")
+    f_r03_cover = fact("R03-COVERAGE-RATE", "全年金额覆盖率",
+                       coverage_rate_amount * 100 if coverage_rate_amount is not None else None, "%",
+                       "（进度 ＋ 预测）÷ 年度目标金额；低于 "
+                       + (f"{coverage_floor * 100:.0f}%" if coverage_floor is not None else "阈值") + " 预警",
+                       source=coverage_source)
     storage_on = bool(((config.get("overrides") or {}).get("storageCustomerScope") or {}).get("enabled"))
     storage_note = "储能客户名单内（BR-Q04）；" if storage_on else ""
     f_r04_count = fact("R04-COUNT", "重点跟踪未签单商机数", focus_count, "条",
@@ -2236,8 +2412,26 @@ def evaluate(data, config=None, measured=None):
     f_r05_e = fact("R05-ENERGY", "电芯类未签单预测（电量）", products["1"]["pending_energy"], "GWh")
     f_r06_a = fact("R06-AMOUNT", "PACK 类未签单预测（金额）", products["2"]["pending_amount"], "亿元")
     f_r06_e = fact("R06-ENERGY", "PACK 类未签单预测（电量）", products["2"]["pending_energy"], "GWh")
-    f_r08 = fact("R08", "客户预测缺口客户数", len(gap_accounts), "家",
-                 storage_note + "按客户＋产品类型分别计算目标 − 商机预测；任一侧缺值不计缺口；金额或电量缺口大于 0")
+    pack, pack_cover = products["2"], products["2"]["cover"]
+    f_r06_target = fact("R06-TARGET-AMOUNT", "PACK 年度目标（金额）", pack.get("target_amount"), "亿元")
+    f_r06_target_e = fact("R06-TARGET-ENERGY", "PACK 年度目标（电量）", pack.get("target_energy"), "GWh")
+    f_r06_progress = fact("R06-PROGRESS-AMOUNT", "PACK 进度：已历月份已签单商机预测（金额）",
+                          pack_cover["progress_amount"], "亿元", progress_definition, source=coverage_source)
+    f_r06_progress_e = fact("R06-PROGRESS-ENERGY", "PACK 进度：已历月份已签单商机预测（电量）",
+                            pack_cover["progress_energy"], "GWh", progress_definition, source=coverage_source)
+    f_r06_forecast = fact("R06-FORECAST-AMOUNT", "PACK 预测：观察月至年底商机预测（金额）",
+                          pack_cover["forecast_amount"], "亿元", forecast_definition, source=coverage_source)
+    f_r06_forecast_e = fact("R06-FORECAST-ENERGY", "PACK 预测：观察月至年底商机预测（电量）",
+                            pack_cover["forecast_energy"], "GWh", forecast_definition, source=coverage_source)
+    f_r06_gap_rate = fact("R06-GAP-RATE-AMOUNT", "PACK 全年目标缺口率（金额）",
+                          pack["annual_gap_rate_amount"] * 100 if pack["annual_gap_rate_amount"] is not None else None,
+                          "%", "（PACK 年度目标 −（进度 ＋ 预测））÷ PACK 年度目标", source=coverage_source)
+    f_r06_gap_rate_e = fact("R06-GAP-RATE-ENERGY", "PACK 全年目标缺口率（电量）",
+                            pack["annual_gap_rate_energy"] * 100 if pack["annual_gap_rate_energy"] is not None else None,
+                            "%", "（PACK 年度目标 −（进度 ＋ 预测））÷ PACK 年度目标", source=coverage_source)
+    f_r08 = fact("R08", "客户预测缺口客户数", len(gap_accounts) if annual_accounts_ok else None, "家",
+                 storage_note + "按客户＋产品类型分别计算目标 −（进度 ＋ 预测）；任一侧缺值不计缺口；金额或电量缺口大于 0",
+                 source=coverage_source)
     supplement_r09 = (_number((supplement.get("R09") or {}).get("count"))
                       if strategic_ok and isinstance(supplement.get("R09"), dict) else None)
     if strategic_ok:
@@ -2314,42 +2508,64 @@ def evaluate(data, config=None, measured=None):
         value=opp.get("name"), name=opp.get("name"), evidence=opp.get("id"),
     ) for opp in values[:limit] if opp.get("id")]
 
-    # RK01
+    def gap_sentence(label, unit, target_value, parts, gap, rate, months=True):
+        """目标、进度＋预测 → 缺口: the shared wording of every gap risk."""
+        progress = parts[f"progress_{'amount' if unit == '亿元' else 'energy'}"]
+        forecast = parts[f"forecast_{'amount' if unit == '亿元' else 'energy'}"]
+        progress_note = f"（{progress_months}已签单）" if months and progress_months else ""
+        forecast_note = f"（{forecast_months}）" if months and forecast_months else ""
+        return (f"{label}目标 {target_value:.2f} {unit}，进度 {progress:.2f} {unit}{progress_note}"
+                f"＋预测 {forecast:.2f} {unit}{forecast_note}，缺口 {gap:.2f} {unit}"
+                + (f"，缺口率 {rate * 100:.1f}%" if rate is not None else "") + "。")
+
+    # RK01: 缺口 ＝ 目标 −（进度 ＋ 预测）> 0, amount and energy separately.
     if (gap_amount is not None and gap_amount > 0) or (gap_energy is not None and gap_energy > 0):
-        rate = max([value for value in (gap_rate_amount, gap_rate_energy) if value is not None] or [0])
+        rate = max([value for value in (gap_rate_amount if (gap_amount or 0) > 0 else None,
+                                        gap_rate_energy if (gap_energy or 0) > 0 else None)
+                    if value is not None] or [0])
         level = _level_for_gap(rate, thresholds)
         parts = []
         if gap_amount is not None and gap_amount > 0:
-            parts.append(f"金额缺口 {gap_amount:.2f} 亿元（目标 {target_amount:.2f} 亿元、预测 {total_amount:.2f} 亿元）。")
+            parts.append(gap_sentence("金额", "亿元", target_amount, cover, gap_amount, gap_rate_amount))
         if gap_energy is not None and gap_energy > 0:
-            parts.append(f"电量缺口 {gap_energy:.2f} GWh（目标 {target_energy:.2f} GWh、预测 {total_energy:.2f} GWh）。")
-        evidence = [f_b01_a, f_b01_e, f_b02_a, f_b02_e, f_r01_a, f_r01_e, f_gap_rate_a, f_gap_rate_e]
+            parts.append(gap_sentence("电量", "GWh", target_energy, cover, gap_energy, gap_rate_energy, months=False))
+        evidence = [f_b01_a, f_b01_e, f_r01_progress_a, f_r01_progress_e, f_r01_forecast_a, f_r01_forecast_e,
+                    f_r01_a, f_r01_e, f_gap_rate_a, f_gap_rate_e]
         name = _risk_name(config, "RK01", "商机预测覆盖不足")
         risks.append(_risk("RK01", name, level, f"RK01 {name}",
-                           "".join(parts), ["RK01", "R01", "B01", "B02"], evidence,
+                           "".join(parts), ["RK01", "R01", "B01", "R03"], evidence,
                            dict(amount=gap_amount, energy=gap_energy, count=None), []))
 
-    # RK02
-    quarterly = quarter_window is not None and (
-        (unsigned_ratio_amount is not None and unsigned_ratio_amount > quarter_window)
-        or (unsigned_ratio_energy is not None and unsigned_ratio_energy > quarter_window)
-    )
-    if (lag_amount is not None and lag_amount > 0) or (lag_energy is not None and lag_energy > 0) or quarterly:
-        lag = max([value for value in (lag_amount, lag_energy) if value is not None] or [0])
-        level = ("极高" if lag >= thresholds["signLagExtremePoints"] else
+    # RK02 (BR-A02): 签单达成率 behind the time progress, or the annual amount
+    # coverage below its floor.  Lag points set the level; a risk raised by
+    # the coverage alone has no level in the ontology and gets none here.
+    lagging = [value for value in (lag_amount, lag_energy) if value is not None and value > 0]
+    coverage_short = (coverage_rate_amount is not None and coverage_floor is not None
+                      and coverage_rate_amount < coverage_floor)
+    if lagging or coverage_short:
+        lag = max(lagging) if lagging else None
+        level = ("" if lag is None else
+                 "极高" if lag >= thresholds["signLagExtremePoints"] else
                  "高" if lag >= thresholds["signLagHighPoints"] else "中")
         parts = []
-        if lag_amount is not None:
-            parts.append(f"金额口径已签单覆盖率 {sign_progress_amount * 100:.1f}%、时间进度 {time_progress * 100:.1f}%，落后 {lag_amount:.1f} 个百分点。")
-        if lag_energy is not None:
-            parts.append(f"电量口径已签单覆盖率 {sign_progress_energy * 100:.1f}%，落后 {lag_energy:.1f} 个百分点。")
-        if quarterly:
-            parts.append(f"第 {quarter} 季度未签单商机预测占比超过 {quarter_window * 100:.0f}% 窗口阈值。")
-        evidence = [f_r03, f_r03_e, f_r02_a, f_r02_e, f_r02_unknown_a, f_r02_unknown_e,
-                    f_b02_a, f_b02_e]
+        if sign_progress_amount is not None:
+            parts.append(f"金额签单达成率 {sign_progress_amount * 100:.1f}%（已签单 {confirmed_amount:.2f} 亿元，"
+                         f"年度目标 {target_amount:.2f} 亿元），时间进度 {time_progress * 100:.1f}%，"
+                         + (f"落后 {lag_amount:.1f} 个百分点。" if lag_amount > 0 else "未落后时间进度。"))
+        if sign_progress_energy is not None:
+            parts.append(f"电量签单达成率 {sign_progress_energy * 100:.1f}%，"
+                         + (f"落后 {lag_energy:.1f} 个百分点。" if lag_energy > 0 else "未落后时间进度。"))
+        if coverage_rate_amount is not None:
+            parts.append(f"全年金额覆盖率 {coverage_rate_amount * 100:.1f}%（进度 {cover['progress_amount']:.2f} 亿元"
+                         f"＋预测 {cover['forecast_amount']:.2f} 亿元，年度目标 {target_amount:.2f} 亿元），"
+                         + (f"低于 {coverage_floor * 100:.0f}% 预警线。" if coverage_short
+                            else f"不低于 {coverage_floor * 100:.0f}%。"))
+        evidence = [f_r03_rate, f_r03_rate_e, f_time, f_r03, f_r03_e, f_r03_cover,
+                    f_r02_confirmed_a, f_r02_confirmed_e, f_b01_a, f_b01_e,
+                    f_r01_progress_a, f_r01_forecast_a, f_r02_a, f_r02_e]
         name = _risk_name(config, "RK02", "签单进度滞后")
-        risks.append(_risk("RK02", name, level, f"RK02 {name}（已签单覆盖率口径）",
-                           "".join(parts), ["RK02", "R03", "R02", "B02"], evidence,
+        risks.append(_risk("RK02", name, level, f"RK02 {name}",
+                           "".join(parts), ["RK02", "R03", "B01", "R02"], evidence,
                            dict(amount=unsigned_amount, energy=unsigned_energy, count=None), []))
 
     # RK03
@@ -2366,51 +2582,66 @@ def evaluate(data, config=None, measured=None):
                            "，".join(parts) + "；尚未关联订单。", ["RK03", "R04", "R01"], evidence,
                            dict(amount=focus_amount, energy=focus_energy, count=focus_count), []))
 
-    # RK04/RK05
-    for code, key in (("RK04", "1"), ("RK05", "2")):
-        bucket = products[key]
+    # RK05 (BR-A05): PACK pending forecast > 0 and its annual gap rate
+    # 目标 −（进度 ＋ 预测）÷ 目标 above the threshold, amount and energy each
+    # on its own side.  The signing lag is a note, not a trigger.  The level
+    # follows the pending amount; below the medium band the ontology defines
+    # no level, so none is given.  The 电芯 risk RK04 was removed.
+    if "RK05" in (config.get("risks") or {}):
+        bucket = products["2"]
+        gap_floor = thresholds["productGapRate"]
         pending_amount = bucket["pending_amount"] or 0
         pending_energy = bucket["pending_energy"] or 0
-        if pending_amount <= 0 and pending_energy <= 0:
-            continue
-        target_a = bucket.get("target_amount")
-        target_e = bucket.get("target_energy")
-        under = ((target_a is not None and bucket.get("total_amount") is not None and bucket["total_amount"] < target_a)
-                 or (target_e is not None and bucket.get("total_energy") is not None and bucket["total_energy"] < target_e))
-        lagged = ((bucket.get("lag_amount") is not None and bucket["lag_amount"] > 0)
-                  or (bucket.get("lag_energy") is not None and bucket["lag_energy"] > 0))
-        if not under and not lagged:
-            continue
-        level = ("高" if pending_amount >= thresholds["productRiskAmountHigh"] else
-                 "中" if pending_amount >= thresholds["productRiskAmountMedium"] else "低")
-        parts = []
-        if pending_amount:
-            parts.append(f"未签单预测金额 {pending_amount:.2f} 亿元")
-        if pending_energy:
-            parts.append(f"未签单预测电量 {pending_energy:.2f} GWh")
-        if under:
-            parts.append("该类总预测低于同口径目标")
-        product_lags = [value for value in (bucket.get("lag_amount"), bucket.get("lag_energy"))
-                        if value is not None]
-        if lagged and product_lags:
-            parts.append(f"该类已签单覆盖率落后时间进度 {max(product_lags):.1f} 个百分点")
-        evidence = [f_r05_a if key == "1" else f_r06_a, f_r05_e if key == "1" else f_r06_e]
-        name = _risk_name(config, code, "电芯类签单存在缺口" if key == "1" else "PACK类签单存在缺口")
-        risks.append(_risk(code, name, level, f"{code} {name}",
-                           "，".join(parts) + "；按 BR-Q02 订单关联口径判断。",
-                           [code, "R05" if key == "1" else "R06", "B01", "B02"], evidence,
-                           dict(amount=pending_amount, energy=pending_energy, count=bucket["pending_count"]), []))
+        amount_hit = (pending_amount > 0 and bucket["annual_gap_rate_amount"] is not None
+                      and bucket["annual_gap_rate_amount"] > gap_floor)
+        energy_hit = (pending_energy > 0 and bucket["annual_gap_rate_energy"] is not None
+                      and bucket["annual_gap_rate_energy"] > gap_floor)
+        if amount_hit or energy_hit:
+            level = ("高" if pending_amount >= thresholds["productRiskAmountHigh"] else
+                     "中" if pending_amount >= thresholds["productRiskAmountMedium"] else "")
+            parts = []
+            if amount_hit:
+                parts.append(gap_sentence("PACK 金额", "亿元", bucket["target_amount"], bucket["cover"],
+                                          bucket["annual_gap_amount"], bucket["annual_gap_rate_amount"]))
+            if energy_hit:
+                parts.append(gap_sentence("PACK 电量", "GWh", bucket["target_energy"], bucket["cover"],
+                                          bucket["annual_gap_energy"], bucket["annual_gap_rate_energy"],
+                                          months=False))
+            pending = [f"未签单预测金额 {pending_amount:.2f} 亿元" if pending_amount else "",
+                       f"未签单预测电量 {pending_energy:.2f} GWh" if pending_energy else ""]
+            note = "、".join(item for item in pending if item)
+            pack_lag = bucket.get("lag_amount")
+            if bucket.get("sign_progress_amount") is not None and pack_lag is not None:
+                note += (f"；签单达成率 {bucket['sign_progress_amount'] * 100:.1f}%，"
+                         + (f"落后时间进度 {pack_lag:.1f} 个百分点" if pack_lag > 0 else "未落后时间进度"))
+            parts.append(note + "。")
+            evidence = [f_r06_target, f_r06_target_e, f_r06_progress, f_r06_progress_e,
+                        f_r06_forecast, f_r06_forecast_e, f_r06_gap_rate, f_r06_gap_rate_e, f_r06_a, f_r06_e]
+            name = _risk_name(config, "RK05", "PACK类签单存在缺口")
+            risks.append(_risk("RK05", name, level, f"RK05 {name}", "".join(parts),
+                               ["RK05", "R06", "B01", "R03"], evidence,
+                               dict(amount=pending_amount, energy=pending_energy, count=bucket["pending_count"]), []))
 
     # RK06
     if customer_gaps:
         level = "高" if any(gap.get("tier") == "strategic" for gap in customer_gaps) else "中"
-        amount_total = _sum(gap.get("amount") for gap in customer_gaps)
-        energy_total = _sum(gap.get("energy") for gap in customer_gaps)
-        parts = [f"{len(gap_accounts)} 家客户（{len(customer_gaps)} 个客户×产品组合）的目标高于商机预测"]
+        amount_gaps = [gap for gap in customer_gaps if (gap.get("amount") or 0) > 0]
+        energy_gaps = [gap for gap in customer_gaps if (gap.get("energy") or 0) > 0]
+        amount_total = _sum(gap.get("amount") for gap in amount_gaps)
+        energy_total = _sum(gap.get("energy") for gap in energy_gaps)
+        parts = [f"{len(gap_accounts)} 家客户（{len(customer_gaps)} 个客户×产品组合）的进度＋预测低于客户目标"]
         if amount_total:
-            parts.append(f"金额缺口合计 {amount_total:.2f} 亿元")
+            parts.append(
+                f"金额目标 {_sum(gap.get('targetAmount') for gap in amount_gaps):.2f} 亿元，"
+                f"进度 {_sum(gap.get('progressAmount') for gap in amount_gaps) or 0:.2f} 亿元"
+                f"＋预测 {_sum(gap.get('forecastAmount') for gap in amount_gaps) or 0:.2f} 亿元，"
+                f"缺口合计 {amount_total:.2f} 亿元")
         if energy_total:
-            parts.append(f"电量缺口合计 {energy_total:.2f} GWh")
+            parts.append(
+                f"电量目标 {_sum(gap.get('targetEnergy') for gap in energy_gaps):.2f} GWh，"
+                f"进度 {_sum(gap.get('progressEnergy') for gap in energy_gaps) or 0:.2f} GWh"
+                f"＋预测 {_sum(gap.get('forecastEnergy') for gap in energy_gaps) or 0:.2f} GWh，"
+                f"缺口合计 {energy_total:.2f} GWh")
         evidence = [f_r08]
         for gap in customer_gaps[:8]:
             account_id = gap.get("accountId")
@@ -2422,7 +2653,8 @@ def evaluate(data, config=None, measured=None):
                                        unit="亿元/GWh", value=account_id, name=gap.get("accountName")))
         name = _risk_name(config, "RK06", "客户预测不足存在缺口")
         risks.append(_risk("RK06", name, level, f"RK06 {name}",
-                           "，".join(parts) + "。", ["RK06", "R08"], evidence,
+                           parts[0] + ("：" + "；".join(parts[1:]) if parts[1:] else "") + "。",
+                           ["RK06", "R08"], evidence,
                            dict(amount=_round(amount_total, 4), energy=_round(energy_total, 4),
                                 count=len(gap_accounts)), []))
 
@@ -2503,24 +2735,14 @@ def evaluate(data, config=None, measured=None):
         hit_count = sum(stage_bands[code]["count"] for code in severe_hits)
         hit_amount = _sum(stage_bands[code].get("amount") for code in severe_hits)
         hit_energy = _sum(stage_bands[code].get("energy") for code in severe_hits)
-        watch = sum((stage_bands.get(code) or {}).get("count") or 0 for code in STAGE_BAND_CODES
-                    if not band_meta[code]["severe"])
         stages_high = thresholds.get("stageBandStagesHigh")
         amount_high = thresholds.get("stageBandAmountHigh")
         level = ("高" if (stages_high is not None and len(severe_hits) >= stages_high)
                  or (amount_high is not None and (hit_amount or 0) >= amount_high) else "中")
-        def stage_breakdown(codes):
-            return "、".join(f"{band_meta[code]['stage']} {stage_bands[code]['count']} 条"
-                            for code in codes if (stage_bands.get(code) or {}).get("count"))
-
-        watch_hits = [code for code in STAGE_BAND_CODES
-                      if not band_meta[code]["severe"] and (stage_bands.get(code) or {}).get("count")]
-        description = (f"{hit_count} 条已结束商机的阶段周期超过同阶段同产品真实动态平均周期 50% 及以上（"
-                       + stage_breakdown(severe_hits) + "）"
-                       + (f"，涉及预测金额 {hit_amount:.2f} 亿元" if hit_amount is not None else "")
-                       + (f"、预测电量 {hit_energy:.2f} GWh" if hit_energy is not None else "")
-                       + (f"；另有 {watch} 条超均值未满 50%，列为关注"
-                          f"（{stage_breakdown(watch_hits)}）" if watch else "") + "。")
+        # Card wording (2026-11-16): one short sentence; the per-stage split,
+        # the forecast involved and the watch band stay in metricDetails and
+        # the evidence.
+        description = f"{hit_count}条商机的阶段周期超均值50%及以上。"
         evidence = [fid for code in STAGE_BAND_CODES for fid in band_facts[code]]
         objects = []
         for code in severe_hits:
@@ -2583,9 +2805,6 @@ def evaluate(data, config=None, measured=None):
     strategic_present = any(account.get("tier") == "strategic" for account in accounts)
     strategic_scope = strategic_present or bool(no_opportunity_count) or bool(no_bidding)
     applicable = {
-        "RK04": bool(products["1"].get("pending_count")
-                     or products["1"].get("target_amount") is not None
-                     or products["1"].get("target_energy") is not None),
         "RK05": bool(products["2"].get("pending_count")
                      or products["2"].get("target_amount") is not None
                      or products["2"].get("target_energy") is not None),
@@ -2987,14 +3206,14 @@ def evaluate(data, config=None, measured=None):
     dimensions = dimensions[:4]
 
     summary_parts = []
-    if target_amount is not None and total_amount is not None:
+    if gap_amount is not None:
         summary_parts.append(
-            f"年度目标 {target_amount:.2f} 亿元，商机获取 {total_amount:.2f} 亿元，"
-            f"缺口 {target_amount - total_amount:.2f} 亿元")
-    elif target_energy is not None and total_energy is not None:
+            f"年度目标 {target_amount:.2f} 亿元，进度 {cover['progress_amount']:.2f} 亿元＋预测 "
+            f"{cover['forecast_amount']:.2f} 亿元，缺口 {gap_amount:.2f} 亿元")
+    elif gap_energy is not None:
         summary_parts.append(
-            f"年度电量目标 {target_energy:.2f} GWh，商机获取 {total_energy:.2f} GWh，"
-            f"缺口 {target_energy - total_energy:.2f} GWh")
+            f"年度电量目标 {target_energy:.2f} GWh，进度 {cover['progress_energy']:.2f} GWh＋预测 "
+            f"{cover['forecast_energy']:.2f} GWh，缺口 {gap_energy:.2f} GWh")
     for risk in displayed[:2]:
         description = re.sub(r"\bRK\d+\b\s*", "", risk.get("description") or "").strip("。； ")
         if any(token in description for token in ("口径", "证据", "字段", "取数", "排查")):
@@ -3027,6 +3246,11 @@ def evaluate(data, config=None, measured=None):
             f"；战略客户数量、无商机{'及未投标' if bid_enabled else ''}判断未执行，不按客户等级推算。")
     if strategic_ok and recent_floor is None:
         data_issues.append("本体 BR-C09 未定义“近期”窗口，战略客户开拓原因的近期活动判断未执行。")
+    if not annual_ok:
+        data_issues.append(
+            "本体 R03 全年覆盖预测（进度＋预测）未取得：商机预测缺口、全年金额覆盖率、PACK 全年目标缺口与客户缺口未判定。")
+    elif not annual_accounts_ok:
+        data_issues.append("全年覆盖预测的客户明细未完整返回：客户预测缺口未判定。")
     if total_energy is None and total_amount is not None:
         data_issues.append(
             f"本体 B02 电量口径 {energy_field} 本次没有有效值；电量相关阈值和风险未判定。")
@@ -3045,7 +3269,10 @@ def evaluate(data, config=None, measured=None):
         data_issues.append("投标明细达到行数上限；投标周期和投标中项目相关规则未判定。")
     caliber_notes.extend([
         "签单按本体 BR-Q02 判断：商机经订单明细关联到订单即已签单，否则未签单。",
-        "签单进度按已签单覆盖率计算（已签单商机预测 ÷ 商机预测总额，金额、电量分别计算）；年度目标只用于预测缺口。",
+        "签单进度按签单达成率计算（已签单商机预测 ÷ 年度目标，金额、电量分别计算），与年度时间进度比较；"
+        "全年金额覆盖率 =（进度 ＋ 预测）÷ 年度目标。",
+        "缺口类风险（商机预测覆盖不足、PACK 签单缺口、客户预测不足）统一按 缺口 = 目标 −（进度 ＋ 预测）计算："
+        "进度为观察月以前已签单商机预测，预测为观察月至 12 月全部商机预测，取本体 R03 全年覆盖预测分支。",
         "目标按本体 B01：同一商机（商机为空时按目标 ID）同一年度只取最新一条，再按客户、产品汇总。",
         f"预测电量按本体 B02 使用 {energy_field}"
         + ("（预测金额 ÷ 瓦时单价）" if _text(energy_cfg.get("mode")) == "amount_div_price" else f"（{energy_unit}）")
@@ -3053,7 +3280,7 @@ def evaluate(data, config=None, measured=None):
         "项目阶段、产品类型与客户等级按本体维度派生规则映射；其他枚举不推断。"
         + ("投标关联按本体 BR-Q07 使用商机名称与投标项目名称原值精确匹配；同名歧义不判未投标。"
            if bid_enabled else ""),
-        "RC04 产品部销售缺口需跨发货环节实际销售，本次不把不可得数据推成原因。",
+        "根因由模型对本轮已成立风险及其指标结果做全局分析得出（本体 BR-L01），不匹配本体根因库，均需人工核实。",
         "动态均值按本体 BR-Q06 执行：" + (clean_cycle_sample or "样本范围未提供") + "。",
         "建议中的责任角色与期限为模型给出的建议值，须人工确认后才能下发任务令。",
     ])
@@ -3188,17 +3415,25 @@ def evaluate(data, config=None, measured=None):
     metric_values = dict(
         B01=dict(amount=target_amount, energy=target_energy),
         B02=dict(amount=total_amount, energy=total_energy),
-        R01=dict(amount=gap_amount, energy=gap_energy),
+        R01=dict(amount=gap_amount, energy=gap_energy, rateAmount=gap_rate_amount, rateEnergy=gap_rate_energy,
+                 targetAmount=target_amount, targetEnergy=target_energy,
+                 progressAmount=cover["progress_amount"], progressEnergy=cover["progress_energy"],
+                 forecastAmount=cover["forecast_amount"], forecastEnergy=cover["forecast_energy"]),
         R02=dict(amount=unsigned_amount, energy=unsigned_energy,
                  unknownAmount=unknown_amount, unknownEnergy=unknown_energy,
                  confirmedAmount=confirmed_amount, confirmedEnergy=confirmed_energy),
         R03=dict(lagAmount=lag_amount, lagEnergy=lag_energy,
                  signProgressAmount=sign_progress_amount, signProgressEnergy=sign_progress_energy,
-                 confirmedCoverageAmount=sign_progress_amount, confirmedCoverageEnergy=sign_progress_energy,
+                 annualCoverageRateAmount=coverage_rate_amount, annualCoverageFloor=coverage_floor,
                  timeProgress=time_progress),
         R04=dict(count=focus_count, amount=focus_amount, energy=focus_energy),
         R05=dict(amount=products["1"]["pending_amount"], energy=products["1"]["pending_energy"]),
-        R06=dict(amount=products["2"]["pending_amount"], energy=products["2"]["pending_energy"]),
+        R06=dict(amount=products["2"]["pending_amount"], energy=products["2"]["pending_energy"],
+                 targetAmount=products["2"]["target_amount"], targetEnergy=products["2"]["target_energy"],
+                 progressAmount=products["2"]["cover"]["progress_amount"],
+                 forecastAmount=products["2"]["cover"]["forecast_amount"],
+                 gapRateAmount=products["2"]["annual_gap_rate_amount"],
+                 gapRateEnergy=products["2"]["annual_gap_rate_energy"]),
         R08=dict(count=len(gap_accounts), pairs=len(customer_gaps)),
         R09=dict(count=no_opportunity_count),
         R10=dict(count=len(no_bidding)),
@@ -3775,8 +4010,9 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     measured = _measurement_context(period, measurement_date)
     strategic_ok, _ = _strategic_scope(config)
     has_stage_bands = all(code in (config.get("metrics") or {}) for code in STAGE_BAND_CODES)
+    has_coverage = bool(_annual_coverage_sql(config, measured.year, measured))
     _report_progress(progress, "fetching", message="查询数据库", completed=0,
-                     total=9 + int(strategic_ok) + int(has_stage_bands))
+                     total=9 + int(strategic_ok) + int(has_stage_bands) + int(has_coverage))
     try:
         data = collect(period, measured, database=database, config=config, progress=progress,
                        diagnostic_reporter=diagnostic_reporter)
