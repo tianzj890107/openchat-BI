@@ -967,6 +967,7 @@ def recompute_from_router(app, cwd):
             if stage == 'opportunity-risk':
                 from .opportunity_v2 import build_card, default_ap_supplement
                 from .opportunity_judgement import default_item_judge, semantic_rewriter
+                from .section_summary import enabled as summaries_enabled, summarize_risk_groups
                 from .store import Store
                 enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
                 supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '0').strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -981,7 +982,8 @@ def recompute_from_router(app, cwd):
                                   supplement=default_ap_supplement if supplement_enabled else None,
                                   progress=self._progress_callback,
                                   diagnostic_reporter=report_diagnostic,
-                                  semantic=semantic_rewriter if (enabled and semantic) else None)
+                                  semantic=semantic_rewriter if (enabled and semantic) else None,
+                                  summarize_groups=summarize_risk_groups if enabled and summaries_enabled() else None)
             return self.run_stage(period, stage)
 
         def run_stage(self, period, stage):

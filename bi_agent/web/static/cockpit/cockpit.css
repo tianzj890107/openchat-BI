@@ -30,6 +30,9 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .stage-risk-analysis__card--suggest{border-left:3px solid var(--cockpit-primary)}
 .stage-risk-analysis__head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .stage-risk-analysis__title{min-width:0;font-size:14px;font-weight:600;line-height:22px}
+.stage-risk-analysis__risk-group{margin:14px 0 0;font-size:13px;font-weight:600;line-height:22px}
+.stage-risk-analysis__risk-group-summary{margin:3px 0;font-size:13px;line-height:22px}
+.stage-risk-analysis__metric-details{margin:6px 0;padding-inline-start:20px}
 .stage-risk-analysis__head .stage-risk-analysis__title{flex:1 1 auto}
 .stage-risk-analysis__mark--risk{color:var(--cockpit-error)}
 .stage-risk-analysis__mark--cause{color:var(--cockpit-warning)}

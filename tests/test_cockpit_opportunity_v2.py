@@ -47,14 +47,13 @@ def _judge_no(request):
 
 def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v3-rules-11'
+    assert config_version() == 'opportunity-v3-rules-12'
     assert len(config_digest()) == 64
-    # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) is excluded,
-    # and the 精简关联版 lineage carries no R12–R17 stage-band layer.
-    assert len(config['metrics']) == 51
-    assert len(config['risks']) == 8
-    assert len(config['causes']) == 8
-    assert len(config['advice']) == 10
+    # The bid part (R10/R11/C02/S03, RK08/RK09, RC02, AC04/AC05) stays excluded.
+    assert len(config['metrics']) == 57
+    assert len(config['risks']) == 9
+    assert len(config['causes']) == 10
+    assert len(config['advice']) == 12
     assert config['overrides']['customerTier']['strategic'] == ['1']
     assert config['overrides']['customerTier']['priority'] == ['2']
     assert config['overrides']['customerTier']['generalCatchAll'] is True
@@ -67,14 +66,14 @@ def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
 def test_result_exposes_the_full_ontology_trace():
     value = evaluate(_data())
     trace = value['result']['ontologyTrace']
-    assert trace['ontology'] == '商机获取节点 V3 精简关联版'
-    assert trace['version'] == 'opportunity-v3-rules-11'
+    assert trace['ontology'] == '商机获取节点 V3 阶段周期超时分档版'
+    assert trace['version'] == 'opportunity-v3-rules-12'
     assert len(trace['digest']) == 12
-    assert len(trace['metrics']) == 51
-    assert len(trace['risks']) == 8
-    assert len(trace['causes']) == 8
-    assert len(trace['advice']) == 10
-    assert len(trace['rules']) == 31
+    assert len(trace['metrics']) == 57
+    assert len(trace['risks']) == 9
+    assert len(trace['causes']) == 10
+    assert len(trace['advice']) == 12
+    assert len(trace['rules']) == 34
     assert trace['risks'][0]['code'] == 'RK01' and trace['risks'][0]['name']
     assert trace['links']['RK07'] == {'risk': 'RK07', 'causes': ['RC09'],
                                       'advice': ['AC02', 'AC03']}
@@ -90,7 +89,7 @@ def test_result_exposes_rule_assessments_and_query_sql_for_evidence_details():
                                  status='ok', durationSeconds=0.01, rowCount=1)]
     value = evaluate(data)
     assessments = value['result']['riskAssessments']
-    assert len(assessments) == 8
+    assert len(assessments) == 9
     triggered = next(item for item in assessments if item['ruleStatus'] == 'triggered')
     assert triggered['rule'] and triggered['condition']
     assert triggered['metricCodes']
@@ -359,8 +358,8 @@ def test_build_card_reports_internal_steps_in_execution_order():
     assert phases.index('rules') < phases.index('analysing') and phases[-1] == 'publishing'
     assert set(phases[phases.index('analysing') + 1:-1]) <= {'judging'}
     fetch = [detail for phase, detail in events if phase == 'fetching']
-    assert fetch[-1]['completed'] == fetch[-1]['total'] == 9
-    assert len(card['result']['queryCatalog']) == 9
+    assert fetch[-1]['completed'] == fetch[-1]['total'] == 10
+    assert len(card['result']['queryCatalog']) == 10
     assert '投标' not in {item['label'] for item in card['result']['queryCatalog']}
     assert any(item['label'] == '产品部销售缺口' for item in card['result']['queryCatalog'])
     assert all(item['sql'] for item in card['result']['queryCatalog'])
@@ -982,7 +981,7 @@ def test_collect_uses_three_snapshot_readers_and_reports_query_progress():
                    progress=lambda phase, **detail: events.append((phase, detail)))
     assert max_active >= 2
     fetch = [detail for phase, detail in events if phase == 'fetching']
-    assert fetch and fetch[-1]['completed'] == fetch[-1]['total'] == 9
+    assert fetch and fetch[-1]['completed'] == fetch[-1]['total'] == 10
     assert all('query' in detail and 'queryDurationSeconds' in detail for detail in fetch)
     assert data['queryStatus']['商机预测'] == 'ok'
 
@@ -1006,7 +1005,7 @@ def test_query_catalog_keeps_execution_record_and_result_snapshot():
     card = build_card('2026', database=Database(), measurement_date='2026-11-11',
                       judge=_judge_no)
     catalog = card['result']['queryCatalog']
-    assert len(catalog) == 9
+    assert len(catalog) == 10
     for item in catalog:
         assert item['executionId'] and len(item['executionId']) == 32
         assert item['startedAt'] and item['finishedAt']
@@ -1097,7 +1096,7 @@ def test_rules_decide_first_and_only_undecided_items_reach_the_model_one_by_one(
     value = _strategic_value(accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic'),
                                      dict(id='account-9', name='战略客户B', level='1', tier='strategic')])
     status = {item['code']: item['ruleStatus'] for item in value['riskCandidates']}
-    undecided = [code for code, state in status.items() if state == 'insufficient']
+    undecided = [code for code, state in status.items() if state == 'insufficient' and code != 'RK11']
     assert undecided
     requests = []
 
@@ -1166,7 +1165,7 @@ def test_every_item_is_listed_with_its_status_for_the_ontology_display():
               for item in group if isinstance(item, dict)}
     # The model's "no" on items whose inputs are missing reads as undecided.
     assert {'命中（规则判定）', '未命中（规则判定）', '无法判定（模型）'} <= labels
-    assert judged['summary'].startswith('本轮 8 项本体风险中')
+    assert judged['summary'].startswith('本轮 9 项本体风险中')
 
 
 def test_model_answers_are_taken_without_a_validation_pass():
@@ -1599,11 +1598,12 @@ def test_every_card_model_call_starts_with_the_sales_operations_role(monkeypatch
     assert judgement.role_prompt() == role
 
 
-def test_the_opportunity_card_has_no_section_summaries_but_semantic_control():
+def test_the_opportunity_card_uses_group_summaries_and_semantic_control():
     from bi_agent.cockpit import frozen
     assert 'opportunity-risk' not in frozen.SECTION_SUMMARY_STAGES
     source = (Path(__file__).resolve().parents[1] / 'bi_agent/cockpit/frozen.py').read_text(encoding='utf-8')
     assert 'semantic=semantic_rewriter if (enabled and semantic) else None' in source
+    assert 'summarize_groups=summarize_risk_groups if enabled and summaries_enabled() else None' in source
 
 
 def test_product_signing_lag_uses_the_products_forecast_total():
@@ -1762,9 +1762,9 @@ def test_each_risk_and_cause_lists_only_the_queries_its_evidence_came_from():
 
 def test_risk_rows_take_their_names_from_the_ontology_risk_sheet():
     config = load_config()
-    assert config['risks']['RK03']['name'] == '重点跟踪未签单商机'
-    assert config['risks']['RK07']['name'] == '战略客户待突破（无商机）'
-    assert config['risks']['RK10']['description'] == '商机获取阶段单笔周期超过动态平均周期 1.5 倍'
+    assert config['risks']['RK03']['name'] == '战略及重点客户存在缺口'
+    assert config['risks']['RK07']['name'] == '战略客户签单存在缺口，且较多待突破（无商机）'
+    assert config['risks']['RK10']['description'] == '商机获取阶段单笔周期超过平均周期 1.5 倍'
     findings = _strategic_value()['result']['findings']
     assert findings
     for finding in findings:
@@ -1777,36 +1777,36 @@ def test_risk_rows_take_their_names_from_the_ontology_risk_sheet():
     assert _risk_name(renamed, 'RK03') == '改名后的风险'
 
 
-def test_the_strict_ontology_has_no_storage_customer_scope():
-    """精简关联版 BR-Q04 is 重点跟踪口径, not the 储能客户范围 filter."""
+def test_the_attachment_ontology_has_storage_customer_scope():
     config = load_config()
     scope = config['overrides']['storageCustomerScope']
-    assert scope == {'enabled': False, 'source': 'BR-Q04'}
+    assert scope['enabled'] and scope['source'] == 'BR-Q04'
+    assert set(scope['metrics']) == {'R04', 'R08', 'R09', 'C01', 'C06', 'C08', 'C09'}
     assert config['fields']['LE05']['owninguser']['column'] == 'owninguser'
-    assert config['overrides']['dynamicCycle']['completedOnly'] is False
+    assert config['overrides']['dynamicCycle']['completedOnly'] is True
 
 
-def test_focus_tracking_counts_every_tiered_customer():
-    inside = _opportunity(id='in')
-    outside = _opportunity(id='out', accountId='account-2', accountName='战略客户B', accountLevel='1')
+def test_focus_tracking_counts_only_storage_customers():
+    inside = _opportunity(id='in', storageCustomer=True)
+    outside = _opportunity(id='out', accountId='account-2', accountName='战略客户B',
+                           accountLevel='1', storageCustomer=False)
     value = evaluate(_data(opportunities=[inside, outside],
                            allOpportunities=[deepcopy(inside), deepcopy(outside)],
                            accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic'),
                                      dict(id='account-2', name='战略客户B', level='1', tier='strategic')]))
     facts = {f['id']: f for f in value['evidence']['facts']}
-    # 精简关联版 has no 储能客户名单 filter: both tiered customers count.
-    assert facts['opp-v2:metric:R04-COUNT']['value'] == 2
-    assert facts['opp-v2:metric:R04-AMOUNT']['value'] == 20.0
+    assert facts['opp-v2:metric:R04-COUNT']['value'] == 1
+    assert facts['opp-v2:metric:R04-AMOUNT']['value'] == 10.0
     assert facts['opp-v2:metric:B02-AMOUNT']['value'] == 20.0
-    assert facts['opp-v2:metric:R04-COUNT']['definition'].startswith('战略、重点客户的未签单商机')
-    # A legacy storageCustomer flag neither includes nor excludes anything.
+    assert facts['opp-v2:metric:R04-COUNT']['definition'].startswith('储能客户名单内（BR-Q04）')
+    # Legacy inputs that lack the scope flag retain their original behavior.
     legacy = evaluate(_data(opportunities=[_opportunity(id='a'), _opportunity(id='b')],
                             allOpportunities=[_opportunity(id='a'), _opportunity(id='b')]))
     legacy_facts = {f['id']: f for f in legacy['evidence']['facts']}
     assert legacy_facts['opp-v2:metric:R04-COUNT']['value'] == 2
 
 
-def test_customer_gap_counts_every_tiered_customer():
+def test_customer_gap_excludes_customers_outside_the_storage_list():
     def run(flag):
         pair = dict(accountId='account-1', productType='1', amount=50.0, energy=None)
         if flag is not None:
@@ -1817,10 +1817,11 @@ def test_customer_gap_counts_every_tiered_customer():
             opportunities=[_opportunity(monthRows=1)], allOpportunities=[_opportunity()]))
     facts = lambda value: {f['id']: f for f in value['evidence']['facts']}
     assert facts(run(True))['opp-v2:metric:R08']['value'] == 1
+    assert facts(run(False))['opp-v2:metric:R08']['value'] == 0
     assert facts(run(None))['opp-v2:metric:R08']['value'] == 1
 
 
-def test_stage_mean_includes_in_flight_samples():
+def test_stage_mean_excludes_in_flight_samples():
     # Two finished P0 stages (10 and 20 days) and one still running for 300 days.
     done_a = _opportunity(id='a', stage='11', createdAt='2026-01-01', stage1End='2026-01-11', stage2End=None, stage3End=None)
     done_b = _opportunity(id='b', stage='11', createdAt='2026-01-01', stage1End='2026-01-21', stage2End=None, stage3End=None)
@@ -1828,12 +1829,11 @@ def test_stage_mean_includes_in_flight_samples():
     value = evaluate(_data(opportunities=[done_a, done_b, running],
                            allOpportunities=[deepcopy(done_a), deepcopy(done_b), deepcopy(running)]))
     facts = {f['id']: f for f in value['evidence']['facts']}
-    # BR-Q06 in 精简关联版 has completedOnly=false: (10 + 20 + 300) / 3.
-    assert facts['opp-v2:metric:P0-01']['value'] == 110.0
-    assert '创建至阶段一结束或测量日' in facts['opp-v2:metric:P0-01']['definition']
+    assert facts['opp-v2:metric:P0-01']['value'] == 15.0
+    assert '在途不计入均值' in facts['opp-v2:metric:P0-01']['definition']
     assert facts['opp-v2:metric:P0-02']['value'] == 1
     rk10 = next(r for r in value['risks'] if r['code'] == 'RK10')
-    assert '含在途样本平均周期 1.5 倍' in rk10['description'] and '平均周期 110.0 天' in rk10['description']
+    assert '已结束样本平均周期 1.5 倍' in rk10['description'] and '平均周期 15.0 天' in rk10['description']
 
 
 def test_storage_scope_sql_follows_owner_team_member_customer():
@@ -1846,22 +1846,82 @@ def test_storage_scope_sql_follows_owner_team_member_customer():
         assert fragment in source, fragment
 
 
-def test_strict_ontology_has_no_stage_band_layer():
-    """精简关联版 ends at P2 方案推动; R12–R17 and their risks are absent."""
-    config = load_config()
-    assert config['ontology'] == '商机获取节点 V3 精简关联版'
-    assert not ({'R12', 'R13', 'R14', 'R15', 'R16', 'R17'} & set(config['metrics']))
-    assert 'RK11' not in config['risks']
-    assert 'BR-A11' not in config['rules']
-    assert not ({'RC10', 'RC11'} & set(config['causes']))
-    assert not ({'AC13', 'AC14'} & set(config['advice']))
-    thresholds = config['overrides']['thresholds']
-    assert 'stageBandStagesHigh' not in thresholds and 'stageBandAmountHigh' not in thresholds
-    # The dormant band helpers must not query metrics this ontology lacks.
+def test_stage_bands_use_the_attachment_and_respect_the_branch_snapshot():
     from bi_agent.cockpit.opportunity_v2 import _QUERY_METRICS, _stage_band_sql
-    assert '阶段周期分档' not in _QUERY_METRICS
-    assert _stage_band_sql(config, 2025, date(2025, 10, 31)) == ''
-    value = _strategic_value()
-    assert 'RK11' not in {risk['code'] for risk in value['risks']}
-    assert 'RK11' not in {item['code'] for item in value['result']['riskAssessments']}
-    assert 'RC10' not in value['causeOutcomes'] and 'RC11' not in value['causeOutcomes']
+
+    config = load_config()
+    codes = ['R12', 'R13', 'R14', 'R15', 'R16', 'R17']
+    assert _QUERY_METRICS['阶段周期分档'] == codes
+    assert all(config['metrics'][code]['category'] == '商机转化风险' for code in codes)
+    assert config['risks']['RK11']['category'] == '商机转化风险'
+    assert config['risks']['RK11']['rule'] == 'BR-A11'
+    thresholds = config['overrides']['thresholds']
+    assert thresholds['stageBandStagesHigh'] == 2 and thresholds['stageBandAmountHigh'] == 10
+    sql = _stage_band_sql(config, 2025, date(2025, 10, 31))
+    assert "WHERE code IN ('R12', 'R13', 'R14', 'R15', 'R16', 'R17')" in sql
+    assert "TIMESTAMP '2025-10-31 23:59:59' AS observed_at" in sql
+    assert 'v.started_at <= p.observed_at' in sql and 'v.finished_at <= p.observed_at' in sql
+    assert 'v.finished_at-v.started_at' in sql
+
+
+def _stage_bands(**counts):
+    from bi_agent.cockpit.opportunity_v2 import STAGE_BAND_CODES, _stage_band_rows
+
+    stages = ('商机获取', '商机获取', '技术交流', '技术交流', '方案推动', '方案推动')
+    return _stage_band_rows([
+        {'指标序号': code, '数量': counts.get(code, 0), '金额_亿元': counts.get(code, 0) * 3,
+         '电量_GWh': counts.get(code, 0) * 1.5,
+         '分组明细及缺口': {'阶段': stage, '各产品动态平均周期及样本数': [
+             {'产品类型': '电芯', '平均周期天': 40, '参与平均样本数': 12}]}}
+        for code, stage in zip(STAGE_BAND_CODES, stages)
+    ])
+
+
+def test_rk11_requires_a_severe_band_supported_by_the_query():
+    watch_only = _strategic_value(stageBands=_stage_bands(R12=4, R14=1), stageBandStatus='ok')
+    assert 'RK11' not in _judged(watch_only, _judge_no)['riskCodes']
+    missing = _strategic_value(stageBands={}, stageBandStatus='error')
+    judged = _judged(missing, lambda request: dict(established=True))
+    rk11 = next(a for a in judged['riskAssessments'] if a['code'] == 'RK11')
+    assert not rk11['include'] and rk11['assessmentSource'] == 'unevaluated'
+
+
+def test_grouped_card_delivers_model_summaries_and_all_rk11_statuses(monkeypatch):
+    from bi_agent.cockpit import opportunity_v2
+    from bi_agent.cockpit.delivery import project_card
+    from bi_agent.cockpit.page_cache import compact_analysis
+    from bi_agent.cockpit.section_summary import summarize_risk_groups
+
+    bands = _stage_bands(R12=4, R13=2, R15=1)
+    bands['R15']['energy'] = None
+    bands['R17']['meanKnown'] = False
+    data = _data(opportunities=[_opportunity()], allOpportunities=[_opportunity()],
+                 stageBands=bands, stageBandStatus='ok',
+                 queryCatalog=[dict(executionId='stage-bands', metricCodes=list(bands))])
+    monkeypatch.setattr(opportunity_v2, 'collect', lambda *args, **kwargs: data)
+    prompts = []
+
+    def model(payload):
+        prompts.append(payload)
+        return {'summaries': {'商机覆盖风险': '商机预测存在缺口。',
+                              '商机转化风险': '商机获取阶段有 2 条商机达到超期高档。'}}
+
+    card = build_card('2026', measurement_date='2026-11-11', judge=_judge_no,
+                      summarize_groups=lambda groups: summarize_risk_groups(groups, call_model=model))
+    result = compact_analysis(project_card(card, 'opportunity-risk'))['result']
+    findings = {finding['id']: finding for finding in result['findings']}
+    groups = {group['category']: group for group in result['riskGroups']}
+    coverage = groups['商机覆盖风险']
+    conversion = groups['商机转化风险']
+    assert {'RK01', 'RK02'} <= {findings[fid]['riskCode'] for fid in coverage['findingIds']}
+    assert coverage['summary'] == '商机预测存在缺口。'
+    assert conversion['summary'] == '商机获取阶段有 2 条商机达到超期高档。'
+    assert len(prompts) == 1 and set(prompts[0]['groups']) == set(groups)
+    rk11 = next(findings[fid] for fid in conversion['findingIds'] if findings[fid]['riskCode'] == 'RK11')
+    assert rk11['riskLevel'] == '高' and rk11['decidedBy'] == 'rule' and rk11['queryIds'] == ['stage-bands']
+    assert [(m['code'], m['status'], m['count']) for m in rk11['metricDetails']] == [
+        ('R12', 'watch', 4), ('R13', 'triggered', 2), ('R14', 'clear', 0),
+        ('R15', 'triggered', 1), ('R16', 'clear', 0), ('R17', 'unknown', None),
+    ]
+    assert rk11['metricDetails'][1]['amount'] == 6.0 and rk11['metricDetails'][1]['energy'] == 3.0
+    assert rk11['metricDetails'][3]['energy'] is None

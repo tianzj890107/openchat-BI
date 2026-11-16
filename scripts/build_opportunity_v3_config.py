@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_精简关联版.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_阶段周期超时分档版.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -515,6 +515,7 @@ def build_config(workbook):
                 dimension=clean(row.get("时间维度")),
                 sqlCodes=clean(row.get("当前看板对应编码")),
                 stage=clean(row.get("分类或阶段")),
+                category=clean(row.get("分类")),
                 node=clean(row.get("所属节点")),
                 resultColumns=clean(row.get("结果列")),
                 aggregate=clean(row.get("聚合类型")),
@@ -729,9 +730,15 @@ def build_config(workbook):
     links["RK07"] = {"risk": "RK07", "causes": ["RC09"], "advice": ["AC02", "AC03"]}
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
+    for code, risk in risks.items():
+        categories = {metric["category"] for metric in metrics.values()
+                      if code in metric["risks"] and metric["category"]}
+        if len(categories) != 1:
+            raise SystemExit(f"本体 {code} 未找到唯一的关联指标分类：{sorted(categories)}")
+        risk["category"] = categories.pop()
     config = dict(
-        version="opportunity-v3-rules-11",
-        ontology="商机获取节点 V3 精简关联版",
+        version="opportunity-v3-rules-12",
+        ontology="商机获取节点 V3 阶段周期超时分档版",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,

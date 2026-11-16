@@ -40,7 +40,7 @@ from . import periods
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-11"
+RULES_VERSION = "opportunity-v3-rules-12"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -471,6 +471,7 @@ _QUERY_METRICS = {
     "订单关联": [],
     "产品团队": [],
     "产品部销售缺口": ["C03", "C04", "C05"],
+    "阶段周期分档": list(STAGE_BAND_CODES),
 }
 
 _QUERY_AGGREGATION_NOTES = {
@@ -603,6 +604,14 @@ def _stage_band_sql(config, year, measured, schema="ded_public"):
         return ""
     wanted = "WHERE code IN (" + ", ".join(f"'{code}'" for code in STAGE_BAND_CODES) + ")"
     sql, count = re.subn(r"WHERE\s+code\s*=\s*'R12'", wanted, sql)
+    if count != 1:
+        return ""
+    # The workbook groups by stage start and uses the full elapsed time. On
+    # this branch an end after the snapshot is not yet an observed completion.
+    sql, count = re.subn(r"v\.started_at\s*<\s*p\.end_exclusive",
+                        "v.started_at < p.end_exclusive\n"
+                        "   AND v.started_at <= p.observed_at\n"
+                        "   AND (v.finished_at IS NULL OR v.finished_at <= p.observed_at)", sql)
     return sql if count == 1 else ""
 
 
@@ -2270,6 +2279,7 @@ def evaluate(data, config=None, measured=None):
     band_available = all(code in (config.get("metrics") or {}) for code in STAGE_BAND_CODES)
     band_meta = {}
     band_facts = {}
+    band_details = []
     for code in (STAGE_BAND_CODES if band_available else ()):
         metric_name = _text(((config.get("metrics") or {}).get(code) or {}).get("name")) or code
         severe = "及以上" in metric_name
@@ -2279,6 +2289,13 @@ def evaluate(data, config=None, measured=None):
         count = item.get("count")
         if count == 0 and not item.get("meanKnown"):
             count = None
+        band_details.append(dict(
+            code=code, stage=stage, band="超均值 50% 及以上" if severe else "超均值未满 50%",
+            status=("unknown" if count is None else "clear" if not count else
+                    "triggered" if severe else "watch"),
+            count=count, amount=item.get("amount") if count is not None else None,
+            energy=item.get("energy") if count is not None else None,
+        ))
         basis = ("实际周期 ≥ 同期间同阶段同产品真实动态平均周期 × 1.5" if severe else
                  "实际周期 > 同期间同阶段同产品真实动态平均周期且 < × 1.5")
         band_facts[code] = [
@@ -2519,8 +2536,9 @@ def evaluate(data, config=None, measured=None):
                                 else band_meta[code]["stage"]),
                         value=opp.get("days"), unit="天", amount=opp.get("amount"), quantity=opp.get("energy")))
         name = _risk_name(config, "RK11", "商机推进阶段周期超均值较多，拖慢签单")
-        risks.append(_risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],
-                           evidence, dict(count=hit_count, amount=hit_amount, energy=hit_energy), objects[:40]))
+        risk = _risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],
+                     evidence, dict(count=hit_count, amount=hit_amount, energy=hit_energy), objects[:40])
+        risks.append(dict(risk, metricDetails=band_details))
 
     # De-duplicate by code and sort by level, then normalised impact and code.
     # Money and energy remain separate fields; this is presentation order only.
@@ -2608,6 +2626,7 @@ def evaluate(data, config=None, measured=None):
             title=(triggered or {}).get("title") or (spec or {}).get("name") or code,
             description=(triggered or {}).get("description") or (spec or {}).get("description") or "",
             metricCodes=(triggered or {}).get("metricCodes") or [],
+            requiresRuleEvidence=code == "RK11",
             impact=(triggered or {}).get("impact") or {},
             evidenceIds=list(dict.fromkeys(
                 (triggered or {}).get("evidenceIds") or [item["id"] for item in fact_items]))[:20],
@@ -3605,9 +3624,9 @@ def _ontology_trace(config):
         version=_text(config.get("version")),
         digest=config_digest()[:12],
         links=deepcopy(config.get("links") or {}),
-        metrics=entries("metrics", ("definition", "node", "stage", "unit",
+        metrics=entries("metrics", ("definition", "node", "stage", "category", "unit",
                                     "resultColumns", "sqlStatus")),
-        risks=entries("risks"),
+        risks=entries("risks", ("category",)),
         causes=entries("causes"),
         advice=entries("advice"),
         rules=entries("rules", ("description", "trigger", "result")),
@@ -3738,7 +3757,7 @@ def default_ap_supplement(data):
 
 
 def build_card(period, database=None, measurement_date=None, config=None, judge=None,
-               supplement=None, progress=None, diagnostic_reporter=None, semantic=None):
+               supplement=None, progress=None, diagnostic_reporter=None, semantic=None, summarize_groups=None):
     """Build one complete ``opportunity-risk`` publication payload.
 
     Rules first: risks, causes and advice are settled by the ontology rule
@@ -3753,8 +3772,9 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     started = time.monotonic()
     measured = _measurement_context(period, measurement_date)
     strategic_ok, _ = _strategic_scope(config)
+    has_stage_bands = all(code in (config.get("metrics") or {}) for code in STAGE_BAND_CODES)
     _report_progress(progress, "fetching", message="查询数据库", completed=0,
-                     total=9 if not strategic_ok else 10)
+                     total=9 + int(strategic_ok) + int(has_stage_bands))
     try:
         data = collect(period, measured, database=database, config=config, progress=progress,
                        diagnostic_reporter=diagnostic_reporter)
@@ -3791,6 +3811,21 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     # Once every risk is settled the model words all risk rows as one set;
     # numbers must match the rule-written rows or the row is kept as is.
     semantic_report = control_risk_rows(judged["findings"], config, semantic, progress=progress)
+    groups = {}
+    for finding in judged["findings"]:
+        category = finding.get("riskCategory") or "未分类"
+        groups.setdefault(category, []).append(finding)
+    summaries = {}
+    if groups and summarize_groups is not None:
+        _report_progress(progress, "summarising", message="模型总结各风险分类")
+        summaries = summarize_groups(groups)
+    judged["findings"] = [finding for findings in groups.values() for finding in findings]
+    judged["riskCodes"] = [finding["riskCode"] for finding in judged["findings"]]
+    judged["riskGroups"] = [
+        dict(category=category, findingIds=[finding["id"] for finding in findings],
+             summary=summaries.get(category, ""))
+        for category, findings in groups.items()
+    ]
     fetched_at = time.time()
     result = evaluated["result"]
     result.update(judged)

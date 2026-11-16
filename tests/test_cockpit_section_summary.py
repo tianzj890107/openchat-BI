@@ -1,6 +1,6 @@
 from bi_agent.cockpit.page_cache import compact_analysis
 from bi_agent.cockpit.section_summary import (
-    displayed_items, summarize_sections, validate_summaries, with_section_summaries)
+    displayed_items, summarize_risk_groups, summarize_sections, validate_summaries, with_section_summaries)
 
 
 def _result():
@@ -10,6 +10,22 @@ def _result():
         recommendations=[dict(id='a1', action='逐户补齐需求确认', ownerRole='销售负责人',
                               deadlineDays=10, acceptance='形成逐项核查清单')],
     )
+
+
+def test_group_summaries_reject_numbers_from_other_categories():
+    groups = {'商机覆盖风险': [dict(title='预测缺口', description='缺口 90 亿元')],
+              '商机转化风险': [dict(title='推进超期', description='超期 7 条')]}
+    seen = []
+
+    def model(payload):
+        seen.append(set(payload['groups']))
+        if len(seen) == 1:
+            return {'summaries': {'商机覆盖风险': '缺口 90 亿元。', '商机转化风险': '超期 90 条。'}}
+        return {'summaries': {'商机转化风险': '超期 7 条。'}}
+
+    assert summarize_risk_groups(groups, call_model=model) == {
+        '商机覆盖风险': '缺口 90 亿元。', '商机转化风险': '超期 7 条。'}
+    assert seen == [set(groups), {'商机转化风险'}]
 
 
 def test_only_displayed_items_are_sent_for_summary():

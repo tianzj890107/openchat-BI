@@ -46,12 +46,19 @@
   `scripts/build_opportunity_v3_config.py`、`tests/test_cockpit_opportunity_v2.py`、
   `tests/analysis360_handoff.test.mjs`。
 
-### 2026-11-16 商机获取卡：V3 精简关联版、分析时间定格 2025 年 10 月与 2025-10-31 取数截止
+### 商机获取卡：阶段周期分档本体、风险分类总结与 2025-10-31 快照
 
-- 按《亿纬锂能_本体_商机获取节点_V3_精简关联版》重建 `opportunity-v3` 卡片配置并定版为
-  `opportunity-v3-rules-11`：51 指标 / 31 规则 / 8 风险 / 8 原因 / 10 建议 / 8 关联；
-  按精简关联版取消储能客户范围规则（`storageCustomerScope.enabled=false`、`storage_join` 为空），
-  RK08/RK09 投标类查询关闭（风险数 8），BR-Q06 改为 `completedOnly=false`。
+- 2026-11-15（本地时间）「穿透式分析 → 商机获取 → 销售额口径明细」切换到附件《V3 阶段周期超时分档版》，
+  生成 `opportunity-v3-rules-12`（57 指标 / 34 规则 / 9 风险 / 10 原因 / 12 建议）。
+  BR-Q04 按附件启用储能客户范围，BR-Q06 仅以已结束样本计算均值，RK08/RK09 投标风险继续关闭。
+- 同类成立风险归到「商机覆盖风险」或「商机转化风险」父节点，每个父节点用该组已展示的风险和指标生成模型总结。
+  总结失败时仍展示风险和证据，已有分析可保留原格式。
+- RK11 由 R13/R15/R17 任一达到超期阈值的已结束样本触发。成立后逐项显示 R12–R17 的阶段、分档、
+  状态、商机数、预测金额和电量。仅有关注档时不触发。分档查询沿用快照观察时间，截止后结束的样本不参与均值。
+- 风险分组、分类总结及指标明细随卡片结果传递和缓存。主要涉及 `opportunity_v2.py`、
+  `opportunity_judgement.py`、`section_summary.py`、`frozen.py`、`page_cache.py` 和 `insight-components/shared.js`。
+- 本次验证：203 项相关 Python 测试和 20 项前端测试通过，覆盖分类总结串组修复、RK11 分档状态、
+  卡片交付与快照截止。分类总结使用模拟模型响应验证。
 - 右上角分析时间固定为 2025 年 10 月：`periods.DEFAULT_BUSINESS_YEAR='2025'`、
   `DEFAULT_BUSINESS_MONTH='2025-10'`，页面首帧通过 HTML `cockpit-business-period` 注入
   `2025-10`（`cockpit.js` 优先读取该 meta 作为默认期间，meta 缺失时才回退为「当前年份-10」）；
@@ -68,7 +75,7 @@
   `scripts/build_opportunity_v3_config.py`、`bi_agent/cockpit/assets/opportunity-v3/config.json`、
   `bi_agent/web/static/cockpit/{cockpit.js,metadata/runtime.json}`、
   `tests/test_cockpit_{business_year,query_capabilities,period_refresh,opportunity_v2}.py`。
-- 验证：Cockpit Python 套件 593 项通过，`tests/test_cockpit_resource_contract.py` 有 1 项
+- 快照交付验证（本次切换本体之前）：Cockpit Python 套件 593 项通过，`tests/test_cockpit_resource_contract.py` 有 1 项
   在基线 `8c5e3d4` 同样失败的既有用例（`test_delivered_insight_slots_use_live_analysis_instead_of_static_copy`）；
   前端 Node 套件 136 项通过；镜像内实测 `period_range('2025')='2025-01-01'..'2025-10-31'`、
   `'2025-10'='2025-10-01'..'2025-10-31'`、`'2025-11'=None`，AP 年度过滤为
