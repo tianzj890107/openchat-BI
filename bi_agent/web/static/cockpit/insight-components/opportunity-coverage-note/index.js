@@ -38,7 +38,7 @@ registerInsightComponent(
             <summary>查看 {{ causes.length }} 项原因与证据</summary>
             <div v-for="cause in causes" :key="cause.id" class="opportunity-coverage-note__cause">
               <span class="opportunity-coverage-note__em">{{ causeStatus(cause) }}</span>：
-              <b>{{ cause.title }}</b>。{{ cause.description }}
+              <b>{{ plain(cause.title) }}</b>。{{ plain(cause.description) }}
             </div>
           </details>
 

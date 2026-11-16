@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {highlightNumbers} from '../bi_agent/web/static/cockpit/insight-components/number-highlight.js';
+import {highlightNumbers, stripOntologyCodes} from '../bi_agent/web/static/cockpit/insight-components/number-highlight.js';
 
 test('risk card highlights numbers and their units as one blue token', () => {
   assert.deepEqual(highlightNumbers('缺口 127.6 亿元，达成率 60.0%，周期 26.73 天'), [
@@ -71,4 +71,38 @@ test('rule-first risks show how each one was decided', async () => {
   // The judgement list is its own expandable section, titled with hit counts.
   assert.match(source, /<details v-if="judgementGroups\.length" class="stage-risk-analysis__foot stage-risk-analysis__judgement">/);
   assert.match(source, /\{\{ group\.title \}\}命中 \{\{ group\.hit \}\}\/\{\{ group\.items\.length \}\}/);
+});
+
+test('card text hides ontology codes and keeps the wording', () => {
+  const cases = [
+    ['RK01 商机预测覆盖不足', '商机预测覆盖不足'],
+    ['RK02 签单进度滞后（已签单覆盖率口径）', '签单进度滞后（已签单覆盖率口径）'],
+    ['未签单预测金额 12.35 亿元；按 BR-Q02 订单关联口径判断。', '未签单预测金额 12.35 亿元；按订单关联口径判断。'],
+    ['均值 50% 及以上（R13）；小环节缺少完成事件', '均值 50% 及以上；小环节缺少完成事件'],
+    ['客户等级 1 为战略客户（本体 DR04）', '客户等级 1 为战略客户'],
+    ['BR-Q01：所选年度内同商机同月取最新一版', '所选年度内同商机同月取最新一版'],
+    ['R12–R17 阶段周期分档', '阶段周期分档'],
+    ['依据 IS01 指标异常与 DQ02 数据问题', '依据指标异常与数据问题'],
+    ['B01-AMOUNT 目标金额 120.50 亿元', '目标金额 120.50 亿元'],
+    ['RC03 需求确认未落实，AC07 逐户补齐', '需求确认未落实，逐户补齐'],
+    // Business wording that looks code-like stays.
+    ['P0 阶段 4 条商机，P2 超期', 'P0 阶段 4 条商机，P2 超期'],
+    ['型号 LF280K 与 MB31 电芯', '型号 LF280K 与 MB31 电芯'],
+    ['2025-10 期间落后 42.0 个百分点', '2025-10 期间落后 42.0 个百分点'],
+  ];
+  for (const [input, expected] of cases) assert.equal(stripOntologyCodes(input), expected, input);
+});
+
+test('risk, cause and advice cards render text through the code filter', async () => {
+  const dir = '../bi_agent/web/static/cockpit/insight-components/';
+  const read = path => readFile(new URL(dir + path, import.meta.url), 'utf8');
+  const shared = await read('shared.js');
+  assert.match(shared, /parts\(\) \{ return highlightNumbers\(stripOntologyCodes\(this\.text\)\) \}/);
+  assert.match(shared, /const summary = computed\(\(\) => stripOntologyCodes\(/);
+  assert.match(shared, /\{\{ plain\(finding\.title\) \}\}/);
+  assert.match(shared, /plain\(dimension\.title\)/);
+  assert.match(shared, /<b>\{\{ metric\.stage \}\}阶段<\/b>/);
+  assert.doesNotMatch(shared, /\{\{ metric\.code \}\}/);
+  assert.match(await read('bid-summary/index.js'), /\{\{ plain\(cause\.title\) \}\}/);
+  assert.match(await read('opportunity-coverage-note/index.js'), /plain\(cause\.description\)/);
 });

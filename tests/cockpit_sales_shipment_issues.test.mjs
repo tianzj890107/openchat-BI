@@ -37,7 +37,7 @@ test('the shared card words its first layer by the primary label', () => {
   assert.match(shared, /当前\{\{ primaryLabel \}\}判断/);
   assert.match(shared, /\{\{ primaryLabel \}\}\{\{ number \}\}/);
   assert.match(shared, /\{\{ primaryLabel \}\}规则 \{\{ ontologyTrace\.risks\.length \}\} 条/);
-  assert.match(shared, /<template v-if="finding\.issueType">【\{\{ finding\.issueType \}\}】<\/template>/);
+  assert.match(shared, /<template v-if="finding\.issueType">【\{\{ plain\(finding\.issueType\) \}\}】<\/template>/);
   assert.match(shared, /label:`\$\{primaryLabel\}\$\{riskIndex\.get\(id\)\}—原因\$\{analysisNumber\}`/);
   assert.doesNotMatch(shared, /【风险】/);
   assert.match(shared, /data:'数据质量'/);

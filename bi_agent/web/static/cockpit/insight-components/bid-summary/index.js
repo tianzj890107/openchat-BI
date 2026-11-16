@@ -42,7 +42,7 @@ registerInsightComponent(
             · 快照共 {{ records.length }} 条项目记录、{{ evidenceCount }} 条证据。
           </div>
           <div v-for="cause in causes" :key="cause.id">
-            <span class="bid-summary__gray">{{ causeStatus(cause) }}：</span>{{ cause.title }}
+            <span class="bid-summary__gray">{{ causeStatus(cause) }}：</span>{{ plain(cause.title) }}
           </div>
           <div class="bid-summary__note" :title="summary">真实分析摘要：{{ summary }}</div>
         </template>

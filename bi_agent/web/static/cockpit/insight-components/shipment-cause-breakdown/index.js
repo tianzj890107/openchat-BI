@@ -51,7 +51,7 @@ registerInsightComponent(
           <div class="shipment-cause-breakdown__grid">
             <article v-for="group in groups" :key="group.name" class="shipment-cause-breakdown__item">
               <div class="shipment-cause-breakdown__item-title">
-                {{ group.name }} ·
+                {{ plain(group.name) }} ·
                 <span class="shipment-cause-breakdown__metric">
                   <template v-if="group.amount !== null">{{ group.count }} 单 / {{ round(group.amount, 1) }} 亿元 / {{ share(group.amount) }}</template><template v-else>待核实</template>
                 </span>

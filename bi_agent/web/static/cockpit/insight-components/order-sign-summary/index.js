@@ -35,7 +35,7 @@ registerInsightComponent(
             <span class="order-sign-summary__orange">已中标未签单 {{ factText('已中标未签单') }}</span>。
           </div>
           <div v-for="item in facts" :key="item.id">
-            {{ item.label }}：{{ metricValue(item) }}。
+            {{ plain(item.label) }}：{{ metricValue(item) }}。
           </div>
           <div class="order-sign-summary__aside order-sign-summary__summary" :title="summary">真实分析摘要：{{ summary }}</div>
         </template>

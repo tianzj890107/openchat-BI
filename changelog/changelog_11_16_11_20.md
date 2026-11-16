@@ -126,6 +126,23 @@
   既有失败 `test_delivered_insight_slots_use_live_analysis_instead_of_static_copy`、测试环境缺少 `psycopg`；
   `git diff --check` 通过。未在浏览器中实际查看页面效果。
 
+### 2026-11-15 驾驶舱卡片文字隐藏本体编码
+
+- 风险、问题、原因、建议及各类摘要卡片的展示文字不再出现 `RK01`、`RC03`、`AC07`、`R01`/`B01`/`C01`/`S01`/`O01`、
+  `BR-Q02`、`IS01`/`DQ02`/`DR04`、`P0-01` 等本体编码，只显示文字描述：如「RK01 商机预测覆盖不足」显示为
+  「商机预测覆盖不足」，「（R13）」「（本体 DR04）」整段括号去掉，「按 BR-Q02 订单关联口径判断」显示为
+  「按订单关联口径判断」；RK11 分档明细行去掉 `R12`–`R17` 前缀，只显示阶段、分档与状态。
+  `P0`/`P2` 等阶段名称、产品型号与日期不受影响。
+- 实现为前端展示层统一过滤（`insight-components/number-highlight.js` 的 `stripOntologyCodes`）：
+  `number-text`（描述、摘要、建议、验收）、`useInsight().summary` 及风险/问题/原因标题、`bid-summary`、
+  `opportunity-coverage-note`、`order-sign-summary`、`shipment-cause-breakdown` 的标题与名称均经过滤；
+  已发布卡片无需重新分析即生效。后端结果、本体追溯、证据与 SQL 明细（折叠区）仍保留编码，便于审计和深度分析交接。
+- 主要文件：`bi_agent/web/static/cockpit/insight-components/{number-highlight.js,shared.js,bid-summary/index.js,
+  opportunity-coverage-note/index.js,order-sign-summary/index.js,shipment-cause-breakdown/index.js}`、
+  `tests/{cockpit_stage_risk_format,cockpit_sales_shipment_issues}.test.mjs`。
+- 验证：前端 Node 测试 139 项中 137 项通过，失败的 2 项为改动前即存在的基线失败；读取前端组件的 Python 测试
+  49 项通过，3 项为既有失败（CRLF 哈希 2 项、`test_delivered_insight_slots…` 1 项）。未在浏览器中实际查看。
+
 ## 补齐说明
 
 - 2026-11-16 补记：`11-09` 至 `11-13` 的周文件此前缺失，已按 Git 记录新建

@@ -1,15 +1,15 @@
 import {createTaskOrderController, ensureTaskOrderStyle} from './task-order/controller.js'
 import {TaskOrderDialog} from './task-order/dialog.js'
-import {highlightNumbers} from './number-highlight.js'
+import {highlightNumbers, stripOntologyCodes} from './number-highlight.js'
 
-export {highlightNumbers}
+export {highlightNumbers, stripOntologyCodes}
 
 const { computed, ref } = window.Vue
 
 const NumberText = Vue.defineComponent({
   name: 'StageNumberText',
   props: {text: {type: String, default: ''}},
-  computed: {parts() { return highlightNumbers(this.text) }},
+  computed: {parts() { return highlightNumbers(stripOntologyCodes(this.text)) }},
   template: `<template v-for="(part, index) in parts" :key="index"><span v-if="part.num" class="stage-risk-analysis__num">{{ part.text }}</span><template v-else>{{ part.text }}</template></template>`,
 })
 
@@ -177,7 +177,7 @@ export function useInsight(props, emit) {
   const queryCatalog = computed(() => result.value?.queryCatalog || [])
   const recommendations = computed(() => result.value?.recommendations || [])
   const limitations = computed(() => result.value?.caliberNotes || result.value?.limitations || bundle.value.limitations || [])
-  const summary = computed(() => result.value?.businessSummary ?? result.value?.summary ?? '')
+  const summary = computed(() => stripOntologyCodes(result.value?.businessSummary ?? result.value?.summary ?? ''))
   // Each section opens with the model's summary of the items it displays.
   // Without one, the risk section keeps the card's overall summary.
   const sectionSummaries = computed(() => result.value?.sectionSummaries || {})
@@ -420,6 +420,7 @@ export function useInsight(props, emit) {
   }
 
   return {
+    plain: stripOntologyCodes,
     result,
     bundle,
     facts,
@@ -532,7 +533,8 @@ export function createStageRiskComponent(options = {}) {
       // ontology path, the whole-card summary on the older path).
       const showOverallSummary = Boolean(options.showOverallSummary)
       return { ...insight, ...taskOrder, displayStage, primaryLabel, judgementGroups, analysisDimensions,
-               riskGroups, metricStatus, showOverallSummary, showSectionSummaries, showCauses, showRecommendations }
+               riskGroups, metricStatus, showOverallSummary, showSectionSummaries, showCauses, showRecommendations,
+               plain: stripOntologyCodes }
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
@@ -556,10 +558,10 @@ export function createStageRiskComponent(options = {}) {
               <p v-if="group.summary" class="stage-risk-analysis__risk-group-summary"><number-text :text="group.summary" /></p>
               <div v-for="{finding, number} in group.rows" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">{{ primaryLabel }}{{ number }}</span>
-              <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ finding.issueType }}】</template>{{ finding.title }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
+              <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ plain(finding.issueType) }}】</template>{{ plain(finding.title) }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
                 <ul v-if="finding.metricDetails?.length" class="stage-risk-analysis__metric-details" aria-label="阶段周期分档指标明细">
                   <li v-for="metric in finding.metricDetails" :key="metric.code">
-                    <b>{{ metric.code }} {{ metric.stage }}阶段</b> · {{ metric.band }} · {{ metricStatus[metric.status] }}
+                    <b>{{ metric.stage }}阶段</b> · {{ metric.band }} · {{ metricStatus[metric.status] }}
                     <template v-if="metric.count != null"> · <number-text :text="metric.count + ' 条'" /></template>
                     · 预测金额 <number-text :text="metric.amount == null ? '—' : Number(metric.amount).toFixed(2) + ' 亿元'" />
                     · 预测电量 <number-text :text="metric.energy == null ? '—' : Number(metric.energy).toFixed(2) + ' GWh'" />
@@ -624,7 +626,7 @@ export function createStageRiskComponent(options = {}) {
             <div v-if="showSectionSummaries && causeSummary" class="stage-risk-analysis__summary" :title="causeSummary"><number-text :text="causeSummary" /></div>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
-              <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ dimension.missingEvidence.join('；') }}</small>
+              <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : plain(dimension.title) }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ plain(dimension.missingEvidence.join('；')) }}</small>
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
                 <details v-if="traces[dimension.id] && (traces[dimension.id].rules.length || traces[dimension.id].sql.length)" class="stage-risk-analysis__trace">
                   <summary class="stage-risk-analysis__trace-summary">{{ evidenceFor(dimension).length }} 条证据</summary>
