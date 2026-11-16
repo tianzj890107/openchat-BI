@@ -33,7 +33,7 @@ from .opportunity_judgement import judge_card, link_queries, make_item_judge
 
 SLOT_ID = "sales-shipment-issues"
 STAGE = "combined"
-RULES_VERSION = "sales-shipment-rules-2"
+RULES_VERSION = "sales-shipment-rules-3"
 CONFIG_PATH = Path(__file__).resolve().parent / "assets" / "sales-shipment" / "config.json"
 CORE_METRICS = ("B01", "B02", "B03", "B04")
 STRATEGIC_LEVELS = {"1": "战略大客户", "2": "重要大客户"}
@@ -331,7 +331,27 @@ def _level_name(level):
     return {"1": "战略大客户", "2": "重要大客户", "3": "一般客户", "4": "BG 大客户"}.get(level, level)
 
 
-def evaluate(data, config, measured):
+UPSTREAM_CARD = "商机获取卡片（销售额口径明细）"
+UPSTREAM_MISSING = f"{UPSTREAM_CARD}尚未发布同期间分析结果，暂不判定"
+
+
+def upstream_category(upstream, category):
+    """Established risks and the group summary of one 商机获取 card category.
+
+    ``upstream`` is that card's last published item for the same period, or
+    ``None``.  Returns ``None`` when there is no usable result to read.
+    """
+    result = (upstream or {}).get("result") if isinstance(upstream, dict) else None
+    if not isinstance(result, dict) or not isinstance(result.get("findings"), list):
+        return None
+    findings = [finding for finding in result["findings"]
+                if isinstance(finding, dict) and finding.get("riskCategory") == category]
+    group = next((group for group in result.get("riskGroups") or []
+                  if isinstance(group, dict) and group.get("category") == category), {})
+    return dict(findings=findings, summary=v2._text(group.get("summary")))
+
+
+def evaluate(data, config, measured, upstream=None):
     """Settle every problem and cause the data can settle; collect the evidence."""
     values = metric_values(data, config)
     results = data.get("results") or {}
@@ -471,6 +491,40 @@ def evaluate(data, config, measured):
                description=f"取消／变更订单电量 {_fmt(o04, 'GWh')}" + (f"，占订单接收电量 {_pct(share)}" if share is not None else "") + "。")
     else:
         settle("IS08", "not_triggered")
+
+    # IS09 / IS10 商机覆盖 / 商机转化问题: the 商机获取 card already judged these
+    # risks by its own ontology; take over each category's status as published.
+    for code, spec in issues.items():
+        if spec.get("kind") != "link":
+            continue
+        category = (spec.get("params") or {}).get("upstreamCategory", "")
+        linked = upstream_category(upstream, category)
+        if linked is None:
+            out[code] = dict(code=code, ruleStatus="insufficient", level="", description="", observed=[],
+                             evidenceIds=[], missingEvidence=[f"{UPSTREAM_CARD}发布结果"],
+                             requiresRuleEvidence=True, unevaluatedReason=UPSTREAM_MISSING)
+            continue
+        linked_rows, evidence_ids, names = [], [], []
+        for finding in linked["findings"]:
+            name = re.sub(r"^RK\d+\s*", "", v2._text(finding.get("title")))
+            level = v2._text(finding.get("riskLevel"))
+            rid = f"ss:upstream:opportunity-risk:{finding.get('riskCode') or finding.get('id')}"
+            records.append(dict(id=rid, label=f"商机获取 · {name}", value=level or "成立", unit="",
+                                status=category))
+            linked_rows.append(dict(id=rid, label=name, value=level or "成立", unit=""))
+            evidence_ids.append(rid)
+            names.append(f"{name}（{level}）" if level else name)
+        if not names:
+            out[code] = dict(code=code, ruleStatus="not_triggered", level="", description="",
+                             observed=[], evidenceIds=[], missingEvidence=[])
+            continue
+        level = min((v2._text(f.get("riskLevel")) for f in linked["findings"]),
+                    key=lambda value: v2._LEVEL_RANK.get(value, 9))
+        description = f"商机获取环节有 {len(names)} 项{category}成立：" + "、".join(names) + "。"
+        if linked["summary"]:
+            description += linked["summary"]
+        out[code] = dict(code=code, ruleStatus="triggered", level=level, description=description,
+                         observed=linked_rows, evidenceIds=evidence_ids, missingEvidence=[])
 
     # DQ01 指标取数失败或超时
     failed = [(code, item) for code, item in results.items() if item.get("status") not in ("ok",)]
@@ -679,8 +733,13 @@ def business_summary(groups):
 
 
 def build_card(period, database=None, measurement_date=None, config=None, judge=None, progress=None,
-               diagnostic_reporter=None, summarize_groups=None):
-    """Build one complete ``combined`` (销售额／出货量共同问题分析) publication payload."""
+               diagnostic_reporter=None, summarize_groups=None, upstream=None):
+    """Build one complete ``combined`` (销售额／出货量共同问题分析) publication payload.
+
+    ``upstream`` is the 商机获取 card's last published item for the same period
+    (or ``None``); its 商机覆盖 / 商机转化 categories become this card's linked
+    商机问题.
+    """
     v2._report_progress(progress, "ontology", message="读取本体与规则配置")
     config = config or load_config()
     started = time.monotonic()
@@ -695,7 +754,7 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
         error.diagnostic_message = str(error)
         raise error
     v2._report_progress(progress, "rules", message="规则函数判定问题")
-    evaluated = evaluate(data, config, measured)
+    evaluated = evaluate(data, config, measured, upstream=upstream)
     v2._report_progress(progress, "analysing", message="逐条判定规则无法确定的问题")
     # The rule engine keeps the full ontology in the trace, but this delivery
     # evaluates the business problem layer only: data checks (DQ*) neither
@@ -732,6 +791,9 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     judged["summary"] = business_summary(groups)
     notes = config.get("notes") or {}
     limitations = [f"{e['stage']} 取数未成功（{e['code']}）：{e['message']}" for e in data["errors"]][:10]
+    if any(item.get("unevaluatedReason") == UPSTREAM_MISSING for item in evaluated["riskCandidates"]):
+        limitations.append(f"{UPSTREAM_CARD}尚未发布同期间分析结果，商机覆盖、商机转化问题暂未纳入；"
+                           "该卡片分析完成后重新分析本卡片即可纳入。")
     limitations += [note for note in (notes.get("caliber"), notes.get("dataGaps")) if note]
     if notes.get("pending"):
         limitations.append("部分问题阈值为建议值，待业务确认（见本体“说明·待确认”）。")

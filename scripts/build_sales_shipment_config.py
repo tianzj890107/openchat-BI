@@ -17,7 +17,7 @@ import openpyxl
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V3.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/sales-shipment/config.json"
-VERSION = "sales-shipment-rules-2"
+VERSION = "sales-shipment-rules-3"
 # Business problems are typed by stage; data checks are never shown as problems.
 DATA_TYPES = {"数据问题", "数据校验"}
 
@@ -76,14 +76,18 @@ def build():
     issues = {}
     for row in rows(workbook, "问题"):
         code = clean(row["问题编码"])
+        params = parse_params(row["判定参数"])
+        # A linked problem takes over a 商机获取 card category; it has no metrics.
+        linked = bool(params.get("upstreamCategory"))
         issues[code] = dict(
             code=code, name=clean(row["问题名称"]), type=clean(row["问题类型"]),
-            kind="data" if clean(row["问题类型"]) in DATA_TYPES else "metric",
+            kind="data" if clean(row["问题类型"]) in DATA_TYPES else "link" if linked else "metric",
             # judge_card copies an issue's category onto its finding (riskCategory).
             category="" if clean(row["问题类型"]) in DATA_TYPES else clean(row["问题类型"]),
-            description=clean(row["问题描述"]), indicators=clean(row["触发指标"]), rule=clean(row["判定规则"]),
+            description=clean(row["问题描述"]), indicators="" if linked else clean(row["触发指标"]),
+            trigger=clean(row["触发指标"]), rule=clean(row["判定规则"]),
             condition=clean(row["成立条件"]), levelRule=clean(row["问题等级规则"]), objects=clean(row["影响对象"]),
-            causes=codes(row["候选根因"]), params=parse_params(row["判定参数"]), source=clean(row["来源"]),
+            causes=codes(row["候选根因"]), params=params, source=clean(row["来源"]),
         )
     causes = {}
     for row in rows(workbook, "根因"):

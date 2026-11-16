@@ -163,17 +163,23 @@
   不再出现「本轮 14 项本体问题中…规则判定…」。数据问题（取数失败、结果为空、口径不一致等）不再作为问题展示，
   也不再交给模型判断；取数失败仍在「数据范围」限制中说明。
 - 本体更新为《销售额出货量共同问题分析_V3》（`docs/亿纬锂能/`，V2 保留）：问题类型由「指标异常 / 数据问题」
-  改为业务环节分类——商机问题：全年预计达成缺口、重点客户电量缺口；订单问题：销售额与出货量量价背离、
-  在手订单不足以覆盖剩余目标、订单取消／变更冲减；订未发问题：销售额与出货量双双落后时间进度、超期订未发积压、
-  订单履约率偏低；原 6 项数据问题改为「数据校验」（不展示）。指标、SQL、规则、根因与建议不变。
-  生成脚本 `build_sales_shipment_ontology.py` 同步（输出 V3、新增“问题分类”说明），`build_sales_shipment_config.py`
-  读取 V3 并写入 `category`，运行配置升级为 `sales-shipment-rules-2`。模型角色提示改为业务语言、不出现编码。
+  改为业务环节分类——商机问题：商机覆盖问题、商机转化问题、全年预计达成缺口、重点客户电量缺口；订单问题：
+  销售额与出货量量价背离、在手订单不足以覆盖剩余目标、订单取消／变更冲减；订未发问题：销售额与出货量双双落后
+  时间进度、超期订未发积压、订单履约率偏低；原 6 项数据问题改为「数据校验」（不展示）。原有指标、SQL、根因与建议不变。
+- （11-16 修订）商机问题与「商机获取 · 销售额口径明细」卡片关联：新增 IS09 商机覆盖问题、IS10 商机转化问题，
+  不另设指标，直接读取商机获取卡片同期间最新发布结果中「商机覆盖风险」「商机转化风险」分类——分类内至少 1 项风险成立
+  即成立，等级取最高等级，描述列出成立风险名称、等级及该分类总结；商机获取卡片未发布同期间结果时不判定、不交模型推断，
+  在限制中提示。客户年度模式整页分析时商机获取卡片先于共同分析卡片运行（`frozen.priority_order`），
+  `customer.py` 向执行器提供已发布卡片读取（`_published_for_period` 校验期间）。
+- 生成脚本 `build_sales_shipment_ontology.py` 同步（输出 V3、新增“问题分类”说明与关联问题类型 `link`），
+  `build_sales_shipment_config.py` 读取 V3 并写入 `category` / `kind: link`，运行配置升级为 `sales-shipment-rules-3`。
+  模型角色提示改为业务语言、不出现编码。新增说明文档 `docs/specs/cockpit-sales-shipment-problem-ontology.md`。
 - 主要文件：`bi_agent/cockpit/{sales_shipment,section_summary,frozen}.py`、
   `bi_agent/cockpit/assets/sales-shipment/config.json`、`scripts/build_sales_shipment_{ontology,config}.py`、
   `bi_agent/web/static/cockpit/{data-client.js,cockpit.js}`、
   `bi_agent/web/static/cockpit/insight-components/{shared.js,sales-shipment-issues/index.js}`、
   `bi_agent/web/static/cockpit/metadata/{iba-demo-1021/template-registry.json,iba-demo-1021/source.json,runtime.json}`。
-- 验证：Cockpit Python 套件 603 项中 597 项通过，6 项为既有失败（CRLF 哈希 3 项、缺 `psycopg` 1 项、
+- 验证（含商机问题关联修订）：Cockpit 与 360 分析 Python 套件 643 项中 637 项通过，6 项为既有失败（CRLF 哈希 3 项、缺 `psycopg` 1 项、
   `test_delivered_insight_slots…` 1 项、计时敏感的 `test_completed_router_analysis…` 1 项）；元数据 LF 规范化哈希
   全部一致；前端 Node 测试 141 项中 139 项通过，2 项为基线失败。已发布的共同分析卡片需重新分析后才按新分组展示。
   未在浏览器中实际查看。

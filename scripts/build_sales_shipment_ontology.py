@@ -379,8 +379,13 @@ ISSUE_CATEGORIES = ("商机问题", "订单问题", "订未发问题")
 ISSUE_CATEGORY = {
     "IS01": "订未发问题", "IS02": "商机问题", "IS03": "订单问题", "IS04": "订未发问题",
     "IS05": "订单问题", "IS06": "订未发问题", "IS07": "商机问题", "IS08": "订单问题",
+    "IS09": "商机问题", "IS10": "商机问题",
 }
 DATA_CHECK = "数据校验"
+# The 商机获取 card (销售额口径明细) judges its own risks and groups them into
+# 商机覆盖风险 / 商机转化风险.  This card does not re-judge them: a "link" problem
+# takes over the category's status from that card's published result.
+UPSTREAM_CARD = "商机获取卡片（销售额口径明细）"
 
 
 def params_text(params):
@@ -389,7 +394,7 @@ def params_text(params):
 
 def issue(code, name, kind, desc, indicators, rule, condition, level, objects, causes, source, params=None):
     ISSUES[code] = dict(code=code, name=name, kind=kind,
-                        type=ISSUE_CATEGORY[code] if kind == "metric" else DATA_CHECK, desc=desc,
+                        type=DATA_CHECK if kind == "data" else ISSUE_CATEGORY[code], desc=desc,
                         indicators=indicators, rule=rule, condition=condition, level=level, objects=objects,
                         causes=causes, source=source, params=params or {})
 
@@ -431,6 +436,21 @@ issue("IS08", "订单取消／变更冲减", "metric", "所选期间存在取消
       ["O04", "O01"], "BR-A08", "O04 > 0",
       f"O04 ÷ O01 ≥ 0.05 高；其余 中{PENDING}", "订单、客户、产品类型", ["RC09"], "看板取消 / 变更订单电量",
       dict(highShare=0.05))
+# -- 商机问题 taken over from the 商机获取 card's risk categories (no own metrics)
+issue("IS09", "商机覆盖问题", "link",
+      "商机储备不足以覆盖销售目标：商机预测、签单进度，以及战略重点客户、电芯 / PACK 产品和客户预测存在缺口",
+      [], "BR-A09",
+      f"{UPSTREAM_CARD}同期间发布结果中，“商机覆盖风险”分类至少 1 项风险成立",
+      "取该分类已成立风险的最高等级（极高 / 高 / 中 / 低）", "商机、客户、产品类型",
+      ["RC01", "RC07"], f"{UPSTREAM_CARD} · 商机覆盖风险（RK01～RK07）",
+      dict(upstreamCategory="商机覆盖风险"))
+issue("IS10", "商机转化问题", "link",
+      "商机推进慢、转化为订单滞后：商机获取阶段超期较多，或推进阶段周期超出动态均值较多，拖慢签单",
+      [], "BR-A10",
+      f"{UPSTREAM_CARD}同期间发布结果中，“商机转化风险”分类至少 1 项风险成立",
+      "取该分类已成立风险的最高等级（极高 / 高 / 中 / 低）", "商机、产品类型",
+      ["RC02"], f"{UPSTREAM_CARD} · 商机转化风险（RK10、RK11）",
+      dict(upstreamCategory="商机转化风险"))
 # -- data problems (the evidence itself is unusable or inconsistent)
 issue("DQ01", "指标取数失败或超时", "data", "调用SQL执行失败、超时或结果被截断，对应指标无法使用",
       ["B01", "B02", "B03", "B04"], "BR-DQ02",
@@ -607,11 +627,13 @@ brule("BR-Q08", "跨环节不混算", "不同业务状态（预测 / 订单 / �
 brule("BR-DQ01", "缺值不补零", "任一输入缺失时相应指标保持 NULL，不以 0 参与比较；问题规则输入缺失时交由模型判断或标注无法判定",
       "全部指标", "缺值条数在结果明细披露", "—", "数据质量")
 
+RULE_TRIGGER = {"metric": "指标计算完成后检测", "link": f"读取{UPSTREAM_CARD}同期间最新发布结果后检测",
+                "data": "取数完成后检测"}
+RULE_CATEGORY = {"metric": "业务问题判定", "link": "业务问题判定（引用商机获取卡片）", "data": "数据校验"}
 for code, r in ISSUES.items():
-    brule(r["rule"], f"{r['name']}判定", r["condition"],
-          "指标计算完成后检测" if r["kind"] == "metric" else "取数完成后检测", r["level"],
-          "登记问题实例（" + r["type"] + "）" if r["kind"] == "metric" else "登记数据校验结果（不作为业务问题展示）",
-          "业务问题判定" if r["kind"] == "metric" else "数据校验")
+    brule(r["rule"], f"{r['name']}判定", r["condition"], RULE_TRIGGER[r["kind"]], r["level"],
+          "登记数据校验结果（不作为业务问题展示）" if r["kind"] == "data" else "登记问题实例（" + r["type"] + "）",
+          RULE_CATEGORY[r["kind"]])
 for code, c in CAUSES.items():
     brule(c["rule"], f"{c['name']}成立判定", "、".join(c["indicators"]) + " 相关", "问题实例登记后",
           c["condition"], "规则判定写入根因分析结果" if c["method"] == "规则"
@@ -774,7 +796,16 @@ for i, st in enumerate(steps.values(), 1):
     step_rows.append([i, st["name"], "是" if st["materialized"] else "否", "、".join(deps), "、".join(les),
                       "、".join(fields), "、".join(st["metrics"]), "看板查询模板中的公共步骤", st["text"]])
 
-issue_rows = [[r["code"], r["name"], r["type"], r["desc"], NODE, "、".join(r["indicators"]), r["rule"],
+def trigger_text(r):
+    """Trigger metrics; a linked problem is triggered by the upstream card's category."""
+    return "、".join(r["indicators"]) or r["source"]
+
+
+def trigger_names(r):
+    return names(r["indicators"]) if r["indicators"] else r["source"]
+
+
+issue_rows = [[r["code"], r["name"], r["type"], r["desc"], NODE, trigger_text(r), r["rule"],
                r["condition"], r["level"], r["objects"], "、".join(r["causes"]), params_text(r["params"]),
                r["source"]] for r in ISSUES.values()]
 cause_rows = [[c["code"], c["name"], c["group"], c["stage"], "、".join(cause_issues[c["code"]]),
@@ -789,7 +820,7 @@ advice_rows = [[a["code"], a["cause"], CAUSES[a["cause"]]["name"], a["title"], a
 link_rows = []
 for l in links:
     r, c, a = ISSUES[l["issue"]], CAUSES[l["cause"]], ADVICE[l["advice"]]
-    link_rows.append([l["id"], names(r["indicators"]), r["rule"], r["code"], r["name"], r["type"], r["condition"],
+    link_rows.append([l["id"], trigger_names(r), r["rule"], r["code"], r["name"], r["type"], r["condition"],
                       c["code"], c["name"], names(c["indicators"]), c["rule"], c["method"], a["code"], a["title"],
                       a["owner"], a["deadline"], a["target"], names(a["tracking"]),
                       f"闭环（跟踪 {'、'.join(a['tracking'])}）", "确认后按责任角色合并为任务令下发"])
@@ -799,12 +830,12 @@ for code, s in M.items():
     for token in re.findall(r"BR-[A-Z]+\d+", s["rule"]):
         related[token].append(f"指标：{code}")
 for r in ISSUES.values():
-    related[r["rule"]] += [f"问题（{r['type']}）：{r['code']} {r['name']}", "判定指标：" + "、".join(r["indicators"])]
+    related[r["rule"]] += [f"问题（{r['type']}）：{r['code']} {r['name']}", "判定指标：" + trigger_text(r)]
 for c in CAUSES.values():
     related[c["rule"]] += [f"根因：{c['code']} {c['name']}", "判定指标：" + "、".join(c["indicators"])]
 related["BR-D01"] += ["根因：RC01—RC12", "行动建议：AC01—AC13", "运行记录：RUN07 行动建议记录、RUN08 建议措施项"]
 related["BR-D02"] += ["实体：LE13 任务令", "行动建议：AC01—AC13"]
-related["BR-L01"] += ["问题：IS01—IS08、DQ01—DQ06", "根因：RC01—RC12", "行动建议：AC01—AC13"]
+related["BR-L01"] += ["问题：IS01—IS10；数据校验：DQ01—DQ06", "根因：RC01—RC12", "行动建议：AC01—AC13"]
 rule_rows = [[b["code"], b["name"], b["desc"], b["trigger"], b["result"], b["action"], b["category"],
               "\n".join(dict.fromkeys(related.get(b["code"], [])))] for b in RULES.values()]
 
@@ -869,7 +900,7 @@ explain = [
            f"指标与调用SQL：{CSV.name}（sha256 {sha(CSV)[:12]}）；卡片现状：bi_agent/cockpit/combined.py 与 sales-shipment-issues 组件。"],
     ["规模", f"业务对象 {len(bo_rows)}；逻辑实体 {len(le_rows)}（源数据 {len(le_rows) - 1}、任务令 1）；业务属性 {len(attr_rows)}（本卡片使用 {n_attr_used}）；"
            f"实体关系 {len(er_rows)}；维度 {len(dim_rows)}；指标 {len(M)}（含调用SQL {n_sql}、派生 {len(M) - n_sql}）；业务规则 {len(RULES)}；"
-           f"问题 {sum(1 for i in ISSUES.values() if i['kind'] == 'metric')}（"
+           f"问题 {sum(1 for i in ISSUES.values() if i['kind'] != 'data')}（"
            + "、".join(f"{c} {sum(1 for i in ISSUES.values() if i['type'] == c)}" for c in ISSUE_CATEGORIES)
            + f"）、数据校验 {sum(1 for i in ISSUES.values() if i['kind'] == 'data')}；根因 {len(CAUSES)}；行动建议 {len(ADVICE)}；完整链路 {len(links)} 条；SQL 计算步骤 {len(step_rows)}；工作表 18 张。"],
     ["编码", "业务对象、逻辑实体与业务属性沿用商机获取节点编码（新增 LE19、LE20）；指标为本卡片编码（B 基础 / R 风险 / O 订单 / S 发货 / C 根因判定），"
@@ -877,7 +908,11 @@ explain = [
            "编码仅用于本体与追溯，卡片文字不显示编码。"
            "问题与根因的“判定参数”列为运行时规则函数读取的阈值（key=value）。"],
     ["链路闭环", "指标（触发）→ 问题 → 根因（判定指标）→ 行动建议（跟踪指标回到指标库）；每个问题至少一个候选根因，每个根因至少一条行动建议，每条行动建议只对应一个根因；根因“关联问题”由问题“候选根因”反向生成。"],
-    ["与商机卡片关系", "RC01 上游商机预测覆盖不足直接引用商机获取卡片（销售额口径明细）的 RK01 判定；本卡片不重复商机获取节点的商机级根因，只做销售额 × 出货量 × 订单的交叉判断。"],
+    ["与商机卡片关系", "商机问题与商机获取卡片（销售额口径明细）关联：IS09 商机覆盖问题、IS10 商机转化问题不另设指标，"
+                   "直接读取商机获取卡片同期间最新发布结果中“商机覆盖风险”“商机转化风险”两个分类——分类内至少 1 项风险成立即成立，"
+                   "等级取该分类已成立风险的最高等级，描述列出成立风险及该分类总结；商机获取卡片尚未发布同期间结果时不判定、不交给模型推断，"
+                   "并在卡片限制说明中提示。RC01 上游商机预测覆盖不足引用商机获取卡片的 RK01 口径。"
+                   "本卡片不重复商机获取节点的商机级判定，只做销售额 × 出货量 × 订单的交叉判断。"],
     ["调用 SQL 用法", "复制“指标”表“调用SQL”列整段到客户 PG（ded_public）执行；改统计期间只改 parameters 中 start_date / end_exclusive；"
                   "observed_at 为观察时点（看板原 SQL 中的当前时间统一改为引用它），复现历史结果时改为当时的观察时点；"
                   "可选筛选（产品线、产品类型、团队、客户等级、客户）已去除，需要筛选时参照“看板SQL模板（原文）”中的 FILTER 块。"],
@@ -889,7 +924,8 @@ explain = [
     ["版本", "V2（2026-11-14）：改为“指标 → 问题”驱动，风险表替换为问题表（指标异常 IS01～IS08、数据问题 DQ01～DQ06），"
            "新增数据质量根因 RC10～RC12 与建议 AC11～AC13，问题与根因增加机器可读的判定参数。V1 保持不变。\n"
            "V3（2026-11-16）：问题类型由“指标异常 / 数据问题”改为业务环节分类“商机问题 / 订单问题 / 订未发问题”；"
-           "DQ01～DQ06 改为数据校验，不作为业务问题展示。指标、规则、根因与建议不变。V2 保持不变。"],
+           "新增 IS09 商机覆盖问题、IS10 商机转化问题（商机问题，关联商机获取卡片的商机覆盖风险 / 商机转化风险分类）；"
+           "DQ01～DQ06 改为数据校验，不作为业务问题展示。指标、SQL、根因与建议不变。V2 保持不变。"],
 ]
 write("说明", [f"亿纬锂能本体 · {NODE} V3", ""], explain, {f"亿纬锂能本体 · {NODE} V3": 18, "": 120})
 write("业务对象", bo_header, bo_rows)

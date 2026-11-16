@@ -101,7 +101,8 @@ def main():
     from ..cockpit.frozen import FrozenAnnualStore, FrozenAnnualService, FrozenCockpitSurface, recompute_from_router
     seed = Path(__file__).parents[1]/'cockpit/frozen-annual.json'
     frozen = FrozenAnnualStore(cwd/'dataset/cockpit/frozen-annual.sqlite3', seed)
-    service = FrozenAnnualService(frozen, recompute_from_router(app, cwd))
+    service = FrozenAnnualService(frozen, recompute_from_router(
+        app, cwd, published=lambda key: (frozen.read().get('items') or {}).get(key)))
     from ..cockpit.router import set_external_analysis_lookup
     set_external_analysis_lookup(service.published_analysis)
     prefix = os.environ.get('APP_ROOT_PATH','')

@@ -103,11 +103,16 @@ def test_config_is_problem_driven_and_read_from_the_ontology():
     assert config["version"] == ss.RULES_VERSION
     assert config["source"]["path"].endswith("销售额出货量共同问题分析_V3.xlsx")
     kinds = [spec["kind"] for spec in config["issues"].values()]
-    assert kinds.count("metric") == 8 and kinds.count("data") == 6
+    assert kinds.count("metric") == 8 and kinds.count("link") == 2 and kinds.count("data") == 6
     # V3: business problems are typed by stage; data checks are not problems.
-    assert {code: spec["category"] for code, spec in config["issues"].items() if spec["kind"] == "metric"} == {
+    assert {code: spec["category"] for code, spec in config["issues"].items() if spec["kind"] != "data"} == {
         "IS01": "订未发问题", "IS02": "商机问题", "IS03": "订单问题", "IS04": "订未发问题",
-        "IS05": "订单问题", "IS06": "订未发问题", "IS07": "商机问题", "IS08": "订单问题"}
+        "IS05": "订单问题", "IS06": "订未发问题", "IS07": "商机问题", "IS08": "订单问题",
+        "IS09": "商机问题", "IS10": "商机问题"}
+    # 商机问题 linked to the 商机获取 card: its categories, no metrics of their own.
+    assert config["issues"]["IS09"]["params"] == dict(upstreamCategory="商机覆盖风险")
+    assert config["issues"]["IS10"]["params"] == dict(upstreamCategory="商机转化风险")
+    assert config["issues"]["IS09"]["indicators"] == "" and config["issues"]["IS10"]["indicators"] == ""
     assert all(spec["type"] == "数据校验" and spec["category"] == ""
                for spec in config["issues"].values() if spec["kind"] == "data")
     assert not any(spec["type"] in ("指标异常", "数据问题") for spec in config["issues"].values())
@@ -140,7 +145,7 @@ def test_card_settles_problems_by_rule_and_ships_as_a_card():
     assert not {"DQ01", "DQ02", "DQ03", "DQ04", "DQ05", "DQ06"} & set(findings)
     judgement = result["ontologyJudgement"]
     # Only business problems are judged; data checks never reach the card.
-    assert [i["code"] for i in judgement["risks"]] == [f"IS0{n}" for n in range(1, 9)]
+    assert [i["code"] for i in judgement["risks"]] == [f"IS{n:02d}" for n in range(1, 11)]
     # Parent → child: 商机 / 订单 / 订未发问题, in the helmet's order.
     groups = result["riskGroups"]
     assert [g["category"] for g in groups] == [c for c in ss.ISSUE_GROUPS
@@ -282,3 +287,79 @@ def test_ratio_facts_are_percentages_with_their_ontology_definition():
     r01 = facts["ss:metric:R01"]
     assert r01["value"] == 60.0 and r01["unit"] == "%" and r01["label"] == "销售额达成率"
     assert r01["definition"] == ss.load_config()["metrics"]["R01"]["definition"]
+
+
+def _opportunity_card(*risks, summaries=None):
+    """A published 商机获取 card item: (code, title, level, category) rows."""
+    findings = [dict(id=f"opp:{code}", riskCode=code, title=title, riskLevel=level, riskCategory=category)
+                for code, title, level, category in risks]
+    groups = {}
+    for finding in findings:
+        groups.setdefault(finding["riskCategory"], []).append(finding["id"])
+    return dict(context=dict(period="2025", stage="opportunity"), result=dict(
+        findings=findings,
+        riskGroups=[dict(category=c, findingIds=ids, summary=(summaries or {}).get(c, ""))
+                    for c, ids in groups.items()]))
+
+
+def test_opportunity_problems_take_over_the_opportunity_card_categories():
+    requests = []
+
+    def judge(request):
+        requests.append(request)
+        return dict(established=False, reason="x")
+
+    upstream = _opportunity_card(
+        ("RK01", "商机预测覆盖不足", "高", "商机覆盖风险"),
+        ("RK02", "签单进度滞后", "极高", "商机覆盖风险"),
+        summaries={"商机覆盖风险": "商机预测与签单进度均存在缺口。"})
+    card = ss.build_card("2025", database=fake_database(), measurement_date="2025-12-31", judge=judge,
+                         upstream=upstream)
+    result = card["result"]
+    findings = {f["riskCode"]: f for f in result["findings"]}
+    coverage = findings["IS09"]
+    assert coverage["riskCategory"] == "商机问题" and coverage["decidedBy"] == "rule"
+    # The highest level of the category's established risks.
+    assert coverage["riskLevel"] == "极高"
+    assert coverage["description"] == ("商机获取环节有 2 项商机覆盖风险成立：商机预测覆盖不足（高）、签单进度滞后（极高）。"
+                                       "商机预测与签单进度均存在缺口。")
+    assert "RK0" not in coverage["description"]
+    # No 商机转化风险 established upstream: the conversion problem does not hold.
+    assert "IS10" not in findings
+    assert not any(r.get("code") in {"IS09", "IS10"} for r in requests)
+    group = next(g for g in result["riskGroups"] if g["category"] == "商机问题")
+    assert coverage["id"] in group["findingIds"]
+    assert any(r["id"] == "ss:upstream:opportunity-risk:RK02" for r in card["evidence"]["records"])
+    assert not any("尚未发布同期间分析结果" in note for note in result["limitations"])
+
+
+def test_without_an_opportunity_card_the_linked_problems_wait_instead_of_guessing():
+    requests = []
+
+    def judge(request):
+        requests.append(request)
+        return dict(established=False, reason="x")
+
+    card = ss.build_card("2025", database=fake_database(), measurement_date="2025-12-31", judge=judge)
+    result = card["result"]
+    assert not {"IS09", "IS10"} & {f["riskCode"] for f in result["findings"]}
+    # Never handed to the model: there is nothing to judge from.
+    assert not any(r.get("code") in {"IS09", "IS10"} for r in requests)
+    judged = {r["code"]: r for r in result["ontologyJudgement"]["risks"]}
+    assert judged["IS09"]["decidedBy"] == "unevaluated" and judged["IS09"]["reason"] == ss.UPSTREAM_MISSING
+    assert any("商机覆盖、商机转化问题暂未纳入" in note for note in result["limitations"])
+
+
+def test_the_customer_round_reads_the_same_period_and_runs_opportunity_first():
+    from bi_agent.cockpit import frozen
+    item = _opportunity_card(("RK10", "商机获取阶段超期较多", "高", "商机转化风险"))
+    assert frozen._published_for_period(lambda key: item, "opportunity-risk", "2025") is item
+    assert frozen._published_for_period(lambda key: item, "opportunity-risk", "2024") is None
+    assert frozen._published_for_period(None, "opportunity-risk", "2025") is None
+
+    def broken(key):
+        raise RuntimeError("store unavailable")
+    assert frozen._published_for_period(broken, "opportunity-risk", "2025") is None
+    service = frozen.FrozenAnnualService.__new__(frozen.FrozenAnnualService)
+    order = service.priority_order(page="analysis")
+    assert order.index("opportunity-risk") < order.index("combined")

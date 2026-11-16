@@ -327,7 +327,13 @@ class FrozenAnnualService:
         # A page-wide refresh keeps the shared stage targets.  Independent
         # cards join only when the user targets them or they are visible.
         candidates += [_item_key(s) for s in registry.values() if s['page']==page]
-        return list(dict.fromkeys(candidates + list(STAGES)))
+        order = list(dict.fromkeys(candidates + list(STAGES)))
+        # The 共同分析 card reads the 商机获取 card's published categories, so
+        # when both run in one round the 商机获取 card publishes first.
+        if 'opportunity-risk' in order and order.index('opportunity-risk') > order.index('combined'):
+            order.remove('opportunity-risk')
+            order.insert(order.index('combined'), 'opportunity-risk')
+        return order
 
     def _progress(self):
         self.store.progress(runId=self.round_id,activeStage=self.active, pendingStages=list(self.pending),
@@ -900,8 +906,25 @@ def _sales_shipment_ontology_enabled():
     return os.getenv('COCKPIT_SALES_SHIPMENT_ONTOLOGY_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
 
 
-def recompute_from_router(app, cwd):
-    """Reuse the registered main-service executor; never add another LLM route."""
+def _published_for_period(published, key, period):
+    """Another card's last published item, only when it is for the same period."""
+    if published is None:
+        return None
+    try:
+        item = published(key)
+    except Exception:  # noqa: BLE001 - a missing upstream card never fails this one
+        return None
+    if not isinstance(item, dict) or str((item.get('context') or {}).get('period') or '') != str(period):
+        return None
+    return item
+
+
+def recompute_from_router(app, cwd, published=None):
+    """Reuse the registered main-service executor; never add another LLM route.
+
+    ``published(key)`` returns the last published item of another card (the
+    customer store); the 共同分析 card reads the 商机获取 card through it.
+    """
     from .ap_gateway import get_gateway
     from .refresh import RefreshManager
     from .store import Store
@@ -968,7 +991,8 @@ def recompute_from_router(app, cwd):
                 return build_sales_shipment(period, judge=item_judge if enabled else None,
                                             progress=self._progress_callback,
                                             diagnostic_reporter=report_combined,
-                                            summarize_groups=summarize_combined if enabled and summaries_enabled() else None)
+                                            summarize_groups=summarize_combined if enabled and summaries_enabled() else None,
+                                            upstream=_published_for_period(published, 'opportunity-risk', period))
             if stage == 'opportunity-risk':
                 from .opportunity_v2 import build_card, default_ap_supplement
                 from .opportunity_judgement import default_item_judge, semantic_rewriter

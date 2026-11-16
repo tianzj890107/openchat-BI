@@ -447,7 +447,8 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
             entry.update(decidedBy="rule", established=False,
                          reason="规则条件不成立" if status == "not_triggered" else "本轮没有适用对象")
         elif candidate.get("requiresRuleEvidence"):
-            entry.update(decidedBy="unevaluated", established=None, reason="阶段周期分档数据不足，无法判定")
+            entry.update(decidedBy="unevaluated", established=None,
+                         reason=_text(candidate.get("unevaluatedReason")) or "阶段周期分档数据不足，无法判定")
         else:
             request = dict(kind=primary, code=code, name=entry["name"], period=period,
                            rule=entry["rule"], ontologyDescription=_text(spec.get("description")),
