@@ -936,16 +936,15 @@ def recompute_from_router(app, cwd):
 
         def run_slot(self, period, stage):
             item = self._analyse_slot(period, stage)
-            if stage in SECTION_SUMMARY_STAGES:
+            # The ontology 共同分析 card summarises each problem group instead
+            # (商机 / 订单 / 订未发问题), like the 商机获取 card.
+            grouped = stage == 'combined' and _sales_shipment_ontology_enabled()
+            if stage in SECTION_SUMMARY_STAGES and not grouped:
                 # The 销售额口径明细 cards open each section with a model
                 # summary of the items that section displays.
                 from .section_summary import with_section_summaries
-                role = ''
-                if stage == 'combined' and _sales_shipment_ontology_enabled():
-                    from .sales_shipment import summary_role
-                    role = summary_role()
                 item = with_section_summaries(item, stage_name=STAGE_LABELS.get(stage, stage),
-                                              progress=self._progress_callback, role=role)
+                                              progress=self._progress_callback)
             return item
 
         def _analyse_slot(self, period, stage):
@@ -961,9 +960,15 @@ def recompute_from_router(app, cwd):
                     return record_query_failure(diagnostic_store, identity=1, stage='combined',
                                                 **_diagnostic_fields(entry))
 
+                from .section_summary import enabled as summaries_enabled, summarize_risk_groups
+
+                def summarize_combined(groups):
+                    return summarize_risk_groups(groups, card='销售额与出货量共同分析', label='问题')
+
                 return build_sales_shipment(period, judge=item_judge if enabled else None,
                                             progress=self._progress_callback,
-                                            diagnostic_reporter=report_combined)
+                                            diagnostic_reporter=report_combined,
+                                            summarize_groups=summarize_combined if enabled and summaries_enabled() else None)
             if stage == 'opportunity-risk':
                 from .opportunity_v2 import build_card, default_ap_supplement
                 from .opportunity_judgement import default_item_judge, semantic_rewriter

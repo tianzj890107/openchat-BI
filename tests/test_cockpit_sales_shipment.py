@@ -101,9 +101,16 @@ def _card(**kwargs):
 def test_config_is_problem_driven_and_read_from_the_ontology():
     config = ss.load_config()
     assert config["version"] == ss.RULES_VERSION
-    assert config["source"]["path"].endswith("销售额出货量共同问题分析_V2.xlsx")
+    assert config["source"]["path"].endswith("销售额出货量共同问题分析_V3.xlsx")
     kinds = [spec["kind"] for spec in config["issues"].values()]
     assert kinds.count("metric") == 8 and kinds.count("data") == 6
+    # V3: business problems are typed by stage; data checks are not problems.
+    assert {code: spec["category"] for code, spec in config["issues"].items() if spec["kind"] == "metric"} == {
+        "IS01": "订未发问题", "IS02": "商机问题", "IS03": "订单问题", "IS04": "订未发问题",
+        "IS05": "订单问题", "IS06": "订未发问题", "IS07": "商机问题", "IS08": "订单问题"}
+    assert all(spec["type"] == "数据校验" and spec["category"] == ""
+               for spec in config["issues"].values() if spec["kind"] == "data")
+    assert not any(spec["type"] in ("指标异常", "数据问题") for spec in config["issues"].values())
     assert "risks" not in config  # problems replace the risk layer
     assert config["issues"]["IS01"]["params"] == dict(lagExtremePoints=15, lagHighPoints=10)
     assert config["issues"]["IS04"]["params"] == dict(share=0.2, highShare=0.5)
@@ -124,7 +131,7 @@ def test_card_settles_problems_by_rule_and_ships_as_a_card():
     findings = {f["riskCode"]: f for f in result["findings"]}
     # 0.6 / 0.6 against 0.86 time progress: both behind by 26 points.
     assert findings["IS01"]["riskLevel"] == "极高" and findings["IS01"]["decidedBy"] == "rule"
-    assert findings["IS01"]["issueType"] == "指标异常"
+    assert findings["IS01"]["riskCategory"] == "订未发问题" and "issueType" not in findings["IS01"]
     assert "落后 26.0 个百分点" in findings["IS01"]["description"]
     # 10 overdue of 25 pending = 40% ≥ 20%.
     assert findings["IS04"]["riskLevel"] == "中"
@@ -132,8 +139,21 @@ def test_card_settles_problems_by_rule_and_ships_as_a_card():
     assert {"IS06", "IS07", "IS08"} <= set(findings)
     assert not {"DQ01", "DQ02", "DQ03", "DQ04", "DQ05", "DQ06"} & set(findings)
     judgement = result["ontologyJudgement"]
-    assert [i["code"] for i in judgement["risks"]] == list(ss.load_config()["issues"])
-    assert result["summary"].startswith("本轮 14 项本体问题中")
+    # Only business problems are judged; data checks never reach the card.
+    assert [i["code"] for i in judgement["risks"]] == [f"IS0{n}" for n in range(1, 9)]
+    # Parent → child: 商机 / 订单 / 订未发问题, in the helmet's order.
+    groups = result["riskGroups"]
+    assert [g["category"] for g in groups] == [c for c in ss.ISSUE_GROUPS
+                                               if any(f["riskCategory"] == c for f in result["findings"])]
+    by_id = {f["id"]: f for f in result["findings"]}
+    for group in groups:
+        assert {by_id[fid]["riskCategory"] for fid in group["findingIds"]} == {group["category"]}
+    assert [fid for g in groups for fid in g["findingIds"]] == [f["id"] for f in result["findings"]]
+    # Business wording only: no codes, no 指标异常 / 数据问题, no rule tally.
+    assert result["summary"] == ss.business_summary(
+        {g["category"]: g["findingIds"] for g in groups})
+    assert result["summary"].startswith(f"本期发现 {len(result['findings'])} 项业务问题：")
+    assert not any(word in result["summary"] for word in ("IS0", "DQ0", "指标异常", "数据问题", "规则判定"))
     # The delivery is problem-only: do not run or publish causes/advice.
     assert result["causes"] == [] and result["analysisDimensions"] == []
     assert result["recommendations"] == [] and result["primaryLabel"] == "问题"
@@ -153,11 +173,12 @@ def test_card_settles_problems_by_rule_and_ships_as_a_card():
     assert [f["riskCode"] for f in delivered["result"]["findings"]] == [f["riskCode"] for f in result["findings"]]
 
 
-def test_a_failed_query_is_a_data_problem_not_a_failed_card():
+def test_a_failed_query_limits_the_card_without_showing_a_data_problem():
     card = _card(fail={"B01"})
     findings = {f["riskCode"]: f for f in card["result"]["findings"]}
-    assert findings["DQ01"]["issueType"] == "数据问题" and findings["DQ01"]["riskLevel"] == "高"
-    assert "B01 目标销售额（failed·RuntimeError）" in findings["DQ01"]["description"]
+    # Data checks are not business problems: nothing DQ* is shown.
+    assert not any(code.startswith("DQ") for code in findings)
+    assert any("取数未成功" in note for note in card["result"]["limitations"])
     assert card["result"]["causes"] == [] and card["result"]["recommendations"] == []
     assert card["status"] == "limited"
     failed = [q for q in card["result"]["queryCatalog"] if q["status"] == "failed"]
@@ -173,13 +194,43 @@ def test_no_usable_query_fails_the_card():
         ss.build_card("2025", database=fake_database(unavailable=True), measurement_date="2025-12-31")
 
 
-def test_empty_core_metric_and_inconsistent_rates_are_data_problems():
-    card = _card(override={"YWLN_M0002": None, "YWLN_M0008": 0.9})
-    findings = {f["riskCode"]: f for f in card["result"]["findings"]}
-    assert "B01 目标销售额" in findings["DQ02"]["description"]
+def test_empty_core_metric_and_inconsistent_rates_are_checked_but_not_shown():
+    data = ss.collect("2025", ss.v2._measurement_context("2025", "2025-12-31"),
+                      database=fake_database(override={"YWLN_M0002": None, "YWLN_M0008": 0.9}))
+    evaluated = ss.evaluate(data, ss.load_config(), None)
+    checks = {item["code"]: item for item in evaluated["riskCandidates"]}
+    # The data checks still run (they keep the rule trace honest)...
+    assert "B01 目标销售额" in checks["DQ02"]["description"]
     # 出货量达成率 0.9 vs 实绩 30 ÷ 目标 50 = 0.6.
-    assert "出货量达成率 90.0%，按实绩 ÷ 目标复算为 60.0%" in findings["DQ03"]["description"]
+    assert "出货量达成率 90.0%，按实绩 ÷ 目标复算为 60.0%" in checks["DQ03"]["description"]
+    # ...but the card shows business problems only.
+    card = _card(override={"YWLN_M0002": None, "YWLN_M0008": 0.9})
+    assert not any(f["riskCode"].startswith("DQ") for f in card["result"]["findings"])
     assert card["result"]["causes"] == [] and card["result"]["recommendations"] == []
+
+
+def test_problem_groups_get_model_summaries_with_a_rule_fallback():
+    from bi_agent.cockpit.section_summary import summarize_risk_groups
+    calls = []
+
+    def model(payload):
+        calls.append(payload)
+        # 订未发问题 passes; the others invent 9999 and fall back to the rule summary.
+        return {"summaries": {category: ("超期订未发占比偏高。" if category == "订未发问题" else "缺口 9999 亿元。")
+                              for category in payload["groups"]}}
+
+    card = ss.build_card("2025", database=fake_database(), measurement_date="2025-12-31", judge=_no,
+                         summarize_groups=lambda groups: summarize_risk_groups(
+                             groups, call_model=model, card="销售额与出货量共同分析", label="问题"))
+    groups = {g["category"]: g for g in card["result"]["riskGroups"]}
+    assert groups["订未发问题"]["summary"] == "超期订未发占比偏高。"
+    assert groups["订未发问题"]["summarySource"] == "model"
+    for category, group in groups.items():
+        if category != "订未发问题":
+            assert group["summarySource"] == "rule"
+            assert group["summary"].startswith(f"本类共 {len(group['findingIds'])} 项问题：")
+            assert "9999" not in group["summary"]
+    assert "validationFeedback" in calls[1]
 
 
 def test_rule_gaps_go_to_the_model_one_problem_at_a_time():

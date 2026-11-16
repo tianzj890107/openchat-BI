@@ -490,6 +490,9 @@ export function createStageRiskComponent(options = {}) {
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
       const displayStage = computed(() => insight.stageName.value || options.fallbackStage || '当前环节')
+      // A card may name its first section outright (共同分析 card) instead of
+      // "<环节>当前<风险/问题>判断".
+      const headTitle = options.headTitle || ''
       const taskApiBase = computed(() => String(props.slotProps?.apiBase || cockpitApiBase()).replace(/\/$/, ''))
       const taskIdentityId = computed(() => {
         const supplied = Number(props.slotProps?.identityId)
@@ -532,7 +535,7 @@ export function createStageRiskComponent(options = {}) {
       // The 共同问题 card opens with its overall summary (rule tally on the
       // ontology path, the whole-card summary on the older path).
       const showOverallSummary = Boolean(options.showOverallSummary)
-      return { ...insight, ...taskOrder, displayStage, primaryLabel, judgementGroups, analysisDimensions,
+      return { ...insight, ...taskOrder, displayStage, headTitle, primaryLabel, judgementGroups, analysisDimensions,
                riskGroups, metricStatus, showOverallSummary, showSectionSummaries, showCauses, showRecommendations,
                plain: stripOntologyCodes }
     },
@@ -550,7 +553,7 @@ export function createStageRiskComponent(options = {}) {
           <article v-if="summary || findings.length" class="stage-risk-analysis__card stage-risk-analysis__card--risk stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【{{ primaryLabel }}】</span>
-              {{ displayStage }}当前{{ primaryLabel }}判断
+              {{ headTitle || (displayStage + '当前' + primaryLabel + '判断') }}
             </div>
             <div v-if="showSectionSummaries && riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
             <div v-for="group in riskGroups" :key="group.category">

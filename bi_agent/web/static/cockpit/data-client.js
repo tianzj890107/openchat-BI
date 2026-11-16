@@ -320,10 +320,23 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     try {
       const url = new URL(req.url, globalThis.location?.origin || 'http://localhost');
       if (!['/x360/v1/graphs/helmet-view', '/api/gateway2/x360/v1/graphs/helmet-view'].includes(url.pathname) || (req.method || 'get').toLowerCase() !== 'get') throw new Error('不支持的看板只读接口');
-      const data = await query('helmet', req.params || Object.fromEntries(url.searchParams));
-      return [null, {data, success: true}];
+      const params = req.params || Object.fromEntries(url.searchParams);
+      const data = await query('helmet', params);
+      return [null, {data: relabelHelmet(params, data), success: true}];
     } catch (error) { return [error, null]; }
   }}};
+}
+
+// 销售额口径 helmet: the AP flow names its nodes 商机获取 / 订单接收 / 发货; the
+// board shows them as 商机 / 订单 / 订未发.  Display only: selection and
+// activation rules use node ids, and the raw response (receipts, snapshot
+// comparisons) is left untouched.
+const SALES_CALIBER_NODE_LABELS = {'商机获取': '商机', '订单接收': '订单', '发货': '订未发'};
+
+export function relabelHelmet(params, data) {
+  if (String(params?.flowCode || '') !== 'SALES_CALIBER' || !Array.isArray(data?.nodes)) return data;
+  return {...data, nodes: data.nodes.map(node => (node && SALES_CALIBER_NODE_LABELS[node.name]
+    ? {...node, name: SALES_CALIBER_NODE_LABELS[node.name]} : node))};
 }
 
 // The host renders one tab per route. ProUI emits activation actions into the

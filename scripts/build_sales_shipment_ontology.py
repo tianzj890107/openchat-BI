@@ -5,7 +5,7 @@ Inputs (all read-only):
   - data dictionary:    ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx
   - metric list:        bp_local_analysis_query_202611141015.csv
 Output:
-  - docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V1.xlsx
+  - docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V3.xlsx
 """
 import csv
 import hashlib
@@ -23,7 +23,7 @@ ROOT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().pare
 REF = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_无投标_周期红字同步版.xlsx"
 DICT = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 CSV = ROOT / "bp_local_analysis_query_202611141015.csv"
-OUT = ROOT / "docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V2.xlsx"
+OUT = ROOT / "docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V3.xlsx"
 
 PERIOD_START, PERIOD_END = "2025-01-01", "2026-01-01"
 NODE = "销售额／出货量共同问题分析"
@@ -231,7 +231,7 @@ er_rows += [
 run_header, run_rows = sheet_rows(ref, "分析运行记录模型")
 RUN_TERMS = [("风险运行记录", "问题运行记录"), ("风险影响明细", "问题影响明细"), ("riskInstance", "issueInstance"),
              ("riskImpact", "issueImpact"), ("risk_instance", "issue_instance"), ("risk_impact", "issue_impact"),
-             ("风险 RK*", "问题 IS* / DQ*"), ("某统计期间成立的风险", "某统计期间成立的问题（指标异常 / 数据问题）"),
+             ("风险 RK*", "问题 IS*"), ("某统计期间成立的风险", "某统计期间成立的问题（商机问题 / 订单问题 / 订未发问题）"),
              ("风险实例", "问题实例"), ("风险编码", "问题编码"), ("风险名称", "问题名称"), ("风险等级", "问题等级"),
              ("risk_code", "issue_code"), ("risk_level", "issue_level"), ("risk_name", "issue_name")]
 for r in run_rows:
@@ -372,7 +372,15 @@ metric("C10", "已签单商机占比", "根因判定", "派生指标", "比值",
 # This card is problem driven: indicator → problem (metric anomaly or data
 # problem) → cause → advice.  It has no risk layer; problems take its place.
 ISSUES = OrderedDict()
-ISSUE_TYPES = {"metric": "指标异常", "data": "数据问题"}
+# V3: business problems are typed by the 销售额口径 stage they belong to (the
+# same 商机 → 订单 → 订未发 chain the helmet shows).  Data checks (DQ*) are not
+# business problems: they stay as 数据校验 and are not shown on the card.
+ISSUE_CATEGORIES = ("商机问题", "订单问题", "订未发问题")
+ISSUE_CATEGORY = {
+    "IS01": "订未发问题", "IS02": "商机问题", "IS03": "订单问题", "IS04": "订未发问题",
+    "IS05": "订单问题", "IS06": "订未发问题", "IS07": "商机问题", "IS08": "订单问题",
+}
+DATA_CHECK = "数据校验"
 
 
 def params_text(params):
@@ -380,7 +388,8 @@ def params_text(params):
 
 
 def issue(code, name, kind, desc, indicators, rule, condition, level, objects, causes, source, params=None):
-    ISSUES[code] = dict(code=code, name=name, kind=kind, type=ISSUE_TYPES[kind], desc=desc,
+    ISSUES[code] = dict(code=code, name=name, kind=kind,
+                        type=ISSUE_CATEGORY[code] if kind == "metric" else DATA_CHECK, desc=desc,
                         indicators=indicators, rule=rule, condition=condition, level=level, objects=objects,
                         causes=causes, source=source, params=params or {})
 
@@ -601,7 +610,8 @@ brule("BR-DQ01", "缺值不补零", "任一输入缺失时相应指标保持 NUL
 for code, r in ISSUES.items():
     brule(r["rule"], f"{r['name']}判定", r["condition"],
           "指标计算完成后检测" if r["kind"] == "metric" else "取数完成后检测", r["level"],
-          "登记问题实例（" + r["type"] + "）", "指标异常判定" if r["kind"] == "metric" else "数据问题判定")
+          "登记问题实例（" + r["type"] + "）" if r["kind"] == "metric" else "登记数据校验结果（不作为业务问题展示）",
+          "业务问题判定" if r["kind"] == "metric" else "数据校验")
 for code, c in CAUSES.items():
     brule(c["rule"], f"{c['name']}成立判定", "、".join(c["indicators"]) + " 相关", "问题实例登记后",
           c["condition"], "规则判定写入根因分析结果" if c["method"] == "规则"
@@ -847,16 +857,24 @@ n_attr_used = sum(1 for r in attr_rows if r[13] == "Y")
 n_sql = sum(1 for s in M.values() if s["sql"])
 explain = [
     ["范围", f"仅“{NODE}”卡片（穿透式问题分析 · 经营指标分组）。跨商机获取、订单接收、发货三个环节，分析销售额与出货量的共同问题。不含投标、报价。"],
-    ["链路", "源数据（ded_public）→ 指标 → 问题（指标异常 BR-A* / 数据问题 BR-DQ*）→ 根因（规则 BR-C* 初筛 + 大模型）→ 行动建议 → 任务令（人工确认下发）。"
-           "本卡片为“指标 → 问题”驱动，不设风险层：问题表取代风险表，与商机获取等环节卡片的风险表并列。"],
-    ["分层", "业务层：业务对象 BO01、BO02、BO03、BO04、BO06、BO07 及其逻辑实体、属性、映射；知识层：指标、业务规则、问题（指标异常 / 数据问题）、根因、行动建议及链路；运行层：RUN01～RUN08。"],
+    ["链路", "源数据（ded_public）→ 指标 → 问题（商机问题 / 订单问题 / 订未发问题，BR-A*）→ 根因（规则 BR-C* 初筛 + 大模型）→ 行动建议 → 任务令（人工确认下发）。"
+           "本卡片为“指标 → 问题”驱动，不设风险层：问题表取代风险表，与商机获取等环节卡片的风险表并列。"
+           "数据校验（BR-DQ*）只用于判断数据是否可用，不作为业务问题展示。"],
+    ["分层", "业务层：业务对象 BO01、BO02、BO03、BO04、BO06、BO07 及其逻辑实体、属性、映射；知识层：指标、业务规则、问题（商机问题 / 订单问题 / 订未发问题）与数据校验、根因、行动建议及链路；运行层：RUN01～RUN08。"],
+    ["问题分类", "按销售额口径“商机 → 订单 → 订未发”三个环节分类，卡片以分类为父节点、问题为子节点展示：\n"
+               + "\n".join(f"{category}：" + "、".join(f"{code} {ISSUES[code]['name']}" for code in ISSUES
+                                                     if ISSUES[code]["type"] == category)
+                           for category in ISSUE_CATEGORIES)],
     ["依据", f"本体结构与通用口径：{REF.name}（sha256 {sha(REF)[:12]}）；业务属性：{DICT.name}（sha256 {sha(DICT)[:12]}）；"
            f"指标与调用SQL：{CSV.name}（sha256 {sha(CSV)[:12]}）；卡片现状：bi_agent/cockpit/combined.py 与 sales-shipment-issues 组件。"],
     ["规模", f"业务对象 {len(bo_rows)}；逻辑实体 {len(le_rows)}（源数据 {len(le_rows) - 1}、任务令 1）；业务属性 {len(attr_rows)}（本卡片使用 {n_attr_used}）；"
            f"实体关系 {len(er_rows)}；维度 {len(dim_rows)}；指标 {len(M)}（含调用SQL {n_sql}、派生 {len(M) - n_sql}）；业务规则 {len(RULES)}；"
-           f"问题 {len(ISSUES)}（指标异常 {sum(1 for i in ISSUES.values() if i['kind'] == 'metric')}、数据问题 {sum(1 for i in ISSUES.values() if i['kind'] == 'data')}）；根因 {len(CAUSES)}；行动建议 {len(ADVICE)}；完整链路 {len(links)} 条；SQL 计算步骤 {len(step_rows)}；工作表 18 张。"],
+           f"问题 {sum(1 for i in ISSUES.values() if i['kind'] == 'metric')}（"
+           + "、".join(f"{c} {sum(1 for i in ISSUES.values() if i['type'] == c)}" for c in ISSUE_CATEGORIES)
+           + f"）、数据校验 {sum(1 for i in ISSUES.values() if i['kind'] == 'data')}；根因 {len(CAUSES)}；行动建议 {len(ADVICE)}；完整链路 {len(links)} 条；SQL 计算步骤 {len(step_rows)}；工作表 18 张。"],
     ["编码", "业务对象、逻辑实体与业务属性沿用商机获取节点编码（新增 LE19、LE20）；指标为本卡片编码（B 基础 / R 风险 / O 订单 / S 发货 / C 根因判定），"
-           "“当前看板对应编码”列对应看板指标；问题 IS（指标异常）/ DQ（数据问题）、根因 RC、行动建议 AC、规则 BR 为本卡片独立编号。"
+           "“当前看板对应编码”列对应看板指标；问题 IS（商机 / 订单 / 订未发问题）、数据校验 DQ、根因 RC、行动建议 AC、规则 BR 为本卡片独立编号。"
+           "编码仅用于本体与追溯，卡片文字不显示编码。"
            "问题与根因的“判定参数”列为运行时规则函数读取的阈值（key=value）。"],
     ["链路闭环", "指标（触发）→ 问题 → 根因（判定指标）→ 行动建议（跟踪指标回到指标库）；每个问题至少一个候选根因，每个根因至少一条行动建议，每条行动建议只对应一个根因；根因“关联问题”由问题“候选根因”反向生成。"],
     ["与商机卡片关系", "RC01 上游商机预测覆盖不足直接引用商机获取卡片（销售额口径明细）的 RK01 判定；本卡片不重复商机获取节点的商机级根因，只做销售额 × 出货量 × 订单的交叉判断。"],
@@ -869,9 +887,11 @@ explain = [
     ["数据缺口", "C07 / C08 客户电量单位为 MWh（看板口径），与 GWh 指标比较时需换算；S09 计划外发货在计划缺失或行匹配不唯一时返回空值；"
               "LE19 / LE20 字段空值率字典未统计。"],
     ["版本", "V2（2026-11-14）：改为“指标 → 问题”驱动，风险表替换为问题表（指标异常 IS01～IS08、数据问题 DQ01～DQ06），"
-           "新增数据质量根因 RC10～RC12 与建议 AC11～AC13，问题与根因增加机器可读的判定参数。V1 保持不变。"],
+           "新增数据质量根因 RC10～RC12 与建议 AC11～AC13，问题与根因增加机器可读的判定参数。V1 保持不变。\n"
+           "V3（2026-11-16）：问题类型由“指标异常 / 数据问题”改为业务环节分类“商机问题 / 订单问题 / 订未发问题”；"
+           "DQ01～DQ06 改为数据校验，不作为业务问题展示。指标、规则、根因与建议不变。V2 保持不变。"],
 ]
-write("说明", [f"亿纬锂能本体 · {NODE} V2", ""], explain, {f"亿纬锂能本体 · {NODE} V2": 18, "": 120})
+write("说明", [f"亿纬锂能本体 · {NODE} V3", ""], explain, {f"亿纬锂能本体 · {NODE} V3": 18, "": 120})
 write("业务对象", bo_header, bo_rows)
 write("对象关系", bor_header, bor_rows)
 write("逻辑实体", le_header, le_rows)

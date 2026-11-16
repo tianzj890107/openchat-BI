@@ -17,6 +17,16 @@ test('the combined card is problem driven on the stage card layout', () => {
   assert.doesNotMatch(opportunity, /primaryLabel/);
 });
 
+test('the combined card is titled 销售额与出货量共同分析 and groups problems by stage', () => {
+  assert.match(source, /headTitle: '销售额与出货量共同分析'/);
+  assert.match(source, /fallbackStage: '销售额与出货量共同分析'/);
+  // Parent groups carry their own summaries, like the 销售额口径明细 cards.
+  assert.match(source, /sectionSummaries: false/);
+  assert.match(shared, /\{\{ headTitle \|\| \(displayStage \+ '当前' \+ primaryLabel \+ '判断'\) \}\}/);
+  assert.match(shared, /v-for="group in riskGroups"/);
+  assert.doesNotMatch(source, /指标异常|数据问题/);
+});
+
 test('problem-only cards hide cause, advice and their judgement groups', () => {
   assert.match(shared, /const showCauses = options\.showCauses !== false/);
   assert.match(shared, /const showRecommendations = options\.showRecommendations !== false/);
@@ -34,7 +44,7 @@ test('problem-only cards hide cause, advice and their judgement groups', () => {
 test('the shared card words its first layer by the primary label', () => {
   assert.match(shared, /const primaryLabel = options\.primaryLabel \|\| '风险'/);
   assert.match(shared, /【\{\{ primaryLabel \}\}】/);
-  assert.match(shared, /当前\{\{ primaryLabel \}\}判断/);
+  assert.match(shared, /'当前' \+ primaryLabel \+ '判断'/);
   assert.match(shared, /\{\{ primaryLabel \}\}\{\{ number \}\}/);
   assert.match(shared, /\{\{ primaryLabel \}\}规则 \{\{ ontologyTrace\.risks\.length \}\} 条/);
   assert.match(shared, /<template v-if="finding\.issueType">【\{\{ plain\(finding\.issueType\) \}\}】<\/template>/);

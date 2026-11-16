@@ -268,7 +268,7 @@ def test_analysis_flow_preserves_delivered_graph_and_shared_risk_markup():
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
     graph=next(component for component in runtime['pages']['analysis']['components']
                if component['id']=='mini-cpgraph-93j6k86p')
-    assert graph['title']=='销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）'
+    assert graph['title']=='销售额口径 · 三节点头盔图（商机 → 订单 → 订未发）'
     assert {rule['nodeId'] for rule in graph['graphConfig']['graphTemplateSwitchRules']}=={
         '2109840325158682625','2109840573998350338','2109840696539136002',
     }

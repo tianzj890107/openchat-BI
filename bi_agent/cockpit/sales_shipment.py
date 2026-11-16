@@ -33,7 +33,7 @@ from .opportunity_judgement import judge_card, link_queries, make_item_judge
 
 SLOT_ID = "sales-shipment-issues"
 STAGE = "combined"
-RULES_VERSION = "sales-shipment-rules-1"
+RULES_VERSION = "sales-shipment-rules-2"
 CONFIG_PATH = Path(__file__).resolve().parent / "assets" / "sales-shipment" / "config.json"
 CORE_METRICS = ("B01", "B02", "B03", "B04")
 STRATEGIC_LEVELS = {"1": "战略大客户", "2": "重要大客户"}
@@ -69,10 +69,13 @@ def config_digest():
 
 # ---------------------------------------------------------------- model roles
 ROLE_PROMPT = (
-    "你是储能业务销售运营分析师，请用客观、简洁的经营汇报用语：问题说明影响对象、"
-    "实际值与目标或阈值的差距，数据问题说明受影响的指标与数据来源。只描述问题本身，"
-    "不推理根因，也不给出建议。"
+    "你是储能业务销售运营分析师，请用客观、简洁的业务语言汇报：说明问题出在商机、订单还是订未发环节，"
+    "影响的对象，以及实际值与目标或阈值的差距。只描述问题本身，不推理根因，也不给出建议；"
+    "不出现指标、规则或问题编码，不使用“指标异常”“数据问题”等技术分类。"
 )
+# 销售额口径 stages, in the helmet's 商机 → 订单 → 订未发 order.  Problems are
+# grouped under these parents; data checks (DQ*) are never shown as problems.
+ISSUE_GROUPS = ("商机问题", "订单问题", "订未发问题")
 
 
 def role_prompt():
@@ -83,7 +86,7 @@ def role_prompt():
 
 def summary_role():
     """Role for the section summaries: the card's ``risks`` are its problems."""
-    return (role_prompt() + "本卡片输入中的 risks 条目是“问题”（指标异常或数据问题），"
+    return (role_prompt() + "本卡片输入中的 risks 条目是“问题”（商机问题、订单问题或订未发问题），"
             "总结时一律称“问题”，不要称“风险”。")
 
 
@@ -666,8 +669,17 @@ def _trace(config):
                 advice=entries("advice"), rules=entries("rules", ("description", "trigger", "result")))
 
 
+def business_summary(groups):
+    """Overall line in business language: how many problems each stage has."""
+    total = sum(len(findings) for findings in groups.values())
+    if not total:
+        return "本期未发现商机、订单和订未发环节的业务问题。"
+    return (f"本期发现 {total} 项业务问题：" + "、".join(
+        f"{category} {len(groups[category])} 项" for category in groups if groups[category]) + "。")
+
+
 def build_card(period, database=None, measurement_date=None, config=None, judge=None, progress=None,
-               diagnostic_reporter=None):
+               diagnostic_reporter=None, summarize_groups=None):
     """Build one complete ``combined`` (销售额／出货量共同问题分析) publication payload."""
     v2._report_progress(progress, "ontology", message="读取本体与规则配置")
     config = config or load_config()
@@ -686,15 +698,38 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     evaluated = evaluate(data, config, measured)
     v2._report_progress(progress, "analysing", message="逐条判定规则无法确定的问题")
     # The rule engine keeps the full ontology in the trace, but this delivery
-    # evaluates the issue layer only.
-    view = dict(config, risks=config["issues"], causes={}, advice={}, links={})
+    # evaluates the business problem layer only: data checks (DQ*) neither
+    # reach the model nor appear on the card.
+    business = {code: spec for code, spec in config["issues"].items() if spec.get("kind") != "data"}
+    view = dict(config, risks=business, causes={}, advice={}, links={})
     judged = judge_card(
         evaluated, view, judge=judge, progress=progress, primary="issue", id_prefix="ss",
         # Problem-only delivery: do not run or publish causes and advice.
         include_downstream=False)
-    issue_types = {code: spec["type"] for code, spec in config["issues"].items()}
+    issue_types = {code: spec.get("category") or spec["type"] for code, spec in business.items()}
+    # Parent → child like the 销售额口径明细 cards: 商机 / 订单 / 订未发问题.
+    groups = {category: [] for category in ISSUE_GROUPS}
     for finding in judged["findings"]:
-        finding["issueType"] = issue_types.get(finding["riskCode"], "")
+        category = finding.get("riskCategory") or issue_types.get(finding["riskCode"], "")
+        groups.setdefault(category or "其他问题", []).append(finding)
+    groups = {category: findings for category, findings in groups.items() if findings}
+    summaries = {}
+    if groups and summarize_groups is not None:
+        v2._report_progress(progress, "summarising", message="模型总结各问题分类")
+        summaries = summarize_groups(groups) or {}
+    judged["findings"] = [finding for findings in groups.values() for finding in findings]
+    judged["riskCodes"] = [finding["riskCode"] for finding in judged["findings"]]
+    judged["riskGroups"] = []
+    for category, findings in groups.items():
+        summary, source = summaries.get(category, ""), "model"
+        if not summary and summarize_groups is not None:
+            from .section_summary import risk_group_fallback
+            summary, source = risk_group_fallback(findings, label="问题"), "rule"
+        group = dict(category=category, findingIds=[finding["id"] for finding in findings], summary=summary)
+        if summary:
+            group["summarySource"] = source
+        judged["riskGroups"].append(group)
+    judged["summary"] = business_summary(groups)
     notes = config.get("notes") or {}
     limitations = [f"{e['stage']} 取数未成功（{e['code']}）：{e['message']}" for e in data["errors"]][:10]
     limitations += [note for note in (notes.get("caliber"), notes.get("dataGaps")) if note]

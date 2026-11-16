@@ -149,6 +149,35 @@
   带 `?v=` 的版本化 URL 行为不变；主服务与客户入口共用。新增 `tests/test_static_revalidation.py`。
   已打开旧页面的浏览器需强制刷新一次（Ctrl+F5）。
 
+### 2026-11-16 穿透式分析：头盔图改为“商机 → 订单 → 订未发”，共同分析卡片按业务环节分组
+
+- 头盔图：标题由「销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）」改为
+  「销售额口径 · 三节点头盔图（商机 → 订单 → 订未发）」（`template-registry.json`、`runtime.json`，
+  `source.json` 哈希同步）；图中三个节点名由 AP 返回的「商机获取 / 订单接收 / 发货」在展示层改为
+  「商机 / 订单 / 订未发」（`data-client.js` 的 `relabelHelmet`，实时与快照回放两条读取路径都经过；
+  节点选择与联动规则按节点 ID，不受影响，AP 原始响应与快照比对保持不变）。
+- 共同分析卡片：标题由「销售额与出货量共同分析当前问题判断」改为「销售额与出货量共同分析」；问题改为与
+  销售额口径明细卡片相同的父子结构，父节点按“商机 → 订单 → 订未发”顺序为「商机问题」「订单问题」
+  「订未发问题」，每个父节点附模型分类总结（校验未通过时用规则总结，`summarySource` 标注），不再显示
+  「【指标异常】」前缀和整卡段落总结；顶部总述改为业务语言（如「本期发现 N 项业务问题：商机问题 a 项、…」），
+  不再出现「本轮 14 项本体问题中…规则判定…」。数据问题（取数失败、结果为空、口径不一致等）不再作为问题展示，
+  也不再交给模型判断；取数失败仍在「数据范围」限制中说明。
+- 本体更新为《销售额出货量共同问题分析_V3》（`docs/亿纬锂能/`，V2 保留）：问题类型由「指标异常 / 数据问题」
+  改为业务环节分类——商机问题：全年预计达成缺口、重点客户电量缺口；订单问题：销售额与出货量量价背离、
+  在手订单不足以覆盖剩余目标、订单取消／变更冲减；订未发问题：销售额与出货量双双落后时间进度、超期订未发积压、
+  订单履约率偏低；原 6 项数据问题改为「数据校验」（不展示）。指标、SQL、规则、根因与建议不变。
+  生成脚本 `build_sales_shipment_ontology.py` 同步（输出 V3、新增“问题分类”说明），`build_sales_shipment_config.py`
+  读取 V3 并写入 `category`，运行配置升级为 `sales-shipment-rules-2`。模型角色提示改为业务语言、不出现编码。
+- 主要文件：`bi_agent/cockpit/{sales_shipment,section_summary,frozen}.py`、
+  `bi_agent/cockpit/assets/sales-shipment/config.json`、`scripts/build_sales_shipment_{ontology,config}.py`、
+  `bi_agent/web/static/cockpit/{data-client.js,cockpit.js}`、
+  `bi_agent/web/static/cockpit/insight-components/{shared.js,sales-shipment-issues/index.js}`、
+  `bi_agent/web/static/cockpit/metadata/{iba-demo-1021/template-registry.json,iba-demo-1021/source.json,runtime.json}`。
+- 验证：Cockpit Python 套件 603 项中 597 项通过，6 项为既有失败（CRLF 哈希 3 项、缺 `psycopg` 1 项、
+  `test_delivered_insight_slots…` 1 项、计时敏感的 `test_completed_router_analysis…` 1 项）；元数据 LF 规范化哈希
+  全部一致；前端 Node 测试 141 项中 139 项通过，2 项为基线失败。已发布的共同分析卡片需重新分析后才按新分组展示。
+  未在浏览器中实际查看。
+
 ## 补齐说明
 
 - 2026-11-16 补记：`11-09` 至 `11-13` 的周文件此前缺失，已按 Git 记录新建

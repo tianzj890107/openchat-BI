@@ -543,3 +543,14 @@ test('helmet configuration bypasses saved page replay without invalidating busin
   assert.equal(error,null);assert.deepEqual(response.data,{nodes:['current']});
   assert.equal(calls,1);assert.equal(misses,0);
 });
+
+test('the 销售额口径 helmet shows its nodes as 商机 / 订单 / 订未发', () => {
+  const {relabelHelmet} = clientModule;
+  const data = {nodes: [{id: 'a', name: '商机获取'}, {id: 'b', name: '订单接收'}, {id: 'c', name: '发货'}], edges: []};
+  const shown = relabelHelmet({flowCode: 'SALES_CALIBER'}, data);
+  assert.deepEqual(shown.nodes.map(node => [node.id, node.name]), [['a', '商机'], ['b', '订单'], ['c', '订未发']]);
+  // Display only: the raw response stays as received, and other flows are untouched.
+  assert.deepEqual(data.nodes.map(node => node.name), ['商机获取', '订单接收', '发货']);
+  assert.equal(relabelHelmet({flowCode: 'OTHER'}, data), data);
+  assert.equal(relabelHelmet({flowCode: 'SALES_CALIBER'}, null), null);
+});

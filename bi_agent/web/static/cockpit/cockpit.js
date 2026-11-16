@@ -980,7 +980,8 @@
           ? requests.get(gatewayKey) || requests.get(key)
           : requests.get(key) || requests.get(gatewayKey);
         if (!hit) return [new Error('未找到该接口的发布快照'), null];
-        return [null, {data: hit.response.data, success: true}];
+        const {relabelHelmet} = await import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`);
+        return [null, {data: relabelHelmet(params, hit.response.data), success: true}];
       },
     };
     const biAdapters = {

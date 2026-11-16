@@ -47,6 +47,14 @@ RISK_GROUP_PROMPT = (
 )
 
 
+def risk_group_prompt(card="商机获取", label="风险"):
+    """The group-summary prompt for one card; the 商机获取 wording is the default."""
+    if card == "商机获取" and label == "风险":
+        return RISK_GROUP_PROMPT
+    return (RISK_GROUP_PROMPT.replace("商机获取卡片", f"{card}卡片").replace("风险", label)
+            + "用业务语言表述，不出现任何编码。")
+
+
 def summary_system_prompt(role=""):
     """A card with its own system role puts it first; others keep the default."""
     role = _clean(role, 2000) if role else ""
@@ -179,7 +187,7 @@ def enabled():
         "0", "false", "no", "off"}
 
 
-def summarize_risk_groups(groups, *, call_model=None):
+def summarize_risk_groups(groups, *, call_model=None, card="商机获取", label="风险"):
     """Summarize only the findings delivered under each opportunity risk group."""
     pending = {
         category: [
@@ -198,7 +206,7 @@ def summarize_risk_groups(groups, *, call_model=None):
         for category, findings in groups.items() if findings
     }
     call = call_model or (lambda payload: _call_model(payload, timeout=30, max_tokens=900,
-                                                      system=RISK_GROUP_PROMPT))
+                                                      system=risk_group_prompt(card, label)))
     summaries, issues = {}, {}
     for _ in range(2):
         if not pending:
@@ -251,7 +259,7 @@ def _risk_group_problem(text, findings):
     return ""
 
 
-def risk_group_fallback(findings):
+def risk_group_fallback(findings, label="风险"):
     """Rule-written group summary used when no model summary validated.
 
     It names the displayed risks and levels only; the sole number is the count
@@ -262,10 +270,10 @@ def risk_group_fallback(findings):
         return ""
     names = []
     for finding in rows:
-        title = re.sub(r"^RK\d+\s*", "", _clean(finding.get("title"), 80))
+        title = re.sub(r"^(?:RK|IS|DQ)\d+\s*", "", _clean(finding.get("title"), 80))
         level = _clean(finding.get("riskLevel"), 8)
         names.append(f"{title}（{level}）" if level else title)
-    text = f"本类共 {len(rows)} 项风险：" + "、".join(names) + "。"
+    text = f"本类共 {len(rows)} 项{label}：" + "、".join(names) + "。"
     if len(text) > SUMMARY_LIMIT:
         text = text[:SUMMARY_LIMIT - 1].rstrip("、，") + "…"
     return text
