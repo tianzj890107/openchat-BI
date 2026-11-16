@@ -1,6 +1,7 @@
 from bi_agent.cockpit.page_cache import compact_analysis
 from bi_agent.cockpit.section_summary import (
-    displayed_items, summarize_risk_groups, summarize_sections, validate_summaries, with_section_summaries)
+    displayed_items, risk_group_fallback, summarize_risk_groups, summarize_sections, validate_summaries,
+    with_section_summaries)
 
 
 def _result():
@@ -26,6 +27,36 @@ def test_group_summaries_reject_numbers_from_other_categories():
     assert summarize_risk_groups(groups, call_model=model) == {
         '商机覆盖风险': '缺口 90 亿元。', '商机转化风险': '超期 7 条。'}
     assert seen == [set(groups), {'商机转化风险'}]
+
+
+def test_group_summaries_accept_rounded_numbers_and_retry_with_feedback():
+    groups = {'商机覆盖风险': [dict(title='RK02 签单进度滞后', riskLevel='极高',
+                                   description='金额口径已签单覆盖率 41.3%、时间进度 83.3%，落后 42.0 个百分点。'),
+                              dict(title='RK01 商机预测覆盖不足', riskLevel='高',
+                                   description='金额缺口 12.35 亿元（目标 120.50 亿元、预测 108.15 亿元）。')],
+              '商机转化风险': [dict(title='RK11 推进超期', riskLevel='高', description='超期 7 条。')]}
+    seen = []
+
+    def model(payload):
+        seen.append(payload)
+        if len(seen) == 1:
+            # 12.4 rounds a listed 12.35 (accepted); 230 is invented (rejected).
+            return {'summaries': {'商机覆盖风险': '签单落后 42 个百分点，缺口约 230 亿元。',
+                                  '商机转化风险': '超期 7 条。'}}
+        return {'summaries': {'商机覆盖风险': '签单落后 42 个百分点，金额缺口 12.4 亿元。'}}
+
+    assert summarize_risk_groups(groups, call_model=model) == {
+        '商机覆盖风险': '签单落后 42 个百分点，金额缺口 12.4 亿元。', '商机转化风险': '超期 7 条。'}
+    assert 'validationFeedback' not in seen[0]
+    assert set(seen[1]['groups']) == {'商机覆盖风险'}
+    assert '230' in seen[1]['validationFeedback']['issues']['商机覆盖风险']
+
+
+def test_group_fallback_lists_only_its_own_risks():
+    text = risk_group_fallback([dict(title='RK01 商机预测覆盖不足', riskLevel='高'),
+                                dict(title='RK02 签单进度滞后（已签单覆盖率口径）', riskLevel='极高')])
+    assert text == '本类共 2 项风险：商机预测覆盖不足（高）、签单进度滞后（已签单覆盖率口径）（极高）。'
+    assert risk_group_fallback([]) == ''
 
 
 def test_only_displayed_items_are_sent_for_summary():

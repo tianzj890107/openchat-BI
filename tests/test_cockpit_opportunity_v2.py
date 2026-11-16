@@ -1925,3 +1925,39 @@ def test_grouped_card_delivers_model_summaries_and_all_rk11_statuses(monkeypatch
     ]
     assert rk11['metricDetails'][1]['amount'] == 6.0 and rk11['metricDetails'][1]['energy'] == 3.0
     assert rk11['metricDetails'][3]['energy'] is None
+
+
+def test_coverage_group_keeps_a_rule_summary_when_the_model_summary_is_rejected(monkeypatch):
+    from bi_agent.cockpit import opportunity_v2
+    from bi_agent.cockpit.delivery import project_card
+    from bi_agent.cockpit.page_cache import compact_analysis
+    from bi_agent.cockpit.section_summary import summarize_risk_groups
+
+    bands = _stage_bands(R12=4, R13=2, R15=1)
+    data = _data(opportunities=[_opportunity()], allOpportunities=[_opportunity()],
+                 stageBands=bands, stageBandStatus='ok',
+                 queryCatalog=[dict(executionId='stage-bands', metricCodes=list(bands))])
+    monkeypatch.setattr(opportunity_v2, 'collect', lambda *args, **kwargs: data)
+    calls = []
+
+    def model(payload):
+        calls.append(payload)
+        # The coverage summary invents 9999 both times; conversion passes first time.
+        return {'summaries': {'商机覆盖风险': '预测缺口约 9999 亿元。',
+                              '商机转化风险': '商机获取阶段有 2 条商机达到超期高档。'}}
+
+    card = build_card('2026', measurement_date='2026-11-11', judge=_judge_no,
+                      summarize_groups=lambda groups: summarize_risk_groups(groups, call_model=model))
+    result = compact_analysis(project_card(card, 'opportunity-risk'))['result']
+    findings = {finding['id']: finding for finding in result['findings']}
+    groups = {group['category']: group for group in result['riskGroups']}
+    coverage, conversion = groups['商机覆盖风险'], groups['商机转化风险']
+    assert conversion['summary'] == '商机获取阶段有 2 条商机达到超期高档。'
+    assert conversion['summarySource'] == 'model'
+    assert coverage['summarySource'] == 'rule'
+    assert coverage['summary'].startswith(f"本类共 {len(coverage['findingIds'])} 项风险：")
+    assert '9999' not in coverage['summary']
+    for fid in coverage['findingIds']:
+        assert findings[fid]['riskLevel'] in coverage['summary']
+    assert len(calls) == 2 and set(calls[1]['groups']) == {'商机覆盖风险'}
+    assert '9999' in calls[1]['validationFeedback']['issues']['商机覆盖风险']

@@ -20,7 +20,7 @@ cannot replace the coverage-note card.
 from __future__ import annotations
 
 from collections import defaultdict
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 import contextvars
@@ -3466,6 +3466,8 @@ def _allowed_model_numbers(payload):
         variants = {value}
         for digits in (0, 1, 2, 3):
             variants.add(round(value, digits))
+            # Half-up as people write it: float round(12.35, 1) gives 12.3.
+            variants.add(float(Decimal(token).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)))
         if abs(value) <= 1:
             for digits in (0, 1, 2):
                 variants.add(round(value * 100, digits))
@@ -3818,14 +3820,21 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     summaries = {}
     if groups and summarize_groups is not None:
         _report_progress(progress, "summarising", message="模型总结各风险分类")
-        summaries = summarize_groups(groups)
+        summaries = summarize_groups(groups) or {}
     judged["findings"] = [finding for findings in groups.values() for finding in findings]
     judged["riskCodes"] = [finding["riskCode"] for finding in judged["findings"]]
-    judged["riskGroups"] = [
-        dict(category=category, findingIds=[finding["id"] for finding in findings],
-             summary=summaries.get(category, ""))
-        for category, findings in groups.items()
-    ]
+    judged["riskGroups"] = []
+    for category, findings in groups.items():
+        summary, source = summaries.get(category, ""), "model"
+        if not summary and summarize_groups is not None:
+            # A group whose model summary failed validation still gets one:
+            # the rule-written list of its own risks, never a missing line.
+            from .section_summary import risk_group_fallback
+            summary, source = risk_group_fallback(findings), "rule"
+        group = dict(category=category, findingIds=[finding["id"] for finding in findings], summary=summary)
+        if summary:
+            group["summarySource"] = source
+        judged["riskGroups"].append(group)
     fetched_at = time.time()
     result = evaluated["result"]
     result.update(judged)
