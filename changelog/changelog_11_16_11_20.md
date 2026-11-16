@@ -184,6 +184,19 @@
   全部一致；前端 Node 测试 141 项中 139 项通过，2 项为基线失败。已发布的共同分析卡片需重新分析后才按新分组展示。
   未在浏览器中实际查看。
 
+### 2026-11-16 商机获取 · 销售额口径明细：根因挂在风险下，隐藏建议
+
+- 风险与根因改为一对多展示：每条风险下增加可展开的「N 项根因」列表，列出与该风险关联的全部根因（同一根因关联多条风险时
+  在每条风险下都出现），根因保留环节、名称、描述、模型推理标注与证据；不再单独展示【原因】分区，也不再显示
+  「风险N—原因M」对应关系文字。
+- 建议暂时隐藏：建议分区、底部「建议 N 验收」行与建议库统计均不显示（后端仍生成，便于恢复）。
+- 仅作用于该卡片（`opportunity-risk` 的 `causesUnderRisks: true`、`showRecommendations: false`）；订单、发货等其他
+  环节卡片版式不变。风险与根因的证据（识别的规则、取数 SQL）抽为共用组件 `StageTraceDetails`，三处展示一致。
+- 主要文件：`bi_agent/web/static/cockpit/insight-components/{shared.js,opportunity-risk/index.js}`、
+  `bi_agent/web/static/cockpit/cockpit.css`、`tests/cockpit_sales_shipment_issues.test.mjs`。
+- 验证：前端 Node 测试 142 项中 140 项通过（2 项为基线失败）；读取前端组件的 Python 测试 50 项通过，3 项为既有失败。
+  已发布卡片无需重新分析即按新版式展示。未在浏览器中实际查看。
+
 ## 补齐说明
 
 - 2026-11-16 补记：`11-09` 至 `11-13` 的周文件此前缺失，已按 Git 记录新建

@@ -71,6 +71,10 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .stage-risk-analysis__acceptance,.stage-risk-analysis__detail,.stage-risk-analysis__evidence{overflow-wrap:anywhere}
 .stage-risk-analysis__ontology{margin-top:4px;line-height:20px;overflow-wrap:anywhere}
 .stage-risk-analysis__trace{margin-top:4px}
+.stage-risk-analysis__risk-causes{margin-top:4px}
+.stage-risk-analysis__risk-causes-summary{width:max-content;max-width:100%;color:var(--cockpit-primary);cursor:pointer;font-size:12px;line-height:20px}
+.stage-risk-analysis__risk-causes[open]>.stage-risk-analysis__risk-causes-summary{margin-bottom:4px}
+.stage-risk-analysis__risk-cause{margin:0 0 6px;padding:6px 0 0 12px;border-left:2px solid var(--cockpit-warning)}
 .stage-risk-analysis__trace-summary{width:max-content;max-width:100%;color:var(--cockpit-primary);cursor:pointer;font-size:12px;line-height:20px}
 .stage-risk-analysis__trace-body{margin:4px 0 0 8px;padding-left:10px;border-left:2px solid var(--cockpit-background);color:var(--cockpit-text-help);font-size:12px;line-height:20px}
 .stage-risk-analysis__trace-title{margin-top:6px;color:var(--cockpit-primary);font-weight:600}

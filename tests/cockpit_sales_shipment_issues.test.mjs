@@ -30,7 +30,7 @@ test('the combined card is titled 销售额与出货量共同分析 and groups p
 test('problem-only cards hide cause, advice and their judgement groups', () => {
   assert.match(shared, /const showCauses = options\.showCauses !== false/);
   assert.match(shared, /const showRecommendations = options\.showRecommendations !== false/);
-  assert.match(shared, /v-if="showCauses && analysisDimensions\.length"/);
+  assert.match(shared, /v-if="showCauses && !causesUnderRisks && analysisDimensions\.length"/);
   assert.match(shared, /v-if="showRecommendations && recommendations\.length"/);
   // Evidence lists only the rule and the SQL; the matched ontology is gone.
   assert.match(shared, /识别的规则/);
@@ -68,6 +68,25 @@ test('combined analysis uses the prototype typography and divider', async () => 
   assert.match(css, /color:\s*var\(--cockpit-text,\s*rgba\(0,\s*0,\s*0,\s*\.85\)\)/);
   assert.match(css, /\.sales-shipment-issues__num\s*\{[^}]*color:\s*var\(--cockpit-primary,\s*#165dff\)/s);
   assert.match(css, /\.sales-shipment-issues__num\s*\{[^}]*font-weight:\s*600/s);
+});
+
+test('the 商机获取 card nests each risk\'s causes under it and hides advice', () => {
+  // One risk → many causes: an expandable list under every risk row.
+  assert.match(opportunity, /causesUnderRisks: true/);
+  assert.match(opportunity, /showRecommendations: false/);
+  assert.match(shared, /<details v-if="causesUnderRisks && causesFor\(finding\)\.length" class="stage-risk-analysis__risk-causes">/);
+  assert.match(shared, /\{\{ causesFor\(finding\)\.length \}\} 项根因/);
+  assert.match(shared, /v-for="\(dimension, causeIndex\) in causesFor\(finding\)"/);
+  // A cause shared by two risks is listed under both.
+  assert.match(shared, /for \(const id of new Set\(dimension\.findingIds \|\| \[\]\)\)/);
+  // The nested list carries no "风险N—原因M" cross reference.
+  const nested = shared.slice(shared.indexOf('stage-risk-analysis__risk-causes"'), shared.indexOf('</details>', shared.indexOf('stage-risk-analysis__risk-causes"')));
+  assert.doesNotMatch(nested, /riskLinks/);
+  // Hidden advice also drops its acceptance lines from the footer.
+  assert.match(shared, /in \(showRecommendations \? openRecommendations : \[\]\)/);
+  // Risk and cause evidence share one component.
+  assert.equal((shared.match(/<trace-details /g) || []).length, 3);
+  assert.match(shared, /name: 'StageTraceDetails'/);
 });
 
 test('the 商机获取 card shows its rows only, without per-section summaries', () => {

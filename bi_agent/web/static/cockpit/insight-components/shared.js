@@ -13,6 +13,61 @@ const NumberText = Vue.defineComponent({
   template: `<template v-for="(part, index) in parts" :key="index"><span v-if="part.num" class="stage-risk-analysis__num">{{ part.text }}</span><template v-else>{{ part.text }}</template></template>`,
 })
 
+// Rule and SQL evidence of one risk or cause, collapsed under the row.
+const TraceDetails = Vue.defineComponent({
+  name: 'StageTraceDetails',
+  props: {trace: {type: Object, default: null}, count: {type: Number, default: 0},
+    durationText: {type: Function, required: true}, queryColumns: {type: Function, required: true},
+    cellText: {type: Function, required: true}},
+  template: `
+<details v-if="trace && (trace.rules.length || trace.sql.length)" class="stage-risk-analysis__trace">
+  <summary class="stage-risk-analysis__trace-summary">{{ count }} 条证据</summary>
+  <div class="stage-risk-analysis__trace-body">
+    <div class="stage-risk-analysis__trace-title">识别的规则</div>
+    <div v-for="rule in trace.rules" :key="rule.code" class="stage-risk-analysis__trace-line">
+      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
+    </div>
+    <template v-if="trace.sql.length">
+      <div class="stage-risk-analysis__trace-title">取数 SQL</div>
+      <details v-for="query in trace.sql" :key="query.executionId || query.label" class="stage-risk-analysis__trace-query">
+        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行 · {{ durationText(query) }}</summary>
+        <div class="stage-risk-analysis__trace-meta">
+          <span>执行ID：{{ query.executionId || '—' }}</span>
+          <span>执行时间：{{ query.startedAt || '—' }}</span>
+          <span>耗时：{{ durationText(query) }}</span>
+          <span>数据源：{{ query.source || 'customer PostgreSQL' }} · {{ query.database || '—' }} / {{ query.schema || '—' }}<template v-if="query.host"> @ {{ query.host }}<template v-if="query.port">:{{ query.port }}</template></template></span>
+          <span>结果指纹：{{ (query.resultHash || '').slice(0,16) || '—' }}</span>
+          <span v-if="query.truncated">结果被截断（命中行数上限）</span>
+          <span v-else>未截断</span>
+        </div>
+        <pre>{{ query.sql }}</pre>
+        <div v-if="query.params && query.params.length" class="stage-risk-analysis__trace-params">参数：{{ JSON.stringify(query.params) }}</div>
+        <div v-if="query.aggregation" class="stage-risk-analysis__trace-note">汇总口径：{{ query.aggregation }}</div>
+        <div v-if="query.sampleRows && query.sampleRows.length" class="stage-risk-analysis__trace-sample">
+          <div class="stage-risk-analysis__trace-sample-head">
+            返回数据（{{ query.sampleRowCount }} / {{ query.rowCount }} 行<template v-if="query.sampleTruncated">，仅保存前 {{ query.sampleLimit }} 行</template>）
+          </div>
+          <div class="stage-risk-analysis__trace-table-wrap">
+            <table class="stage-risk-analysis__trace-table">
+              <thead><tr><th v-for="col in queryColumns(query)" :key="col">{{ col }}</th></tr></thead>
+              <tbody>
+                <tr v-for="(row, rowIndex) in query.sampleRows" :key="rowIndex">
+                  <td v-for="col in queryColumns(query)" :key="col">{{ cellText(row[col]) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div v-else-if="query.status === 'ok'" class="stage-risk-analysis__trace-note">该查询返回 0 行。</div>
+        <div v-if="query.error" class="stage-risk-analysis__trace-note stage-risk-analysis__trace-note--error">
+          错误：{{ query.error.code }}<template v-if="query.error.upstreamCode">（{{ query.error.upstreamCode }}）</template><template v-if="query.error.message"> · {{ query.error.message }}</template><template v-if="query.error.diagnosticId"> · 诊断ID {{ query.error.diagnosticId }}</template>
+        </div>
+      </details>
+    </template>
+  </div>
+</details>`,
+})
+
 export function cockpitApiBase() {
   const configured = document.querySelector('meta[name="cockpit-api-base"]')?.content || ''
   if (configured) return configured.replace(/\/$/, '')
@@ -485,7 +540,7 @@ export function createStageRiskComponent(options = {}) {
   return Vue.defineComponent({
     name: options.name || 'StageRiskAnalysis',
     props: insightProps,
-    components: {InsightLoading, TaskOrderDialog, NumberText},
+    components: {InsightLoading, TaskOrderDialog, NumberText, TraceDetails},
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
@@ -508,6 +563,21 @@ export function createStageRiskComponent(options = {}) {
       // the evidence footer.
       const showCauses = options.showCauses !== false
       const showRecommendations = options.showRecommendations !== false
+      // 商机获取 · 销售额口径明细: each risk lists its own causes (one risk → many
+      // causes; a cause shared by two risks is listed under both) instead of a
+      // separate 原因 section with "风险N—原因M" cross references.
+      const causesUnderRisks = Boolean(options.causesUnderRisks)
+      const causesByFinding = computed(() => {
+        const map = new Map()
+        for (const dimension of analysisDimensions.value) {
+          for (const id of new Set(dimension.findingIds || [])) {
+            if (!map.has(id)) map.set(id, [])
+            map.get(id).push(dimension)
+          }
+        }
+        return map
+      })
+      const causesFor = finding => causesByFinding.value.get(finding?.id) || []
       const judgementGroups = computed(() => insight.judgementGroups.value
         .filter(group => group.kind === 'risks'
           || (group.kind === 'causes' && showCauses)
@@ -537,6 +607,7 @@ export function createStageRiskComponent(options = {}) {
       const showOverallSummary = Boolean(options.showOverallSummary)
       return { ...insight, ...taskOrder, displayStage, headTitle, primaryLabel, judgementGroups, analysisDimensions,
                riskGroups, metricStatus, showOverallSummary, showSectionSummaries, showCauses, showRecommendations,
+               causesUnderRisks, causesFor,
                plain: stripOntologyCodes }
     },
     template: `
@@ -570,50 +641,14 @@ export function createStageRiskComponent(options = {}) {
                     · 预测电量 <number-text :text="metric.energy == null ? '—' : Number(metric.energy).toFixed(2) + ' GWh'" />
                   </li>
                 </ul>
-                <details v-if="traces[finding.id] && (traces[finding.id].rules.length || traces[finding.id].sql.length)" class="stage-risk-analysis__trace">
-                  <summary class="stage-risk-analysis__trace-summary">{{ distinctEvidenceCount(finding) }} 条证据</summary>
-                  <div class="stage-risk-analysis__trace-body">
-                    <div class="stage-risk-analysis__trace-title">识别的规则</div>
-                    <div v-for="rule in traces[finding.id].rules" :key="rule.code" class="stage-risk-analysis__trace-line">
-                      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
+                <trace-details :trace="traces[finding.id]" :count="distinctEvidenceCount(finding)" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
+                <details v-if="causesUnderRisks && causesFor(finding).length" class="stage-risk-analysis__risk-causes">
+                  <summary class="stage-risk-analysis__risk-causes-summary">{{ causesFor(finding).length }} 项根因</summary>
+                  <div v-for="(dimension, causeIndex) in causesFor(finding)" :key="dimension.id" class="stage-risk-analysis__cause stage-risk-analysis__risk-cause">
+                    <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">根因{{ causeIndex + 1 }}</span>
+                    <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : plain(dimension.title) }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ plain(dimension.missingEvidence.join('；')) }}</small>
+                      <trace-details :trace="traces[dimension.id]" :count="evidenceFor(dimension).length" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
                     </div>
-                    <template v-if="traces[finding.id].sql.length">
-                      <div class="stage-risk-analysis__trace-title">取数 SQL</div>
-                      <details v-for="query in traces[finding.id].sql" :key="query.executionId || query.label" class="stage-risk-analysis__trace-query">
-                        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行 · {{ durationText(query) }}</summary>
-                        <div class="stage-risk-analysis__trace-meta">
-                          <span>执行ID：{{ query.executionId || '—' }}</span>
-                          <span>执行时间：{{ query.startedAt || '—' }}</span>
-                          <span>耗时：{{ durationText(query) }}</span>
-                          <span>数据源：{{ query.source || 'customer PostgreSQL' }} · {{ query.database || '—' }} / {{ query.schema || '—' }}<template v-if="query.host"> @ {{ query.host }}<template v-if="query.port">:{{ query.port }}</template></template></span>
-                          <span>结果指纹：{{ (query.resultHash || '').slice(0,16) || '—' }}</span>
-                          <span v-if="query.truncated">结果被截断（命中行数上限）</span>
-                          <span v-else>未截断</span>
-                        </div>
-                        <pre>{{ query.sql }}</pre>
-                        <div v-if="query.params && query.params.length" class="stage-risk-analysis__trace-params">参数：{{ JSON.stringify(query.params) }}</div>
-                        <div v-if="query.aggregation" class="stage-risk-analysis__trace-note">汇总口径：{{ query.aggregation }}</div>
-                        <div v-if="query.sampleRows && query.sampleRows.length" class="stage-risk-analysis__trace-sample">
-                          <div class="stage-risk-analysis__trace-sample-head">
-                            返回数据（{{ query.sampleRowCount }} / {{ query.rowCount }} 行<template v-if="query.sampleTruncated">，仅保存前 {{ query.sampleLimit }} 行</template>）
-                          </div>
-                          <div class="stage-risk-analysis__trace-table-wrap">
-                            <table class="stage-risk-analysis__trace-table">
-                              <thead><tr><th v-for="col in queryColumns(query)" :key="col">{{ col }}</th></tr></thead>
-                              <tbody>
-                                <tr v-for="(row, rowIndex) in query.sampleRows" :key="rowIndex">
-                                  <td v-for="col in queryColumns(query)" :key="col">{{ cellText(row[col]) }}</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                        <div v-else-if="query.status === 'ok'" class="stage-risk-analysis__trace-note">该查询返回 0 行。</div>
-                        <div v-if="query.error" class="stage-risk-analysis__trace-note stage-risk-analysis__trace-note--error">
-                          错误：{{ query.error.code }}<template v-if="query.error.upstreamCode">（{{ query.error.upstreamCode }}）</template><template v-if="query.error.message"> · {{ query.error.message }}</template><template v-if="query.error.diagnosticId"> · 诊断ID {{ query.error.diagnosticId }}</template>
-                        </div>
-                      </details>
-                    </template>
                   </div>
                 </details>
               </div>
@@ -621,7 +656,7 @@ export function createStageRiskComponent(options = {}) {
             </div>
           </article>
 
-          <article v-if="showCauses && analysisDimensions.length" class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
+          <article v-if="showCauses && !causesUnderRisks && analysisDimensions.length" class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
               按 {{ analysisDimensions.length }} 个业务环节展开原因分析
@@ -631,52 +666,7 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
               <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : plain(dimension.title) }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ plain(dimension.missingEvidence.join('；')) }}</small>
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
-                <details v-if="traces[dimension.id] && (traces[dimension.id].rules.length || traces[dimension.id].sql.length)" class="stage-risk-analysis__trace">
-                  <summary class="stage-risk-analysis__trace-summary">{{ evidenceFor(dimension).length }} 条证据</summary>
-                  <div class="stage-risk-analysis__trace-body">
-                    <div class="stage-risk-analysis__trace-title">识别的规则</div>
-                    <div v-for="rule in traces[dimension.id].rules" :key="rule.code" class="stage-risk-analysis__trace-line">
-                      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
-                    </div>
-                    <template v-if="traces[dimension.id].sql.length">
-                      <div class="stage-risk-analysis__trace-title">取数 SQL</div>
-                      <details v-for="query in traces[dimension.id].sql" :key="query.executionId || query.label" class="stage-risk-analysis__trace-query">
-                        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行 · {{ durationText(query) }}</summary>
-                        <div class="stage-risk-analysis__trace-meta">
-                          <span>执行ID：{{ query.executionId || '—' }}</span>
-                          <span>执行时间：{{ query.startedAt || '—' }}</span>
-                          <span>耗时：{{ durationText(query) }}</span>
-                          <span>数据源：{{ query.source || 'customer PostgreSQL' }} · {{ query.database || '—' }} / {{ query.schema || '—' }}<template v-if="query.host"> @ {{ query.host }}<template v-if="query.port">:{{ query.port }}</template></template></span>
-                          <span>结果指纹：{{ (query.resultHash || '').slice(0,16) || '—' }}</span>
-                          <span v-if="query.truncated">结果被截断（命中行数上限）</span>
-                          <span v-else>未截断</span>
-                        </div>
-                        <pre>{{ query.sql }}</pre>
-                        <div v-if="query.params && query.params.length" class="stage-risk-analysis__trace-params">参数：{{ JSON.stringify(query.params) }}</div>
-                        <div v-if="query.aggregation" class="stage-risk-analysis__trace-note">汇总口径：{{ query.aggregation }}</div>
-                        <div v-if="query.sampleRows && query.sampleRows.length" class="stage-risk-analysis__trace-sample">
-                          <div class="stage-risk-analysis__trace-sample-head">
-                            返回数据（{{ query.sampleRowCount }} / {{ query.rowCount }} 行<template v-if="query.sampleTruncated">，仅保存前 {{ query.sampleLimit }} 行</template>）
-                          </div>
-                          <div class="stage-risk-analysis__trace-table-wrap">
-                            <table class="stage-risk-analysis__trace-table">
-                              <thead><tr><th v-for="col in queryColumns(query)" :key="col">{{ col }}</th></tr></thead>
-                              <tbody>
-                                <tr v-for="(row, rowIndex) in query.sampleRows" :key="rowIndex">
-                                  <td v-for="col in queryColumns(query)" :key="col">{{ cellText(row[col]) }}</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                        <div v-else-if="query.status === 'ok'" class="stage-risk-analysis__trace-note">该查询返回 0 行。</div>
-                        <div v-if="query.error" class="stage-risk-analysis__trace-note stage-risk-analysis__trace-note--error">
-                          错误：{{ query.error.code }}<template v-if="query.error.upstreamCode">（{{ query.error.upstreamCode }}）</template><template v-if="query.error.message"> · {{ query.error.message }}</template><template v-if="query.error.diagnosticId"> · 诊断ID {{ query.error.diagnosticId }}</template>
-                        </div>
-                      </details>
-                    </template>
-                  </div>
-                </details>
+                <trace-details :trace="traces[dimension.id]" :count="evidenceFor(dimension).length" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
               </div>
             </div>
           </article>
@@ -717,7 +707,7 @@ export function createStageRiskComponent(options = {}) {
           </article>
             <details class="stage-risk-analysis__foot">
               <summary>数据范围、验收与 {{ limitations.length }} 项限制</summary>
-            <div v-for="(item, index) in openRecommendations" :key="'accept-' + item.id" class="stage-risk-analysis__acceptance">
+            <div v-for="(item, index) in (showRecommendations ? openRecommendations : [])" :key="'accept-' + item.id" class="stage-risk-analysis__acceptance">
                 建议 {{ index + 1 }} 验收：<number-text :text="item.acceptance" /><template v-if="hasRecommendationDetail(item)">；补充：<number-text :text="recommendationDetail(item)" /></template>
               </div>
               <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
