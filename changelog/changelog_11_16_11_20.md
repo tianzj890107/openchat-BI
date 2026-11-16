@@ -142,6 +142,12 @@
   `tests/{cockpit_stage_risk_format,cockpit_sales_shipment_issues}.test.mjs`。
 - 验证：前端 Node 测试 139 项中 137 项通过，失败的 2 项为改动前即存在的基线失败；读取前端组件的 Python 测试
   49 项通过，3 项为既有失败（CRLF 哈希 2 项、`test_delivered_insight_slots…` 1 项）。未在浏览器中实际查看。
+- 2026-11-16 修订（浏览器报错 `does not provide an export named 'stripOntologyCodes'`）：`shared.js` 以相对路径
+  静态导入 `./number-highlight.js`、`./task-order/*.js`，这些子模块 URL 不带 `?v=` 版本号，而 `/static` 原先
+  不返回 `Cache-Control`，浏览器按启发式缓存复用了旧版子模块。`app.py` 的 `/static` 挂载改为
+  `RevalidatingStaticFiles`：不带查询串的静态请求返回 `Cache-Control: no-cache`（按 ETag 校验，未变化时 304），
+  带 `?v=` 的版本化 URL 行为不变；主服务与客户入口共用。新增 `tests/test_static_revalidation.py`。
+  已打开旧页面的浏览器需强制刷新一次（Ctrl+F5）。
 
 ## 补齐说明
 

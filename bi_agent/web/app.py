@@ -1358,7 +1358,24 @@ def workbench() -> HTMLResponse:
     return _workbench_response()
 
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+class RevalidatingStaticFiles(StaticFiles):
+    """Static files that browsers must revalidate unless the URL is versioned.
+
+    ES modules import siblings by relative path (``./number-highlight.js``),
+    which drops the page's ``?v=`` version.  Without ``Cache-Control`` browsers
+    apply heuristic freshness and can pair a new ``shared.js`` with an old
+    sibling ("does not provide an export named ...").  ``no-cache`` keeps the
+    copy but checks the ETag first, so an unchanged file costs one 304.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if not scope.get("query_string") and "cache-control" not in response.headers:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", RevalidatingStaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/api/meta")
