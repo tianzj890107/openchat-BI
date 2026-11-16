@@ -98,6 +98,28 @@
 - 验证：tar 大小与 SHA256 和 `SHA256SUMS` 一致，`docker load` 与容器内 import 正常；
   仅打包，未部署、未重启服务、未改动服务器数据。
 
+### 2026-11-15 驾驶舱页头：右上角“当前日期 25年10月31日”，月度期间收窄到 1–10 月
+
+- 全部驾驶舱页面右上角、日期筛选器右侧新增“当前日期 25年10月31日”标签。日期由服务端
+  `snapshot_date()`（默认 `2025-10-31`，可用 `COCKPIT_SNAPSHOT_DATE` 覆盖）注入
+  `<meta name="cockpit-snapshot-date">`，不读浏览器时钟；页头组件没有插槽，标签通过
+  `teleport` 挂入 `.pro-bi-dashboard-header__extra`，看板重挂载后自动重新定位。
+- 原日期筛选位置与默认值（`2025-10`）不变：年度粒度仍只可选 `2025`；月度粒度由 2025 年 12 个月
+  改为 `2025-01`～`2025-10`（`cockpit.js` 的 `PERIOD_FILTER_LAST_MONTH = 10`，交付元数据
+  `components.json` / `runtime.json` 同步移除 11、12 月选项，`iba-demo-1021/source.json` 中
+  `components.json` 的 SHA256 同步为新内容（LF 规范化）的值）。
+- 静态站点构建 `scripts/build_cockpit_site.py` 同步替换新占位符 `@@COCKPIT_SNAPSHOT_DATE@@`。
+- 主要文件：`bi_agent/web/app.py`、`bi_agent/web/static/cockpit/{index.html,cockpit.js,cockpit.css}`、
+  `bi_agent/web/static/cockpit/metadata/{iba-demo-1021/components.json,iba-demo-1021/source.json,runtime.json}`、
+  `scripts/build_cockpit_site.py`、
+  `tests/{cockpit_period_filter.test.mjs,test_cockpit_business_year.py,test_cockpit_metadata.py}`。
+- 验证：前端 Node 测试 137 项中 135 项通过，失败的 2 项（`manual card refresh reports analysis duration…`、
+  `history-card loader stays in scope…`）在改动前基线上同样失败；Cockpit Python 套件（WSL，Python 3.11）
+  共 598 项，修复站点构建占位符后剩余 4 项失败均与本改动无关：Windows CRLF 检出下原始字节哈希不一致
+  （`test_vendor_manifest_matches_local_artifacts`、`test_imported_metadata_hashes_and_three_tabs`）、
+  既有失败 `test_delivered_insight_slots_use_live_analysis_instead_of_static_copy`、测试环境缺少 `psycopg`；
+  `git diff --check` 通过。未在浏览器中实际查看页面效果。
+
 ## 补齐说明
 
 - 2026-11-16 补记：`11-09` 至 `11-13` 的周文件此前缺失，已按 Git 记录新建

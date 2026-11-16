@@ -149,7 +149,7 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     ]
 
 
-def test_delivered_filter_defaults_to_2025_10_and_offers_twelve_months():
+def test_delivered_filter_defaults_to_2025_10_and_offers_months_through_october():
     payload = runtime_payload()
     filter_component = next(
         component for component in payload["dashboard"]["components"]
@@ -164,7 +164,7 @@ def test_delivered_filter_defaults_to_2025_10_and_offers_twelve_months():
     mock = config["mockData"]
     assert mock["filters"] == [{"id": "YWLN_D044", "name": "日期", "type": "date"}]
     assert mock["options"] == [
-        {"label": f"2025-{month:02d}", "value": f"2025-{month:02d}"} for month in range(1, 13)
+        {"label": f"2025-{month:02d}", "value": f"2025-{month:02d}"} for month in range(1, 11)
     ]
     operations = next(
         component for component in payload["pages"]["operations"]["components"]

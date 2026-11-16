@@ -4583,6 +4583,13 @@ def _cockpit_business_period() -> str:
     return default_period()
 
 
+def _cockpit_snapshot_date() -> str:
+    # Header "当前日期" shows the frozen observation day (2025-10-31 for this
+    # delivery, overridable via COCKPIT_SNAPSHOT_DATE), never the wall clock.
+    from ..cockpit.periods import snapshot_date
+    return snapshot_date().isoformat()
+
+
 def _cockpit_html(page: str) -> HTMLResponse:
     html = (STATIC_DIR / "cockpit" / "index.html").read_text(encoding="utf-8")
     cockpit = STATIC_DIR / "cockpit"
@@ -4610,6 +4617,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
         .replace("@@COCKPIT_PAGE@@", page)
         .replace("@@COCKPIT_VERSION@@", asset_version)
         .replace("@@COCKPIT_BUSINESS_PERIOD@@", _cockpit_business_period())
+        .replace("@@COCKPIT_SNAPSHOT_DATE@@", _cockpit_snapshot_date())
     )
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 

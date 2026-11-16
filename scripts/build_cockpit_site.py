@@ -31,11 +31,12 @@ def build_site(output: Path, root: Path = ROOT):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(p.read_bytes())
     html = (source / 'index.html').read_text()
-    from bi_agent.cockpit.periods import default_period
+    from bi_agent.cockpit.periods import default_period, snapshot_date
     html = (html.replace('@@APP_ROOT_PATH@@', '')
             .replace('@@COCKPIT_PAGE@@', 'overview')
             .replace('@@COCKPIT_VERSION@@', version)
-            .replace('@@COCKPIT_BUSINESS_PERIOD@@', default_period()))
+            .replace('@@COCKPIT_BUSINESS_PERIOD@@', default_period())
+            .replace('@@COCKPIT_SNAPSHOT_DATE@@', snapshot_date().isoformat()))
     html = html.replace('/static/cockpit/', prefix + '/').replace('content="/static/cockpit"', f'content="{prefix}"')
     if '@@' in html:
         raise ValueError('Unresolved HTML template placeholder')

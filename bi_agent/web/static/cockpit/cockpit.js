@@ -45,8 +45,19 @@
 
   const PERIOD_FILTER_ID = 'YWLN_D044';
   const PERIOD_FILTER_YEAR = '2025';
-  const PERIOD_FILTER_MONTHS = Array.from({length: 12},
+  // The board is frozen to the 2025-10-31 snapshot, so monthly grain only
+  // offers January through October; November and December have no data yet.
+  const PERIOD_FILTER_LAST_MONTH = 10;
+  const PERIOD_FILTER_MONTHS = Array.from({length: PERIOD_FILTER_LAST_MONTH},
     (_, index) => `${PERIOD_FILTER_YEAR}-${String(index + 1).padStart(2, '0')}`);
+  // Header "today" label shows the frozen snapshot day, never the browser clock.
+  const SNAPSHOT_DATE = (() => {
+    const raw = document.querySelector('meta[name="cockpit-snapshot-date"]')?.content || '';
+    const match = raw.match(/^(20\d{2})-(\d{2})-(\d{2})$/);
+    return match ? match : ['2025-10-31', '2025', '10', '31'];
+  })();
+  const snapshotDateLabel = `${SNAPSHOT_DATE[1].slice(2)}年${Number(SNAPSHOT_DATE[2])}月${Number(SNAPSHOT_DATE[3])}日`;
+  const snapshotDateIso = SNAPSHOT_DATE[0];
 
   function periodGrain(value) {
     let raw = value;
@@ -169,7 +180,7 @@
     return;
   }
 
-  const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, onErrorCaptured, nextTick, shallowRef, markRaw, getCurrentInstance} = window.Vue;
+  const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, onErrorCaptured, nextTick, watch, shallowRef, markRaw, getCurrentInstance} = window.Vue;
 
   const dashboardDataMode = ref('ap');
   let liveDataClient = null;
@@ -1063,6 +1074,19 @@
       const liveFailures = new Set();
       const pageTitle = computed(() => PAGES[page.value]?.title || PAGES.overview.title);
       const release = computed(() => runtime.value?.dashboard || null);
+      // The delivered DashboardHeader has no slot, so the snapshot-day label is
+      // teleported into its right-hand extra zone after the date filter.  Board
+      // remounts replace that node, so re-locate it whenever the board changes.
+      const todayTarget = shallowRef(null);
+      let todayTimer = null;
+      function locateTodayTarget(attempt = 0) {
+        clearTimeout(todayTimer);
+        const node = document.querySelector('.cockpit-board > .pro-bi-dashboard .pro-bi-dashboard-header__extra');
+        if (node) { if (todayTarget.value !== node) todayTarget.value = node; return; }
+        todayTarget.value = null;
+        if (attempt < 50) todayTimer = setTimeout(() => locateTodayTarget(attempt + 1), 100);
+      }
+      watch(() => [loading.value, error.value, boardRevision.value, release.value?.id], () => locateTodayTarget(), {flush: 'post'});
       // The legacy shipment task card is a hidden 15-slot compatibility entry.
       // Its user-facing action now lives in shipment-risk-summary, so rendering
       // the compatibility slot would create a second, empty insight card.
@@ -1737,10 +1761,10 @@
         document.getElementById('cockpit-boot')?.remove();
         bootRuntime();
       });
-      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(priorityTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);clearTimeout(todayTimer);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(priorityTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        frozenAnnualMode, frozenAnnual, refreshFrozenAnnual, failureDialog, closeFailureDialog, copyFailureDialog, page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release,
+        frozenAnnualMode, frozenAnnual, refreshFrozenAnnual, failureDialog, closeFailureDialog, copyFailureDialog, page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, snapshotDateLabel, snapshotDateIso, todayTarget, liveError, boardRevision, dashboard: release, release,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };

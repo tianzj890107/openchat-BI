@@ -7,6 +7,7 @@
   <meta name="cockpit-page" content="@@COCKPIT_PAGE@@">
   <meta name="cockpit-version" content="@@COCKPIT_VERSION@@">
   <meta name="cockpit-business-period" content="@@COCKPIT_BUSINESS_PERIOD@@">
+  <meta name="cockpit-snapshot-date" content="@@COCKPIT_SNAPSHOT_DATE@@">
   <meta name="cockpit-assets" content="@@APP_ROOT_PATH@@/static/cockpit">
   <meta name="cockpit-api-base" content="@@APP_ROOT_PATH@@/api/cockpit">
   <title>储能经营风险驾驶舱</title>
@@ -68,6 +69,12 @@
             <cockpit-insight :insight="insight" :page="page" :slot-props="slotProps"></cockpit-insight>
           </template>
         </component>
+        <teleport v-if="todayTarget" :to="todayTarget">
+          <div class="cockpit-today" role="note" aria-label="当前日期">
+            <span class="cockpit-today__label">当前日期</span>
+            <time class="cockpit-today__value" :datetime="snapshotDateIso">{{snapshotDateLabel}}</time>
+          </div>
+        </teleport>
       </div>
 
     </main>

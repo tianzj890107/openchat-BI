@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _html(monkeypatch, **env):
     from bi_agent.web import app as web
-    for key in ('COCKPIT_BUSINESS_YEAR', 'COCKPIT_ACTIVE_PERIOD'):
+    for key in ('COCKPIT_BUSINESS_YEAR', 'COCKPIT_ACTIVE_PERIOD', 'COCKPIT_SNAPSHOT_DATE'):
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -22,6 +22,12 @@ def test_page_carries_the_configured_business_period(monkeypatch):
     assert '@@' not in html
     assert '<meta name="cockpit-business-period" content="2024-10">' in _html(
         monkeypatch, COCKPIT_BUSINESS_YEAR='2024')
+
+
+def test_page_carries_the_frozen_snapshot_date_for_the_header(monkeypatch):
+    assert '<meta name="cockpit-snapshot-date" content="2025-10-31">' in _html(monkeypatch)
+    assert '<meta name="cockpit-snapshot-date" content="2025-09-30">' in _html(
+        monkeypatch, COCKPIT_SNAPSHOT_DATE='2025-09-30')
 
 
 def test_first_paint_period_comes_from_the_server_not_the_browser_clock():
