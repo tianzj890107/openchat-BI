@@ -80,3 +80,18 @@ test('a failed first request still consumes the handoff, so retry keeps the sess
   assert.equal(bodies[0][HANDOFF_FIELD], 'handoff-1');
   assert.equal(bodies[1][HANDOFF_FIELD], undefined, 'the retry reuses the accepted session');
 });
+
+test('the welcome suggestions cannot be painted over the composer', async () => {
+  const css = await read('../frontend/src/workbench.css');
+  const block = css.slice(css.indexOf('body.pro-ui-workbench-body .pro-ui-empty-layer {'));
+  const rule = block.slice(0, block.indexOf('}'));
+  assert.doesNotMatch(rule, /position:\s*absolute/);
+  assert.match(rule, /overflow-y:\s*auto/);
+  assert.match(rule, /flex:\s*1 1 auto/);
+});
+
+test('the handed-over clause reaches the visible controlled composer', async () => {
+  const handoff = await read('../bi_agent/web/static/analysis360-handoff.mjs');
+  assert.match(handoff, /bi-composer-prefill/);
+  assert.match(handoff, /CustomEvent\(\"bi-composer-prefill\"/);
+});

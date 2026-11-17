@@ -105,7 +105,14 @@ export async function bootHandoff(window, document) {
   const handoff = await response.json();
   window.fetch = withHandoff(withAnalysis360Routes(window.fetch.bind(window)), handoffId);
   const { input, button } = await waitForWorkbench(window, document);
-  input.value = handoff.prompt || "深度分析";
+  const text = handoff.prompt || "深度分析";
+  // The visible ProUiComposer keeps its own controlled value: a legacy DOM
+  // write alone leaves the visible box empty.  Publish the prefill event it
+  // listens to, and keep the legacy input in sync for older shells.
+  window.dispatchEvent(new window.CustomEvent("bi-composer-prefill", {
+    detail: { text, source: "analysis360" },
+  }));
+  input.value = text;
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
   if (handoffSendMode(url.search) === "auto") button.click();
   return true;

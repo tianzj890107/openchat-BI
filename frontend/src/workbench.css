@@ -7122,9 +7122,16 @@ body.pro-ui-workbench-body .chat-pane {
 }
 
 body.pro-ui-workbench-body .pro-ui-empty-layer {
-  position: absolute;
-  inset: 52px 0 clamp(130px, 22vh, 200px);
-  z-index: 2;
+  /* In-flow, scrollable content area: the welcome cards can never be painted
+   * over the composer, and long suggestion lists scroll inside the column
+   * instead of being pushed behind the input. */
+  position: static;
+  inset: auto;
+  z-index: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: clamp(8px, 3vh, 28px) 0;
   display: flex;
   align-items: center;
   justify-content: center;
