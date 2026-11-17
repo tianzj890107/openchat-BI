@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import { handoffSendMode } from '../bi_agent/web/static/analysis360-handoff.mjs';
-import { isComposerSendKey, takeComposerText } from '../frontend/src/composerInput.js';
+import { isComposerSendKey, takeComposerText, shouldPersistConversation } from '../frontend/src/composerInput.js';
 
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 
@@ -54,4 +54,29 @@ test('the shipment cause breakdown exposes the same entry on its cause groups', 
   assert.match(component, /openCauseDeepAnalysis/);
   assert.match(component, /class="shipment-cause-breakdown__deep"/);
   assert.match(component, /DeepAnalysisDialog/);
+});
+
+test('the root-cause embed never writes the temporary conversation into 最近', async () => {
+  assert.equal(shouldPersistConversation({embed: 'rootcause'}), false);
+  assert.equal(shouldPersistConversation({embed: ''}), true);
+  assert.equal(shouldPersistConversation({}), true);
+  const runtime = await read('../frontend/src/runtime.js');
+  assert.match(runtime, /shouldPersistConversation\(/);
+  assert.match(runtime, /function saveCurrentConversation\(options = \{\}\) \{[\s\S]{0,400}?shouldPersistConversation\(/);
+});
+
+test('a failed first request still consumes the handoff, so retry keeps the session', async () => {
+  const { withHandoff, HANDOFF_FIELD } = await import('../bi_agent/web/static/analysis360-handoff.mjs');
+  const bodies = [];
+  const fetchImpl = async (url, init) => {
+    bodies.push(JSON.parse(init.body));
+    throw new Error('stream interrupted');
+  };
+  const wrapped = withHandoff(fetchImpl, 'handoff-1');
+  await wrapped('/app/api/chat', {method: 'POST', body: JSON.stringify({message: 'q1', session_id: 's1'})})
+    .catch(() => {});
+  await wrapped('/app/api/chat', {method: 'POST', body: JSON.stringify({message: 'retry', session_id: 's1'})})
+    .catch(() => {});
+  assert.equal(bodies[0][HANDOFF_FIELD], 'handoff-1');
+  assert.equal(bodies[1][HANDOFF_FIELD], undefined, 'the retry reuses the accepted session');
 });

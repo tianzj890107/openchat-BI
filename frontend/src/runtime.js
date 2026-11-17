@@ -13,7 +13,7 @@
  * SSE event shape is identical across modes; only the endpoints differ.
  * ===================================================================== */
 
-import {isComposerSendKey, takeComposerText} from "./composerInput.js";
+import {isComposerSendKey, shouldPersistConversation, takeComposerText} from "./composerInput.js";
 
 
 import {
@@ -1343,6 +1343,10 @@ export function bootWorkbenchRuntime() {
   }
 
   function saveCurrentConversation(options = {}) {
+    // Embedded root-cause analysis is temporary: no 最近 entry, no saved
+    // conversation, so opening/closing/switching causes cannot touch history.
+    const embedMode = new URLSearchParams(window.location.search).get("embed") || "";
+    if (!shouldPersistConversation({embed: embedMode})) return;
     const mode = state.mode;
     const queued = enqueueConversationSave(mode, () => saveCurrentConversationNow(mode, options));
     pendingConversationSave = queued;

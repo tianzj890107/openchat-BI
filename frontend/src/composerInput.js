@@ -18,3 +18,9 @@ export function isComposerSendKey(event) {
   if (event.isComposing || event.keyCode === 229 || event.which === 229) return false
   return true
 }
+
+// The root-cause dialog runs an ephemeral analysis session: closing it must not
+// add a conversation to 最近 or write one through the general save path.
+export function shouldPersistConversation({ embed } = {}) {
+  return String(embed ?? "") !== "rootcause";
+}
