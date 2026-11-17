@@ -47,10 +47,14 @@ test('the analysis page loads the handoff module', () => {
   assert.match(index, /html\[data-analysis360="1"\] \.runtime-sidebar-bridge/);
 });
 
-test('cockpit rows no longer render 深度分析 buttons', () => {
-  assert.doesNotMatch(shared, />深度分析<\/button>/);
+test('cockpit renders a 深度分析 entry after each root cause only', () => {
+  // Both cause layouts (nested under a risk and the flat 原因 section) carry it.
+  assert.equal((shared.match(/>深度分析<\/button>/g) || []).length, 2);
+  // Risk rows stay plain: the entry is root-cause specific.
   assert.doesNotMatch(shared, /deepAnalysis\('risk'/);
-  assert.doesNotMatch(shared, /deepAnalysis\('cause'/);
+  assert.match(shared, /openCauseDeepAnalysis\(dimension\)/);
+  // The entry opens the in-place dialog, not the old workbench tab.
+  assert.doesNotMatch(shared, /await openDeepAnalysis\(/);
 });
 
 test('the clause is posted to the server and the page opens with only its id', async () => {

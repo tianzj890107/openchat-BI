@@ -605,9 +605,35 @@ export function createStageRiskComponent(options = {}) {
       // The 共同问题 card opens with its overall summary (rule tally on the
       // ontology path, the whole-card summary on the older path).
       const showOverallSummary = Boolean(options.showOverallSummary)
+      // 深度分析: every root-cause row opens the in-place 360 analysis dialog.
+      // The clause still goes through /api/analysis360/handoff, so the agent
+      // re-anchors it in the 流程360全局本体 instead of the card's ontology.
+      const deepAnalysis = ref(null)
+      const deepAnalysisRoot = computed(() => String(props.slotProps?.apiBase || cockpitApiBase()).replace(/\/api\/cockpit$/, ''))
+      const openCauseDeepAnalysis = dimension => {
+        const result = props.analysis?.result || {}
+        // A cause names the risks it explains; fall back to the finding codes.
+        const linked = [...new Set(dimension.findingIds || [])]
+          .map(id => insight.findings.value.find(finding => finding.id === id)?.riskCode)
+          .filter(Boolean)
+        const clause = (dimension.linkedRisks || []).length ? dimension : {...dimension, linkedRisks: linked}
+        deepAnalysis.value = {
+          item: dimension,
+          payload: deepAnalysisPayload('cause', clause, {
+            period: props.analysis?.period || result.period || props.slotProps?.period || '',
+            measurementDate: result.measurementDate || result.trace?.measurementDate || '',
+            stage: displayStage.value,
+            title: props.slotProps?.title || '',
+            ontology: result.trace?.ontology || result.ontology?.name || '',
+            slot: props.slotProps?.slotId || '',
+            siblings: analysisDimensions.value.filter(other => other !== dimension),
+            facts: insight.facts.value,
+          }),
+        }
+      }
       return { ...insight, ...taskOrder, displayStage, headTitle, primaryLabel, judgementGroups, analysisDimensions,
                riskGroups, metricStatus, showOverallSummary, showSectionSummaries, showCauses, showRecommendations,
-               causesUnderRisks, causesFor,
+               causesUnderRisks, causesFor, deepAnalysis, deepAnalysisRoot, openCauseDeepAnalysis,
                plain: stripOntologyCodes }
     },
     template: `
@@ -648,6 +674,7 @@ export function createStageRiskComponent(options = {}) {
                     <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">根因{{ causeIndex + 1 }}</span>
                     <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : plain(dimension.title) }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">{{ dimension.analysis === 'ai' ? '（AI 分析 · 待核实）' : '（模型推理 · 本体根因未命中，待核实）' }}</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ plain(dimension.missingEvidence.join('；')) }}</small>
                       <trace-details :trace="traces[dimension.id]" :count="evidenceFor(dimension).length" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
+                      <button type="button" class="stage-risk-analysis__deep" title="在对话框中深度分析这条根因" @click="openCauseDeepAnalysis(dimension)">深度分析</button>
                     </div>
                   </div>
                 </details>
@@ -667,6 +694,7 @@ export function createStageRiskComponent(options = {}) {
               <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : plain(dimension.title) }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">{{ dimension.analysis === 'ai' ? '（AI 分析 · 待核实）' : '（模型推理 · 本体根因未命中，待核实）' }}</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ plain(dimension.missingEvidence.join('；')) }}</small>
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
                 <trace-details :trace="traces[dimension.id]" :count="evidenceFor(dimension).length" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
+                <button type="button" class="stage-risk-analysis__deep" title="在对话框中深度分析这条根因" @click="openCauseDeepAnalysis(dimension)">深度分析</button>
               </div>
             </div>
           </article>
@@ -738,6 +766,8 @@ export function createStageRiskComponent(options = {}) {
                              :dispatched="dispatched" @close="closeDialog" @save="saveDraft"
                              @dispatch="dispatchDraft" />
         </template>
+        <deep-analysis-dialog v-if="deepAnalysis" :open="true" :payload="deepAnalysis.payload"
+                              :item="deepAnalysis.item" :root="deepAnalysisRoot" @close="deepAnalysis = null" />
       </section>
     `,
   })
