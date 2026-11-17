@@ -428,6 +428,9 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 /* ---------- CHAT ---------- */
 .chat-scroll {
   flex: 1;
+  /* A flex item defaults to min-height:auto, which lets the transcript push the
+   * column open and stops it from scrolling inside the pane. */
+  min-height: 0;
   overflow-y: auto;
   padding: 18px 22px 8px;
   display: flex;

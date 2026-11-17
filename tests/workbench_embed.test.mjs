@@ -135,3 +135,18 @@ test('the dialog header is one line and the empty layer never grows a blank band
   assert.doesNotMatch(rule, /flex:\s*1 1 auto/);
   assert.match(css, /\.pro-ui-empty-layer:empty\s*\{\s*display:\s*none/);
 });
+
+test('the root-cause header stays on a single line', async () => {
+  const dialog = await read('../bi_agent/web/static/cockpit/insight-components/deep-analysis/dialog.js');
+  assert.match(dialog, /deep-analysis-workbench__context-main"[\s\S]{0,200}?title=/);
+  assert.match(dialog, /white-space:nowrap;overflow:hidden;text-overflow:ellipsis/);
+  assert.doesNotMatch(dialog, /__desc\{margin:0;color:var\(--cockpit-text-secondary/);
+});
+
+test('the transcript column can scroll inside the pane', async () => {
+  const css = await read('../frontend/src/workbench.css');
+  const block = css.slice(css.indexOf('.chat-scroll {'));
+  const rule = block.slice(0, block.indexOf('}'));
+  assert.match(rule, /min-height:\s*0/);
+  assert.match(rule, /overflow-y:\s*auto/);
+});

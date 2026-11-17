@@ -10,9 +10,10 @@ const CSS = `
 .deep-analysis-workbench{display:flex;flex-direction:column;width:min(1680px,100%);height:100%;border-radius:10px;background:var(--cockpit-surface,#fff);color:var(--cockpit-text,#1f2329);box-shadow:0 12px 32px rgba(0,0,0,.24);overflow:hidden}
 .deep-analysis-workbench__context{display:flex;align-items:flex-start;gap:12px;padding:10px 16px;border-bottom:1px solid var(--cockpit-divider,#e5e6eb);background:var(--cockpit-surface-2,#f7f8fa)}
 .deep-analysis-workbench__context-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
-.deep-analysis-workbench__title{margin:0;font-size:14px;line-height:22px}
-.deep-analysis-workbench__name{font-size:13px;line-height:20px;font-weight:600}
-.deep-analysis-workbench__desc{margin:0;color:var(--cockpit-text-secondary,#4e5969);font-size:12px;line-height:19px;overflow-wrap:anywhere;white-space:pre-line;max-height:38px;overflow:auto}
+.deep-analysis-workbench__title{margin:0;display:flex;align-items:baseline;gap:0;min-width:0;font-size:14px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.deep-analysis-workbench__name{font-size:13px;line-height:20px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.deep-analysis-workbench__desc{color:var(--cockpit-text-secondary,#4e5969);font-size:12px;line-height:19px;overflow:hidden;text-overflow:ellipsis}
+.deep-analysis-workbench__meta{color:var(--cockpit-text-help,#8f959e);font-size:12px;line-height:18px;white-space:nowrap;flex:none}
 .deep-analysis-workbench__meta{color:var(--cockpit-text-help,#8f959e);font-size:12px;line-height:18px}
 .deep-analysis-workbench__close{flex:none;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:var(--cockpit-text-help,#8f959e);font-size:20px;line-height:26px;cursor:pointer}
 .deep-analysis-workbench__close:hover{background:var(--cockpit-primary-10,#e8f3ff)}
@@ -156,12 +157,13 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
         <section ref="panel" class="deep-analysis-workbench" role="dialog" aria-modal="true"
                  aria-labelledby="deep-analysis-workbench-title" @keydown="onKeydown">
           <header class="deep-analysis-workbench__context">
-            <div class="deep-analysis-workbench__context-main">
+            <div class="deep-analysis-workbench__context-main"
+                 :title="[itemTitle, item?.description, metaLine].filter(Boolean).join(' · ')">
               <h2 id="deep-analysis-workbench-title" class="deep-analysis-workbench__title">
                 深度分析 · 根因：<span class="deep-analysis-workbench__name">{{ itemTitle }}</span>
+                <template v-if="item?.description"> · <span class="deep-analysis-workbench__desc">{{ item.description }}</span></template>
+                <template v-if="metaLine"> · <span class="deep-analysis-workbench__meta">{{ metaLine }}</span></template>
               </h2>
-              <p v-if="item?.description" class="deep-analysis-workbench__desc">{{ item.description }}</p>
-              <span class="deep-analysis-workbench__meta">{{ metaLine }}</span>
             </div>
             <button type="button" class="deep-analysis-workbench__close" aria-label="关闭深度分析" @click="close">×</button>
           </header>
