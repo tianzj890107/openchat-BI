@@ -16,7 +16,8 @@ export function promptFor(item) {
  * Returns the parsed events plus the trailing partial frame to keep buffering.
  */
 export function splitSSEFrames(buffer) {
-  const frames = String(buffer ?? '').split('\n\n')
+  // Browsers may deliver CRLF frames; both separators must end an event.
+  const frames = String(buffer ?? '').replace(/\r\n/g, '\n').split('\n\n')
   const rest = frames.pop() ?? ''
   const events = []
   for (const frame of frames) {
@@ -146,4 +147,13 @@ export function markdownLite(text) {
   }
   closeList()
   return out.join('')
+}
+
+
+/** True for a bare Enter; Shift+Enter and IME composition keep the newline. */
+export function isSendKey(event) {
+  if (!event || event.key !== 'Enter') return false
+  if (event.shiftKey) return false
+  if (event.isComposing || event.keyCode === 229 || event.which === 229) return false
+  return true
 }

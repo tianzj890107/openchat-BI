@@ -1,11 +1,12 @@
-import {markdownLite, promptFor, reduceStream, splitSSEFrames} from './model.js'
+import {isSendKey, markdownLite, promptFor, reduceStream, splitSSEFrames} from './model.js'
 
 // 深度分析 dialog: each root-cause row of a cockpit card opens this modal and
 // talks to the 360 智能分析 agent in place.  The clause still travels through
-// /api/analysis360/handoff (the agent re-anchors it in the 流程360全局本体), and
-// the answer streams back into the dialog instead of a separate workbench tab.
+// /api/analysis360/handoff (the agent re-anchors it in the 流程360全局本体), the
+// answer streams into the dialog, and later turns reuse the same session.
 
 const STYLE_ID = 'deep-analysis-dialog-style'
+const FOCUSABLE = 'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 const CSS = `
 .deep-analysis-dialog-backdrop{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.45)}
@@ -45,7 +46,6 @@ const CSS = `
 .deep-analysis-dialog__notice{flex:1;color:var(--cockpit-text-help,#8f959e);font-size:12px;line-height:20px}
 .deep-analysis-dialog__send{flex:none;padding:0 16px;height:30px;border:0;border-radius:6px;background:var(--cockpit-primary,#165dff);color:#fff;font-size:13px;cursor:pointer}
 .deep-analysis-dialog__send:disabled{opacity:.5;cursor:default}
-@media (prefers-reduced-motion:reduce){.deep-analysis-dialog__bubble{scroll-behavior:auto}}
 `
 
 function ensureStyle() {
@@ -53,7 +53,7 @@ function ensureStyle() {
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = CSS
-  document.head.appendChild(style)
+  if (document.head && typeof document.head.appendChild === 'function') document.head.appendChild(style)
 }
 
 let sessionSequence = 0
@@ -88,7 +88,7 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
   },
   emits: ['close'],
   setup(props, {emit}) {
-    const {ref, computed, nextTick, watch} = window.Vue
+    const {ref, computed, watch, nextTick, onBeforeUnmount} = window.Vue
     ensureStyle()
     const prompt = ref('')
     const turns = ref([])
@@ -97,16 +97,23 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
     const error = ref('')
     const choices = ref(null)
     const body = ref(null)
+    const panel = ref(null)
     const composer = ref(null)
+    const hasSession = ref(false)
     let controller = null
+    let disposed = false
+    let opener = null
     let sessionId = newSessionId()
     let handoffId = ''
 
     const itemTitle = computed(() => String(props.item?.title || props.item?.causeCode || '根因'))
     const metaLine = computed(() => {
-      const clause = props.payload?.clause || {}
-      const parts = [clause.code, props.payload?.period, props.payload?.measurementDate]
-      return parts.filter(Boolean).join(' · ')
+      const parts = [props.item?.stageLabel, props.payload?.period].filter(Boolean)
+      return parts.join(' · ')
+    })
+    const sendLabel = computed(() => {
+      if (busy.value) return '分析中…'
+      return hasSession.value ? '发送' : '开始深度分析'
     })
 
     function reset() {
@@ -116,22 +123,86 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
       busy.value = false
       error.value = ''
       choices.value = null
+      hasSession.value = false
       sessionId = newSessionId()
       handoffId = ''
+      disposed = false
+      opener = document.activeElement || null
     }
 
-    function close() {
+    function disposeTurn() {
       if (controller) {
         try { controller.abort() } catch (_) { /* already closed */ }
         controller = null
       }
+      busy.value = false
+    }
+
+    function restoreFocus() {
+      const target = opener && opener !== document.activeElement ? opener : null
+      opener = null
+      if (target && typeof target.focus === 'function') {
+        try { target.focus() } catch (_) { /* element gone */ }
+      }
+    }
+
+    function close() {
+      disposed = true
+      disposeTurn()
+      restoreFocus()
       emit('close')
+    }
+
+    function focusComposer() {
+      nextTick(() => {
+        if (disposed) return
+        const node = composer.value
+        if (node && typeof node.focus === 'function') node.focus()
+      })
+    }
+
+    function onKeydown(event) {
+      if (!event) return
+      if (event.key === 'Escape') {
+        event.preventDefault?.()
+        close()
+        return
+      }
+      if (event.key === 'Tab') {
+        trapTab(event)
+        return
+      }
+      if (isSendKey(event)) {
+        event.preventDefault?.()
+        send()
+      }
+    }
+
+    function trapTab(event) {
+      const node = panel.value
+      if (!node || typeof node.querySelectorAll !== 'function') return
+      const focusable = [...node.querySelectorAll(FOCUSABLE)]
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus?.()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus?.()
+      }
     }
 
     function push(userText) {
       turns.value = [...turns.value, {role: 'user', text: userText}]
       live.value = {text: '', activity: ''}
-      if (body.value) body.value.scrollTop = body.value.scrollHeight
+      scrollToEnd()
+    }
+
+    function scrollToEnd() {
+      const node = body.value
+      if (node) node.scrollTop = node.scrollHeight || 0
     }
 
     function settle() {
@@ -142,15 +213,14 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
       busy.value = false
     }
 
-    async function ensureHandoff() {
-      if (handoffId) return handoffId
+    async function requestHandoff() {
+      controller = new AbortController()
       const response = await window.fetch(`${props.root}/api/analysis360/handoff`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(props.payload || {}),
+        body: JSON.stringify(props.payload || {}), signal: controller.signal,
       })
       if (!response.ok) throw new Error((await readDetail(response)) || `深度分析暂不可用（${response.status}）`)
       const {id} = await response.json()
-      handoffId = id
       return id
     }
 
@@ -163,12 +233,13 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
       if (!response.ok) throw new Error((await readDetail(response)) || `深度分析暂不可用（${response.status}）`)
       const state = {text: live.value?.text || '', activity: '', busy: true, error: '', choices: null}
       const apply = event => {
+        if (disposed) return
         Object.assign(state, reduceStream(state, event))
         live.value = {text: state.text, activity: state.activity}
         if (state.choices) choices.value = state.choices
         if (state.error) error.value = state.error
         if (state.busy === false) busy.value = false
-        if (body.value) body.value.scrollTop = body.value.scrollHeight
+        scrollToEnd()
       }
       if (!response.body) {
         apply({type: 'text', text: await response.text()})
@@ -179,18 +250,22 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
       const decoder = new TextDecoder()
       let buffer = ''
       while (true) {
+        if (disposed) {
+          try { await reader.cancel() } catch (_) { /* closed */ }
+          return
+        }
         const {value, done} = await reader.read()
         if (done) break
         buffer += decoder.decode(value, {stream: true})
         const {events, rest} = splitSSEFrames(buffer)
         buffer = rest
         for (const event of events) apply(event)
-        if (state.busy === false && state.choices) {
+        if (state.choices) {
           try { await reader.cancel() } catch (_) { /* already closed */ }
           break
         }
       }
-      if (buffer.trim()) {
+      if (!disposed && buffer.trim()) {
         for (const event of splitSSEFrames(`${buffer}\n\n`).events) apply(event)
       }
     }
@@ -202,107 +277,129 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
       error.value = ''
       choices.value = null
       push(text)
+      const firstTurn = !hasSession.value
       const bodyText = {message: text, visible_user_text: text, session_id: sessionId}
-      // The handoff creates the 360 session; only the first request may carry
-      // it, otherwise the server would replace the session and replay the clause.
-      const firstTurn = !handoffId
       try {
-        if (firstTurn) bodyText.analysis360_handoff = await ensureHandoff()
+        if (firstTurn) {
+          handoffId = await requestHandoff()
+          if (disposed) return
+          bodyText.analysis360_handoff = handoffId
+        }
         await stream('/api/analysis360/chat', bodyText)
-        if (firstTurn) handoffId = ''
+        if (disposed) return
+        if (firstTurn) {
+          hasSession.value = true
+          prompt.value = ''
+        }
       } catch (failure) {
-        if (failure?.name !== 'AbortError') error.value = failure?.message || '深度分析暂不可用'
+        if (!disposed && failure?.name !== 'AbortError') error.value = failure?.message || '深度分析暂不可用'
+        if (firstTurn) handoffId = ''
       } finally {
-        settle()
-        composer.value?.focus()
+        if (!disposed) {
+          settle()
+          focusComposer()
+        }
       }
     }
 
     async function choose(option) {
-      if (busy.value || !choices.value) return
+      if (busy.value || !choices.value || disposed) return
       const ids = [String(option?.id ?? option?.label ?? '')].filter(Boolean)
       const labels = [String(option?.label ?? option?.id ?? '')].filter(Boolean)
       if (!ids.length) return
       choices.value = null
       error.value = ''
-      const text = labels[0] || ids[0]
       settle()
-      turns.value = [...turns.value, {role: 'user', text}]
+      turns.value = [...turns.value, {role: 'user', text: labels[0] || ids[0]}]
       live.value = {text: '', activity: ''}
       busy.value = true
       try {
-        await stream('/api/analysis360/choice',
-          {choice_ids: ids, choice_labels: labels, session_id: sessionId})
+        await stream('/api/analysis360/choice', {choice_ids: ids, choice_labels: labels, session_id: sessionId})
       } catch (failure) {
-        if (failure?.name !== 'AbortError') error.value = failure?.message || '深度分析暂不可用'
+        if (!disposed && failure?.name !== 'AbortError') error.value = failure?.message || '深度分析暂不可用'
       } finally {
-        settle()
+        if (!disposed) {
+          settle()
+          focusComposer()
+        }
       }
     }
 
     watch(() => props.open, open => {
-      if (!open) return
+      if (!open) {
+        disposed = true
+        disposeTurn()
+        return
+      }
       reset()
-      nextTick(() => composer.value?.focus())
+      focusComposer()
     }, {immediate: true})
 
+    onBeforeUnmount(() => {
+      disposed = true
+      disposeTurn()
+    })
+
     return {
-      prompt, turns, live, busy, error, choices, body, composer, itemTitle, metaLine,
-      send, choose, close,
+      prompt, turns, live, busy, error, choices, body, panel, composer,
+      itemTitle, metaLine, sendLabel,
+      send, choose, close, onKeydown,
       rendered: text => markdownLite(text),
     }
   },
   template: `
-    <div v-if="open" class="deep-analysis-dialog-backdrop" @click.self="close">
-      <section class="deep-analysis-dialog" role="dialog" aria-modal="true" aria-labelledby="deep-analysis-dialog-title">
-        <header class="deep-analysis-dialog__head">
-          <div>
-            <h2 id="deep-analysis-dialog-title" class="deep-analysis-dialog__title">深度分析 · 根因</h2>
-            <p class="deep-analysis-dialog__clause">{{ metaLine || '360 智能分析 · 流程360全局本体' }}</p>
+    <teleport to="body">
+      <div v-if="open" class="deep-analysis-dialog-backdrop" @click.self="close">
+        <section ref="panel" class="deep-analysis-dialog" role="dialog" aria-modal="true"
+                 aria-labelledby="deep-analysis-dialog-title" @keydown="onKeydown">
+          <header class="deep-analysis-dialog__head">
+            <div>
+              <h2 id="deep-analysis-dialog-title" class="deep-analysis-dialog__title">深度分析 · 根因</h2>
+              <p class="deep-analysis-dialog__clause">{{ metaLine || '360 智能分析 · 流程360全局本体' }}</p>
+            </div>
+            <button type="button" class="deep-analysis-dialog__close" aria-label="关闭深度分析" @click="close">×</button>
+          </header>
+          <div class="deep-analysis-dialog__context">
+            <span class="deep-analysis-dialog__tag">当前根因</span>
+            <b>{{ itemTitle }}</b>
+            <p v-if="item?.description" class="deep-analysis-dialog__desc">{{ item.description }}</p>
+            <span class="deep-analysis-dialog__meta">{{ metaLine }}</span>
           </div>
-          <button type="button" class="deep-analysis-dialog__close" aria-label="关闭深度分析" @click="close">×</button>
-        </header>
-        <div class="deep-analysis-dialog__context">
-          <span class="deep-analysis-dialog__tag">根因</span>
-          <b>{{ itemTitle }}</b>
-          <p v-if="item?.description" class="deep-analysis-dialog__desc">{{ item.description }}</p>
-          <span class="deep-analysis-dialog__meta">{{ item?.stageLabel || '' }}</span>
-        </div>
-        <div ref="body" class="deep-analysis-dialog__body" aria-live="polite">
-          <p v-if="!turns.length && !live" class="deep-analysis-dialog__hint">
-            点击「开始深度分析」后，360 智能分析会先在全局本体中定位这条根因，再按你的选择下钻取证。
-          </p>
-          <div v-for="(turn, index) in turns" :key="index" class="deep-analysis-dialog__turn" :class="'deep-analysis-dialog__turn--' + turn.role">
-            <div v-if="turn.role === 'assistant'" class="deep-analysis-dialog__bubble" v-html="rendered(turn.text)"></div>
-            <div v-else class="deep-analysis-dialog__bubble">{{ turn.text }}</div>
-          </div>
-          <div v-if="live" class="deep-analysis-dialog__turn deep-analysis-dialog__turn--assistant">
-            <div class="deep-analysis-dialog__bubble" v-html="rendered(live.text)"></div>
-            <div v-if="live.activity" class="deep-analysis-dialog__activity">{{ live.activity }}</div>
-          </div>
-          <div v-if="error" class="deep-analysis-dialog__error" role="alert">{{ error }}</div>
-          <div v-if="choices" class="deep-analysis-dialog__choices">
-            <p>{{ choices.question }}</p>
-            <div class="deep-analysis-dialog__choice-list">
-              <button v-for="option in choices.options" :key="option.id || option.label" type="button"
-                      class="deep-analysis-dialog__choice" :disabled="busy" @click="choose(option)">
-                {{ option.label || option.title || option.id }}
-              </button>
+          <div ref="body" class="deep-analysis-dialog__body" aria-live="polite">
+            <p v-if="!turns.length && !live" class="deep-analysis-dialog__hint">
+              点击「开始深度分析」后，360 智能分析会先在全局本体中定位这条根因，再按你的选择下钻取证。
+            </p>
+            <div v-for="(turn, index) in turns" :key="index" class="deep-analysis-dialog__turn" :class="'deep-analysis-dialog__turn--' + turn.role">
+              <div v-if="turn.role === 'assistant'" class="deep-analysis-dialog__bubble" v-html="rendered(turn.text)"></div>
+              <div v-else class="deep-analysis-dialog__bubble">{{ turn.text }}</div>
+            </div>
+            <div v-if="live" class="deep-analysis-dialog__turn deep-analysis-dialog__turn--assistant">
+              <div class="deep-analysis-dialog__bubble" v-html="rendered(live.text)"></div>
+              <div v-if="live.activity" class="deep-analysis-dialog__activity">{{ live.activity }}</div>
+            </div>
+            <div v-if="error" class="deep-analysis-dialog__error" role="alert">{{ error }}</div>
+            <div v-if="choices" class="deep-analysis-dialog__choices">
+              <p>{{ choices.question }}</p>
+              <div class="deep-analysis-dialog__choice-list">
+                <button v-for="option in choices.options" :key="option.id || option.label" type="button"
+                        class="deep-analysis-dialog__choice" :disabled="busy" @click="choose(option)">
+                  {{ option.label || option.title || option.id }}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-        <footer class="deep-analysis-dialog__foot">
-          <textarea ref="composer" v-model="prompt" class="deep-analysis-dialog__composer" rows="3"
-                    :disabled="busy" aria-label="深度分析提示词"
-                    @keydown.enter.exact.prevent="send"></textarea>
-          <div class="deep-analysis-dialog__actions">
-            <span class="deep-analysis-dialog__notice">只带入这条根因的上下文；分析以流程360全局本体为准。</span>
-            <button type="button" class="deep-analysis-dialog__send" :disabled="busy || !prompt.trim()" @click="send">
-              {{ busy ? '分析中…' : '开始深度分析' }}
-            </button>
-          </div>
-        </footer>
-      </section>
-    </div>
+          <footer class="deep-analysis-dialog__foot">
+            <textarea ref="composer" v-model="prompt" class="deep-analysis-dialog__composer" rows="3"
+                      :disabled="busy" aria-label="深度分析提示词"></textarea>
+            <div class="deep-analysis-dialog__actions">
+              <span class="deep-analysis-dialog__notice">只带入这条根因的上下文；分析以流程360全局本体为准。</span>
+              <button type="button" class="deep-analysis-dialog__send" :disabled="busy || !prompt.trim()" @click="send">
+                {{ sendLabel }}
+              </button>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </teleport>
   `,
 })

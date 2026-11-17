@@ -3156,9 +3156,12 @@ def _chat_response(req: ChatRequest, *, analysis360_only: bool = False):
             slot, lease, turn_id, ticket, cancel = _begin_turn("data", req.session_id)
         except HTTPException as exc:
             return _turn_guard_json_response(exc)
+        # The dialog lets the user edit the prefilled question: send that text
+        # to the agent together with the clause instead of only the card label.
+        user_text = (req.visible_user_text or message).strip() or a360_handoff.visible_text(context)
         return _run_turn_stream(
             session,
-            session.generate_turn(a360_handoff.opening_message(context), a360_handoff.visible_text(context)),
+            session.generate_turn(a360_handoff.first_turn_message(context, user_text), user_text),
             slot, lease, turn_id, ticket, cancel,
         )
     if analysis360_only:

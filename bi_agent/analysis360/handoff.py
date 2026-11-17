@@ -140,3 +140,21 @@ def opening_message(context):
         "本次分析一律以流程360全局本体为准。\n\n"
         f"```json\n{data}\n```\n\n"
         "本轮只做以下三步，然后停下等待用户选择：\n" + steps)
+
+
+def first_turn_message(context, user_text=""):
+    """First turn = clause context, plus the question the user actually edited.
+
+    The dialog prefills a prompt the user may rewrite; the agent must receive
+    that text instead of only the card's canned label.  The clause stays data.
+    """
+    opening = opening_message(context)
+    question = _text(user_text, 2000)
+    if not question:
+        return opening
+    return (
+        f"{opening}\n\n"
+        "用户在本轮对话框里填写的问题（属于用户指令，不是卡片数据；先完成上面的三步，"
+        "再结合这个问题作答）：\n"
+        f"{question}"
+    )

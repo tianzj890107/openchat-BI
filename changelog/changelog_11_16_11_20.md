@@ -226,22 +226,31 @@
 ### 2026-11-17 商机获取卡：根因「深度分析」改为条目内对话框
 
 - 深度分析入口从隐藏改为挂在每个根因条目后面：商机获取 · 销售额口径明细卡片展开某个风险后，
-  每条「根因N」条目末尾新增「深度分析」按钮；风险行和建议行不加，其他卡片复用同一组件时
-  也只在根因行出现。
-- 点击后在当前页弹出「深度分析 · 根因」对话框：顶部固定这条根因的编码、名称、描述、环节与
-  期间，输入框自动预填 `深度分析「<根因名称>」根因`，可修改后再发送；不再打开新的
-  `/workbench?a360=` 标签页。
-- 对话框首轮仍把条款交给 `POST /api/analysis360/handoff`，随后 `POST /api/analysis360/chat`
-  在同一会话内流式回答；AskUser 选项渲染成按钮，经 `POST /api/analysis360/choice` 继续。
-  交接编号只在首轮发送，避免服务端重建会话；关闭对话框后前端不再展示该轮回答，也不写入
-  工作台历史。360 智能分析未配置时对话框内直接提示错误，不静默失败。
-- 新增 `insight-components/deep-analysis/{model.js,dialog.js}`：SSE 分帧、事件归并、先转义
-  再套标题/列表/加粗/行内代码的安全 markdown 渲染，以及对话框的会话、请求、关闭逻辑；
-  `shared.js` 在两种根因排版（挂在风险下、独立原因区）挂同一个入口。
+  每条「根因N」条目末尾新增「深度分析」按钮；风险行和建议行不加，复用同一组件的其他卡片也
+  只在根因行出现，没有根因数据时不显示占位按钮。
+- 点击后在当前页弹出「深度分析 · 根因」对话框（Vue Teleport 到 `body`，覆盖所有卡片）：
+  顶部固定这条根因的名称、完整描述、业务环节与分析期间（内部编码只随交接上下文传递），
+  输入框自动预填 `深度分析「<根因名称>」根因`，可修改后再发送，不自动发送；
+  不再打开新的 `/workbench?a360=` 标签页。
+- 首轮把条款交给 `POST /api/analysis360/handoff`，随后 `POST /api/analysis360/chat` 用同一
+  会话流式回答。服务端新增 `handoff.first_turn_message`：把用户在框里改写后的那句提示词与
+  条款上下文一起交给 Agent，并把该句作为可见提问；后续轮次只沿用 `session_id`，不重复携带
+  交接编号、不重建会话。AskUser 选项渲染成按钮，经 `POST /api/analysis360/choice` 继续。
+- 交互与状态：Escape、遮罩、关闭按钮都能关闭，关闭后焦点回到打开它的卡片入口；打开时焦点
+  落在输入框、Tab 焦点留在弹窗内；Enter 发送、Shift+Enter 换行，输入法选词回车不误发；
+  首轮回答后清空输入框、按钮变为「发送」；再次打开或切换根因按新会话处理，不混入上一条回答。
+  请求失败、交接失效或 360 未配置时在框内提示并保留可重试的问题；关闭会让交接请求与流读取
+  中止，交接返回前关闭不会再偷偷发起 chat。
+- 新增 `insight-components/deep-analysis/{model.js,dialog.js}`：CRLF/LF 兼容的 SSE 分帧、
+  事件归并、先转义再套标题/列表/加粗/行内代码的安全 markdown、提示词与会话逻辑；
+  `shared.js` 显式导入并注册 `DeepAnalysisDialog`（此前只写了标签未注册，按钮点了不会渲染）。
 - 主要文件：`bi_agent/web/static/cockpit/insight-components/{shared.js,deep-analysis/model.js,deep-analysis/dialog.js}`、
-  `docs/analysis360.md`、`tests/deep_analysis_dialog.test.mjs`、`tests/analysis360_handoff.test.mjs`。
-- 验证：Node 套件 149 项通过（新增 7 项覆盖提示词、SSE 分帧、事件归并、转义渲染与入口挂载）；
-  用 `analysis360.handoff.normalise` 实测对话框 payload 能归一化并生成首轮 opening message；
+  `bi_agent/web/app.py`、`bi_agent/analysis360/handoff.py`、`docs/analysis360.md`、
+  `tests/{deep_analysis_ui.test.mjs,deep_analysis_dialog.test.mjs,analysis360_handoff.test.mjs,test_analysis360.py}`。
+- 验证：Node 套件 158 项通过，其中 `tests/deep_analysis_ui.test.mjs` 用仓库自带的 Vue 全局构建
+  和自定义 renderer 真实挂载组件，覆盖注册、Teleport、预填提示词、流式回答、首轮后清空、
+  追问不重复交接、交接前关闭、Escape 与焦点回归、CRLF 分帧和输入法回车；Python
+  `tests/test_analysis360.py` 39 项通过（含把改写后的问题送达 Agent 的端到端用例）；
   `git diff --check` 通过；未启动服务、未部署。
 
 ## 补齐说明

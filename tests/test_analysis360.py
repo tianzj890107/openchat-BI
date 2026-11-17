@@ -388,6 +388,16 @@ def test_a_cause_handoff_offers_drill_down_or_advice():
     assert "证据不足时只给核查措施" in message
 
 
+def test_the_first_turn_carries_the_question_the_user_edited():
+    context = _risk_handoff()
+    opening = handoff.opening_message(context)
+    merged = handoff.first_turn_message(context, "  为什么交期这么长？  ")
+    assert merged.startswith(opening)
+    assert "为什么交期这么长？" in merged and "用户指令" in merged
+    assert handoff.first_turn_message(context, "") == opening
+    assert handoff.first_turn_message(context, "   ") == opening
+
+
 def test_the_store_returns_a_context_only_for_its_id():
     store = handoff.HandoffStore()
     handoff_id, context = store.put(dict(kind="risk", clause=dict(code="RK01", title="商机预测覆盖不足")))
@@ -493,6 +503,19 @@ class TestHandoffEndpoints:
         assert self.web.STATE.sessions["tab-360"] is session
         self._chat(dict(message="你好", session_id="tab-general"))
         assert self.web.STATE.sessions["tab-general"].agent_def.name == "bi-analyst"
+
+    def test_the_edited_dialog_question_reaches_the_agent(self):
+        created = self._handoff()
+        question = "深度分析「签单进度滞后」根因，先看华东区域"
+        response = self._chat(dict(message=question, visible_user_text=question,
+                                   session_id="tab-dialog", analysis360_handoff=created["id"]))
+        assert response.status_code == 200
+        session = self.web.STATE.sessions["tab-dialog"]
+        first = session.messages[0]["content"]
+        first = first if isinstance(first, str) else json.dumps(first, ensure_ascii=False)
+        assert "360 深度分析交接" in first and question in first
+        prompt = json.dumps(self.seen["messages"], ensure_ascii=False)
+        assert question in prompt, "the edited question must be in the model prompt too"
 
     def test_customer_entry_has_a_360_only_chat_route(self):
         refused = self._chat(dict(message="通用问题", session_id="general-only"), path="/api/analysis360/chat")

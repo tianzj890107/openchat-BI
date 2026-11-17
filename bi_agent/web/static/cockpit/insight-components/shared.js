@@ -1,6 +1,7 @@
 import {createTaskOrderController, ensureTaskOrderStyle} from './task-order/controller.js'
 import {TaskOrderDialog} from './task-order/dialog.js'
 import {highlightNumbers, stripOntologyCodes} from './number-highlight.js'
+import {DeepAnalysisDialog} from './deep-analysis/dialog.js'
 
 export {highlightNumbers, stripOntologyCodes}
 
@@ -540,7 +541,7 @@ export function createStageRiskComponent(options = {}) {
   return Vue.defineComponent({
     name: options.name || 'StageRiskAnalysis',
     props: insightProps,
-    components: {InsightLoading, TaskOrderDialog, NumberText, TraceDetails},
+    components: {InsightLoading, TaskOrderDialog, NumberText, TraceDetails, DeepAnalysisDialog},
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
