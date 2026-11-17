@@ -11,11 +11,28 @@ const ids = new Set(['bid-status-note','quote-summary','bid-summary','order-sign
   'shipment-risk-summary','shipment-overdue-note','shipment-cause-breakdown','shipment-task-order'])
 let runtime
 const pending = new Map()
+// A failed module fetch (stale tab, deploy that briefly served an old
+// directory, or a cached failure) must not permanently break one card: retry
+// once with a fresh cache-busting version before reporting the slot error.
+async function loadWithRetry(path) {
+  try {
+    return await load(path)
+  } catch (first) {
+    const fresh = new URL(path, import.meta.url)
+    fresh.searchParams.set('v', String(Date.now()))
+    try {
+      return await import(fresh.href)
+    } catch (second) {
+      throw first
+    }
+  }
+}
+
 export function loadInsight(id) {
   if (!ids.has(id)) return Promise.reject(new Error('未知的AI插槽组件'))
   if (!runtime) runtime = Promise.all([load('./registry.js'),load('./shared.js')]).then(([registry,shared])=>{
     window.InsightRuntime = {...registry,...shared}
   })
-  if (!pending.has(id)) pending.set(id,runtime.then(()=>load(`./${id}/index.js`)).then(()=>window.InsightComponents[id]))
+  if (!pending.has(id)) pending.set(id, runtime.then(() => loadWithRetry(`./${id}/index.js`)).then(() => window.InsightComponents[id]))
   return pending.get(id)
 }

@@ -118,3 +118,9 @@ test('the visible composer announces readiness and the runtime empties it with t
   const runtime = await read('../frontend/src/runtime.js');
   assert.match(runtime, /takeComposerText\(el\.chatInput\)[\s\S]{0,200}?dispatchEvent\(new Event\("input"/);
 });
+
+test('a failed slot module is retried once with a fresh version instead of breaking the card', async () => {
+  const loader = await read('../bi_agent/web/static/cockpit/insight-components/index.js');
+  assert.match(loader, /loadWithRetry/);
+  assert.match(loader, /searchParams\.set\('v', String\(Date\.now\(\)\)\)/);
+});
