@@ -150,3 +150,9 @@ test('the transcript column can scroll inside the pane', async () => {
   assert.match(rule, /min-height:\s*0/);
   assert.match(rule, /overflow-y:\s*auto/);
 });
+
+test('the welcome layer collapses with the empty state so the transcript can scroll', async () => {
+  const runtime = await read('../frontend/src/runtime.js');
+  assert.match(runtime, /emptyLayer:\s*document\.getElementById\("pro-ui-empty-layer"\)/);
+  assert.match(runtime, /el\.emptyLayer\.style\.display = bucket\.hasContent \? "none" : ""/);
+});

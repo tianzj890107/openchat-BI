@@ -484,6 +484,7 @@ export function bootWorkbenchRuntime() {
     chatTodoCount:  document.getElementById("chat-todo-count"),
     chatTodoList:   document.getElementById("chat-todo-list"),
     chatEmpty:      document.getElementById("chat-empty"),
+    emptyLayer:     document.getElementById("pro-ui-empty-layer"),
     emptyGlyph:     document.getElementById("empty-glyph"),
     emptyTitle:     document.getElementById("empty-title"),
     emptyWelcome:   document.getElementById("empty-welcome"),
@@ -1557,6 +1558,9 @@ export function bootWorkbenchRuntime() {
     bucket.turnCount = bucket.questions.length || Number(preview.turn_count || 0);
     bucket.hasContent = bucket.turnCount > 0 || el.chatScroll.children.length > (status ? 1 : 0);
     if (el.chatEmpty) el.chatEmpty.style.display = bucket.hasContent ? "none" : "";
+    // The whole welcome layer must collapse too, or it keeps a tall block above
+    // the transcript and leaves the conversation unable to scroll.
+    if (el.emptyLayer) el.emptyLayer.style.display = bucket.hasContent ? "none" : "";
     showView("workspace");
     updateTurnCounter();
     if (bucket.questions.length) setActiveQuestion(bucket.questions[0].turn);
@@ -1587,6 +1591,9 @@ export function bootWorkbenchRuntime() {
     if (bucket.questions.length) setActiveQuestion(bucket.questions[0].turn);
     updateDashboardCount();
     if (el.chatEmpty) el.chatEmpty.style.display = bucket.hasContent ? "none" : "";
+    // The whole welcome layer must collapse too, or it keeps a tall block above
+    // the transcript and leaves the conversation unable to scroll.
+    if (el.emptyLayer) el.emptyLayer.style.display = bucket.hasContent ? "none" : "";
     if (el.dashboardEmpty) {
       el.dashboardEmpty.style.display = bucket.dashboardHasContent ? "none" : "";
       if (!bucket.dashboardHasContent && !el.dashboardEmpty.parentNode) el.dashboardList.appendChild(el.dashboardEmpty);
@@ -2746,11 +2753,13 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   function hideEmpty() {
     if (el.chatEmpty) el.chatEmpty.style.display = "none";
+    if (el.emptyLayer) el.emptyLayer.style.display = "none";
     B().hasContent = true;
   }
 
   function showEmptyIfIdle() {
     if (!B().hasContent && el.chatEmpty) el.chatEmpty.style.display = "";
+    if (!B().hasContent && el.emptyLayer) el.emptyLayer.style.display = "";
   }
 
   function updateTurnCounter() {
@@ -7134,6 +7143,7 @@ export function bootWorkbenchRuntime() {
     // Empty-state & topbar
     renderEmptyState();
     if (el.chatEmpty) el.chatEmpty.style.display = inc.hasContent ? "none" : "";
+    if (el.emptyLayer) el.emptyLayer.style.display = inc.hasContent ? "none" : "";
     renderTopbarMeta();
     renderReportControls();
     updateChatInputAvailability();
@@ -7473,6 +7483,7 @@ export function bootWorkbenchRuntime() {
       }
       if (el.chatEmpty && !el.chatEmpty.parentNode) el.chatScroll.appendChild(el.chatEmpty);
       if (el.chatEmpty) el.chatEmpty.style.display = "";
+      if (el.emptyLayer) el.emptyLayer.style.display = "";
       el.countOntology.textContent = "0";
       applyOntologyFilters();
       el.countTools.textContent = "0";
