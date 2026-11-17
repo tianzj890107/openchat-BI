@@ -23,7 +23,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3_缺口口径及AI根因版.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能本体文件_1117.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
@@ -217,82 +217,75 @@ def _match(pattern, text, label):
 
 
 def build_thresholds(workbook):
-    """Read risk thresholds from the ontology's BR-A/BR-C rule text.
+    """Read risk thresholds from the ontology's rule and risk text.
 
-    No threshold is duplicated in code.  If a rule loses its numeric wording,
-    the build fails and names the rule instead of silently using a default.
+    No threshold is duplicated in code.  A threshold whose rule the ontology
+    still carries must parse, or the build fails and names it; a rule the
+    ontology has removed (1117: BR-A02 / A05 / A10, BR-C05 / C06 with their
+    risks and causes) yields no key, and the runtime does not judge it.
     """
     rules = build_rule_index(workbook)
+    risk_levels = {clean(row.get("风险编码")): clean(row.get("风险等级规则")) for row in rows(workbook, "风险")}
 
-    def result(code, required=True):
+    def result(code):
         row = rules.get(code)
-        if not row:
-            if required:
-                raise SystemExit(f"本体缺少业务规则：{code}")
-            return ""
-        return clean(row.get("判断或结果")) or clean(row.get("规则描述"))
+        return (clean(row.get("判断或结果")) or clean(row.get("规则描述"))) if row else ""
 
-    a01, a02 = result("BR-A01"), result("BR-A02")
-    # 风险规则修订版删除了电芯独立风险 RK04（BR-A04）；PACK 风险 RK05 的待签
-    # 分档和全年目标缺口率门槛都写在 BR-A05。
-    a05, a10 = result("BR-A05"), result("BR-A10")
-    # BR-A11 只存在于阶段周期超时分档版本体。精简关联版没有 R12–R17 分档指标，
-    # 也就没有该规则；此时不产出分档阈值，运行时同样不判定 RK11。
-    a11 = result("BR-A11", required=False)
-    c05, c06, c07 = result("BR-C05"), result("BR-C06"), result("BR-C07")
+    a01 = result("BR-A01")
+    if not a01:
+        raise SystemExit("本体缺少业务规则：BR-A01")
+    thresholds, sources = {}, {}
 
-    gap_high = int(_match(r"缺口率\s*≥\s*(\d+)%", a01, "BR-A01 缺口率高阈值").group(1))
-    gap_medium = int(_match(r"(\d+)%\s*[~～–-]\s*\d+%\s*中", a01, "BR-A01 缺口率中阈值").group(1))
-    # BR-A02（风险规则修订）：签单达成率＝已签单商机预测÷年度目标，按落后
-    # 百分点“≥15为极高；≥10且＜15为高；＞0且＜10为中”；另有全年金额覆盖率
-    # ＜120% 预警，替换原季度未签比例窗口。
-    sign_extreme = int(_match(r"≥\s*(\d+)\s*为极高", a02, "BR-A02 签单落后极高阈值").group(1))
-    sign_high = int(_match(r"≥\s*(\d+)\s*且\s*[＜<]\s*\d+\s*为高", a02, "BR-A02 签单落后高阈值").group(1))
-    coverage = int(_match(r"全年金额覆盖率\s*[＜<]\s*(\d+)%", a02, "BR-A02 全年金额覆盖率预警").group(1))
-    # BR-A05：PACK 待签＞0 且全年目标缺口率＞20% 触发；等级按待签预测金额
-    # “≥30亿元为高；≥10且＜30亿元为中”，＜10 亿元原口径未定义等级。
-    product_high = int(_match(r"≥\s*(\d+)\s*亿元\s*为?高", a05, "BR-A05 待签高阈值").group(1))
-    product_medium = int(_match(r"≥\s*(\d+)\s*且\s*[＜<]\s*\d+\s*亿元\s*为?中", a05,
-                                "BR-A05 待签中阈值").group(1))
-    pack_gap = int(_match(r"缺口率[^。；]*?[＞>]\s*(\d+)%\s*时触发", a05, "BR-A05 全年目标缺口率门槛").group(1))
-    impact_high = int(_match(r"影响预测\s*≥\s*(\d+)\s*亿元", a10, "BR-A10 影响金额高阈值").group(1))
-    band_stages = band_amount = None
-    if a11:
-        band_stages = int(_match(r"覆盖\s*≥\s*(\d+)\s*个阶段", a11, "BR-A11 超期阶段数高阈值").group(1))
-        band_amount = int(_match(r"预测金额合计\s*≥\s*(\d+)\s*亿元", a11, "BR-A11 超期预测金额高阈值").group(1))
-    product_pending = int(_match(r"≥\s*(\d+)%", c05, "BR-C05 产品待签占比").group(1))
-    focus_ratio = int(_match(r"<\s*(\d+)%", c06, "BR-C06 重点跟踪占比").group(1))
-    other_ratio = int(_match(r"≥\s*(\d+)%", c07, "BR-C07 其余占比").group(1))
+    def put(key, value, source, scale=1):
+        thresholds[key] = value / scale
+        sources[key] = source
 
-    sources = {
-        "gapRateHigh": "BR-A01", "gapRateMedium": "BR-A01",
-        "signLagExtremePoints": "BR-A02", "signLagHighPoints": "BR-A02",
-        "annualCoverageRatio": "BR-A02", "productRiskAmountHigh": "BR-A05",
-        "productRiskAmountMedium": "BR-A05", "productGapRate": "BR-A05", "impactAmountHigh": "BR-A10",
-        "productPendingRatio": "BR-C05", "focusTrackingRatio": "BR-C06",
-        "otherPendingRatio": "BR-C07",
-    }
-    thresholds = {
-        "gapRateHigh": gap_high / 100,
-        "gapRateMedium": gap_medium / 100,
-        "signLagExtremePoints": sign_extreme,
-        "signLagHighPoints": sign_high,
-        "annualCoverageRatio": coverage / 100,
-        "productGapRate": pack_gap / 100,
-        "focusTrackingRatio": focus_ratio / 100,
-        "productPendingRatio": product_pending / 100,
-        "otherPendingRatio": other_ratio / 100,
-        "productRiskAmountHigh": product_high,
-        "productRiskAmountMedium": product_medium,
-        "impactAmountHigh": impact_high,
-    }
-    if a11:
-        thresholds["stageBandStagesHigh"] = band_stages
-        thresholds["stageBandAmountHigh"] = band_amount
-        sources["stageBandStagesHigh"] = "BR-A11"
-        sources["stageBandAmountHigh"] = "BR-A11"
+    put("gapRateHigh", int(_match(r"缺口率\s*≥\s*(\d+)%", a01, "BR-A01 缺口率高阈值").group(1)), "BR-A01", 100)
+    put("gapRateMedium", int(_match(r"(\d+)%\s*[~～–-]\s*\d+%\s*中", a01, "BR-A01 缺口率中阈值").group(1)),
+        "BR-A01", 100)
+    a02 = result("BR-A02")
+    if a02:
+        put("signLagExtremePoints", int(_match(r"≥\s*(\d+)\s*为极高", a02, "BR-A02 签单落后极高阈值").group(1)), "BR-A02")
+        put("signLagHighPoints", int(_match(r"≥\s*(\d+)\s*且\s*[＜<]\s*\d+\s*为高", a02,
+                                           "BR-A02 签单落后高阈值").group(1)), "BR-A02")
+        put("annualCoverageRatio", int(_match(r"全年金额覆盖率\s*[＜<]\s*(\d+)%", a02,
+                                              "BR-A02 全年金额覆盖率预警").group(1)), "BR-A02", 100)
+    a05 = result("BR-A05")
+    if a05:
+        put("productRiskAmountHigh", int(_match(r"≥\s*(\d+)\s*亿元\s*为?高", a05, "BR-A05 待签高阈值").group(1)), "BR-A05")
+        put("productRiskAmountMedium", int(_match(r"≥\s*(\d+)\s*且\s*[＜<]\s*\d+\s*亿元\s*为?中", a05,
+                                                 "BR-A05 待签中阈值").group(1)), "BR-A05")
+        put("productGapRate", int(_match(r"缺口率[^。；]*?[＞>]\s*(\d+)%\s*时触发", a05,
+                                         "BR-A05 全年目标缺口率门槛").group(1)), "BR-A05", 100)
+    a10 = result("BR-A10")
+    if a10:
+        put("impactAmountHigh", int(_match(r"影响预测\s*≥\s*(\d+)\s*亿元", a10, "BR-A10 影响金额高阈值").group(1)),
+            "BR-A10")
+    # BR-A11 / RK11 等级：覆盖 ≥ 2 个阶段为高，否则按跨阶段去重影响金额 ≥ 10 亿元为高。
+    # 1117 版把分档写在风险表“风险等级规则”中，旧版写在 BR-A11。
+    band_text = " ".join(filter(None, (result("BR-A11"), risk_levels.get("RK11", ""))))
+    if result("BR-A11"):
+        put("stageBandStagesHigh", int(_match(r"(?:覆盖|至少)\s*≥?\s*(\d+)\s*个阶段", band_text,
+                                              "BR-A11 超期阶段数高阈值").group(1)), "BR-A11")
+        put("stageBandAmountHigh", int(_match(r"(?:预测金额合计\s*≥|≥)\s*(\d+)\s*亿元\s*(?:为)?高", band_text,
+                                              "BR-A11 超期预测金额高阈值").group(1)), "BR-A11")
+    for key, code, pattern, label in (
+            ("productPendingRatio", "BR-C05", r"≥\s*(\d+)%", "BR-C05 产品待签占比"),
+            ("focusTrackingRatio", "BR-C06", r"<\s*(\d+)%", "BR-C06 重点跟踪占比"),
+            ("otherPendingRatio", "BR-C07", r"≥\s*(\d+)%", "BR-C07 其余占比")):
+        text = result(code)
+        if text:
+            put(key, int(_match(pattern, text, label).group(1)), code, 100)
     thresholds["sources"] = sources
     return thresholds
+
+
+def build_stage_baselines(workbook):
+    """1117 BR-Q06: fixed stage baselines (P0=32.6 …); empty for older versions."""
+    row = build_rule_index(workbook).get("BR-Q06") or {}
+    blob = " ".join(clean(row.get(key)) for key in ("规则描述", "触发条件", "判断或结果"))
+    found = dict(re.findall(r"(P[0-4])\s*[=＝]\s*([0-9]+(?:\.[0-9]+)?)", blob))
+    return {stage: float(value) for stage, value in found.items()}
 
 
 def build_cause_analysis(workbook, causes):
@@ -307,7 +300,8 @@ def build_cause_analysis(workbook, causes):
         return {"mode": "ontology", "source": "根因.判定方式"}
     row = build_rule_index(workbook).get("BR-L01") or {}
     text = " ".join(clean(row.get(key)) for key in ("规则描述", "判断或结果"))
-    found = _match(r"(\d+)\s*[～~–-]\s*(\d+)\s*条根因", text, "BR-L01 每条风险根因数")
+    # “每条风险给出 1～2 条根因” / 1117：“每条已成立风险输出1～2条有指标支撑、待核实的原因”。
+    found = _match(r"(\d+)\s*[～~–-]\s*(\d+)\s*条(?:根因|[^。；]{0,20}?原因)", text, "BR-L01 每条风险根因数")
     return {
         "mode": "ai",
         "minPerRisk": int(found.group(1)),
@@ -321,13 +315,19 @@ def build_dynamic_cycle(workbook):
     rules = build_rule_index(workbook)
     row = rules.get("BR-Q06") or {}
     blob = " ".join(clean(row.get(key)) for key in ("规则描述", "触发条件", "判断或结果"))
-    multiplier = float(_match(r"[×xX*]\s*([0-9.]+)", blob, "BR-Q06 动态周期倍数").group(1))
+    found = re.search(r"[×xX*]\s*([0-9.]+)", blob)
+    if not found:
+        # 1117 版用固定阶段基线，严重超期为 ≥ 1.5 倍基线（BR-V08）。
+        found = _match(r"([0-9.]+)\s*倍", " ".join(
+            clean(build_rule_index(workbook).get("BR-V08", {}).get(key)) for key in ("规则描述", "判断或结果")),
+            "BR-Q06 / BR-V08 周期倍数")
+    multiplier = float(found.group(1))
     return {
         "multiplier": multiplier,
         "strict": "严格大于" in blob,
         # BR-Q06: the stage mean counts only samples with a real start and
         # end; an unfinished stage is compared with it but never averaged in.
-        "completedOnly": "仅统计完整有效起止" in blob,
+        "completedOnly": any(phrase in blob for phrase in ("仅统计完整有效起止", "只计完整", "不计未结束在途")),
         "sample": clean(row.get("判断或结果")) or clean(row.get("规则描述")),
         "source": "BR-Q06",
     }
@@ -339,8 +339,9 @@ def build_storage_scope(workbook):
     row = rules.get("BR-Q04") or {}
     description = clean(row.get("规则描述"))
     related = clean(row.get("关联本体元素"))
-    marker = "储能客户范围："
-    if marker not in description:
+    # 旧版写“储能客户范围：…”，1117 版写“储能范围沿当前商机负责人→团队人员→…”。
+    marker = next((item for item in ("储能客户范围：", "储能范围") if item in description), "")
+    if not marker:
         return {"enabled": False, "source": "BR-Q04"}
     scope_line = _match(r"储能客户范围适用：([^\n。]+)", related, "BR-Q04 储能客户范围适用指标").group(1)
     metrics = re.findall(r"[A-Z]\d{2}", scope_line)
@@ -363,9 +364,15 @@ def build_stage_rules(workbook):
             continue
         expression = clean(row.get("规则表达式"))
         match = re.search(r"new_processstage\s*=\s*'([^']+)'", expression)
-        if not match:
+        if match:
+            stages[match.group(1)] = clean(row.get("维度枚举值名称"))
+            continue
+        # 1117 版：截至阶段由阶段结束时间链推断，new_processstage 只作原始字段；
+        # 运行时仍需 P0～P4 的原始枚举映射，按序号 1～5 对应 11～15。
+        order = clean(row.get("序号"))
+        if not order.isdigit():
             raise SystemExit(f"本体阶段规则无法解析：{expression}")
-        stages[match.group(1)] = clean(row.get("维度枚举值名称"))
+        stages[str(10 + int(order))] = clean(row.get("维度枚举值名称"))
     if not stages:
         raise SystemExit("本体缺少 D_STAGE 阶段规则")
     return stages
@@ -747,11 +754,13 @@ def build_config(workbook):
             "leadProgressCreatedField": "createdon",
         },
         "thresholds": thresholds,
+        "stageBaselines": build_stage_baselines(workbook),
         "causeAnalysis": build_cause_analysis(workbook, causes),
     }
     # The resolved link table must already reflect the explicit business
     # overrides; the UI and task drafting never re-interpret the workbook.
-    links["RK07"] = {"risk": "RK07", "causes": ["RC09"], "advice": ["AC02", "AC03"]}
+    if "RK07" in risks:
+        links["RK07"] = {"risk": "RK07", "causes": ["RC09"], "advice": ["AC02", "AC03"]}
     excluded = apply_exclusion(
         dict(metrics=metrics, rules=rules, risks=risks, causes=causes, advice=advice), links)
     for code, risk in risks.items():
@@ -761,8 +770,8 @@ def build_config(workbook):
             raise SystemExit(f"本体 {code} 未找到唯一的关联指标分类：{sorted(categories)}")
         risk["category"] = categories.pop()
     config = dict(
-        version="opportunity-v3-rules-13",
-        ontology="商机获取节点 V3 缺口口径及AI根因版",
+        version="opportunity-v3-rules-14",
+        ontology="商机获取节点 V3 本体文件_1117（第三版执行口径）",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),
         logicalEntities=entities,

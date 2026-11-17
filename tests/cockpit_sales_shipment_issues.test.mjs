@@ -11,7 +11,11 @@ test('the combined card is problem driven on the stage card layout', () => {
   // 指标 → 问题 (not 指标 → 风险): the same layout as the stage cards, worded as problems.
   assert.match(source, /createStageRiskComponent\(\{/);
   assert.match(source, /primaryLabel: '问题'/);
-  assert.match(source, /showOverallSummary: true/);
+  // 商机本体 1117 BR-V01: three one-sentence lines (商机 / 订单 / 发货) replace the overall line and the rows.
+  assert.match(source, /stageLines: true/);
+  assert.match(source, /showOverallSummary: false/);
+  assert.match(shared, /\[\['商机', '商机问题'\], \['订单', '订单问题'\], \['发货', '订未发问题'\]\]/);
+  assert.match(shared, /<p v-for="line in stageLines" :key="line.label" class="stage-risk-analysis__stage-line"><b>\{\{ line.label \}\}<\/b>：/);
   assert.match(source, /showCauses: false/);
   assert.match(source, /showRecommendations: false/);
   assert.doesNotMatch(opportunity, /primaryLabel/);
@@ -23,7 +27,7 @@ test('the combined card is titled 销售额与出货量共同分析 and groups p
   // Parent groups carry their own summaries, like the 销售额口径明细 cards.
   assert.match(source, /sectionSummaries: false/);
   assert.match(shared, /\{\{ headTitle \|\| \(displayStage \+ '当前' \+ primaryLabel \+ '判断'\) \}\}/);
-  assert.match(shared, /v-for="group in riskGroups"/);
+  assert.match(shared, /v-for="group in \(stageLinesMode \? \[\] : riskGroups\)"/);
   assert.doesNotMatch(source, /指标异常|数据问题/);
 });
 
@@ -74,7 +78,7 @@ test('the 商机获取 card nests each risk\'s causes under it and hides advice'
   // One risk → many causes: an expandable list under every risk row.
   assert.match(opportunity, /causesUnderRisks: true/);
   assert.match(opportunity, /showRecommendations: false/);
-  assert.match(shared, /<details v-if="causesUnderRisks && causesFor\(finding\)\.length" class="stage-risk-analysis__risk-causes">/);
+  assert.match(shared, /<details v-if="causesUnderRisks && causesFor\(finding\)\.length" class="stage-risk-analysis__risk-causes" :open="causesOpen">/);
   assert.match(shared, /\{\{ causesFor\(finding\)\.length \}\} 项根因/);
   assert.match(shared, /v-for="\(dimension, causeIndex\) in causesFor\(finding\)"/);
   // A cause shared by two risks is listed under both.
@@ -88,6 +92,16 @@ test('the 商机获取 card nests each risk\'s causes under it and hides advice'
   assert.equal((shared.match(/dimension\.analysis === 'ai' \? '（AI 分析 · 待核实）'/g) || []).length, 2);
   // Risk and cause evidence share one component.
   assert.equal((shared.match(/<trace-details /g) || []).length, 3);
+  // 1117 BR-V02～V05 on the 商机获取 card: titles, no group summary row, causes open, evidence hidden.
+  assert.match(opportunity, /headTitle: '商机当前风险判断及根因分析'/);
+  assert.match(opportunity, /groupTitleSuffix: '及根因分析'/);
+  assert.match(opportunity, /groupSummaries: false/);
+  assert.match(opportunity, /causesOpen: true/);
+  assert.match(opportunity, /showEvidence: false/);
+  assert.match(shared, /\{\{ group\.category \}\}\{\{ groupTitleSuffix \}\}/);
+  assert.match(shared, /'stage-risk-analysis__risk-group--strong': groupTitleSuffix/);
+  assert.match(shared, /<p v-if="showGroupSummaries && group\.summary"/);
+  assert.equal((shared.match(/<trace-details v-if="showEvidence" /g) || []).length, 2);
   assert.match(shared, /name: 'StageTraceDetails'/);
 });
 

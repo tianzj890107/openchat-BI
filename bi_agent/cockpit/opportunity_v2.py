@@ -40,7 +40,7 @@ from . import periods
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-13"
+RULES_VERSION = "opportunity-v3-rules-14"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -51,6 +51,8 @@ _CAUSE_STAGE = {
 }
 # R12–R17 阶段周期超时分档: three stages × (超均值未满 50% / 达到 50% 及以上).
 STAGE_BAND_CODES = ("R12", "R13", "R14", "R15", "R16", "R17")
+# 严重超期（≥ 1.5 倍基线）档；R12 / R14 / R16 为超期档。
+SEVERE_BAND_CODES = ("R13", "R15", "R17")
 # Governance actions repair the measurement source itself; they must not take
 # the place of business remediation in the重点建议 slot.
 _GOVERNANCE_ADVICE = {"AC05"}
@@ -228,27 +230,28 @@ _THRESHOLD_KEYS = ("gapRateHigh", "gapRateMedium", "signLagExtremePoints",
                    "annualCoverageRatio", "productGapRate")
 
 
+# Which ontology element a threshold belongs to.  A threshold is required
+# only while that risk or cause is in the config (the 1117 ontology removed
+# RK02 / RK05 / RK10 and RC05 / RC06 with their rules).
+_THRESHOLD_OWNERS = {
+    "signLagExtremePoints": "RK02", "signLagHighPoints": "RK02", "annualCoverageRatio": "RK02",
+    "productGapRate": "RK05", "productRiskAmountHigh": "RK05", "productRiskAmountMedium": "RK05",
+    "impactAmountHigh": "RK10", "focusTrackingRatio": "RC06", "productPendingRatio": "RC05",
+    "otherPendingRatio": "RC07", "stageBandStagesHigh": "RK11", "stageBandAmountHigh": "RK11",
+}
+
+
 def _thresholds(config):
     value = ((config or {}).get("overrides") or {}).get("thresholds") or {}
-    missing = [key for key in _THRESHOLD_KEYS if _number(value.get(key)) is None]
+    present = set((config or {}).get("risks") or {}) | set((config or {}).get("causes") or {})
+    missing = [key for key in ("gapRateHigh", "gapRateMedium") if _number(value.get(key)) is None]
+    missing += [key for key, owner in _THRESHOLD_OWNERS.items()
+                if owner in present and owner not in {"RK11", "RC07"} and _number(value.get(key)) is None]
     if missing:
         raise OpportunityV2Unavailable("本体业务规则未定义阈值：" + "、".join(missing))
-    return dict(
-        gapRateHigh=_number(value["gapRateHigh"]),
-        gapRateMedium=_number(value["gapRateMedium"]),
-        signLagExtremePoints=_number(value["signLagExtremePoints"]),
-        signLagHighPoints=_number(value["signLagHighPoints"]),
-        annualCoverageRatio=_number(value["annualCoverageRatio"]),
-        productGapRate=_number(value["productGapRate"]),
-        focusTrackingRatio=_number(value["focusTrackingRatio"]),
-        productPendingRatio=_number(value["productPendingRatio"]),
-        otherPendingRatio=_number(value["otherPendingRatio"]),
-        productRiskAmountHigh=_number(value["productRiskAmountHigh"]),
-        productRiskAmountMedium=_number(value["productRiskAmountMedium"]),
-        impactAmountHigh=_number(value["impactAmountHigh"]),
-        stageBandStagesHigh=_number(value.get("stageBandStagesHigh")),
-        stageBandAmountHigh=_number(value.get("stageBandAmountHigh")),
-    )
+    out = dict(gapRateHigh=_number(value["gapRateHigh"]), gapRateMedium=_number(value["gapRateMedium"]))
+    out.update({key: _number(value.get(key)) for key in _THRESHOLD_OWNERS})
+    return out
 
 
 def load_config():
@@ -473,6 +476,11 @@ _QUERY_METRICS = {
     "产品部销售缺口": ["C03", "C04", "C05"],
     "阶段周期分档": list(STAGE_BAND_CODES),
     "全年覆盖预测": ["R01", "R03", "R06", "R08"],
+    "商机预测缺口": ["R01", "B01", "B02"],
+    "客户预测缺口": ["R08"],
+    "P0在途超期": ["P0-09"],
+    "战略重点商机储备": ["C10"],
+    "无商机战略客户": ["R09"],
 }
 
 _QUERY_AGGREGATION_NOTES = {
@@ -488,6 +496,11 @@ _QUERY_AGGREGATION_NOTES = {
     "商机聚合": "明细行被截断时用于恢复全量聚合；仅参与规则计算，不在明细表展示。",
     "全年覆盖预测": "本体 R03 全年覆盖预测分支：先筛截至观察日可用的预测记录，再按商机＋月份取最新；进度＝观察月以前已签单商机预测，"
                   "预测＝观察月至 12 月全部商机预测；按全部、产品类型及有目标的客户×产品类型汇总，供缺口与覆盖率使用。",
+    "商机预测缺口": "本体 R01 调用SQL（参数：期初、次年初、观察日）：缺口＝年度目标−（进度＋预测），只取总体（全部）。",
+    "客户预测缺口": "本体 R08 调用SQL：先按客户ID合计全部目标、进度和剩余预测，再分金额、电量筛正缺口客户（风险专用正缺口汇总）。",
+    "P0在途超期": "本体 P0-09 调用SQL：截至观察日仍处 P0 的在途商机按 32.6 天固定基线分超期 / 严重超期，只作根因输入。",
+    "战略重点商机储备": "本体 C10 调用SQL：与 R08 同一正缺口客户集合内战略、重点客户的已签与未签商机预测及占比。",
+    "无商机战略客户": "本体 R09 调用SQL：储能客户名单内无任何关联商机的战略客户及其年度目标。",
 }
 
 
@@ -555,6 +568,13 @@ def _ontology_metric_sql(config, code, year, measured, schema="ded_public"):
     sql = _text((metric or {}).get("sql"))
     if not sql:
         return ""
+    if _PARAM_STYLE.search(sql):
+        # 1117 版：期间与观察日是三个位置参数 [start_date, end_exclusive,
+        # observed_at]（见 _ontology_params），SQL 原样执行；字面 % 已写成 %%。
+        sql = _strip_sql_comments(sql).strip().rstrip(";").rstrip()
+        if schema and schema != "ded_public" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema):
+            sql = sql.replace("ded_public.", f"{schema}.")
+        return sql
     # The period may be written DATE '…' or CAST('…' AS DATE) depending on the
     # workbook version; each bound must appear exactly once.
     bounds = {"start_date": f"{int(year)}-01-01", "end_exclusive": f"{int(year) + 1}-01-01"}
@@ -592,6 +612,16 @@ def _ontology_metric_sql(config, code, year, measured, schema="ded_public"):
     return sql.replace("%", "%%")
 
 
+_PARAM_STYLE = re.compile(r"CAST\(\s*%s\s+AS\s+DATE\s*\)\s+AS\s+start_date", re.I)
+
+
+def _ontology_params(sql, year, measured):
+    """Bound parameters of a parameterised ontology SQL: [期初, 次年初, 观察日]."""
+    if not sql or not _PARAM_STYLE.search(sql):
+        return []
+    return [date(int(year), 1, 1), date(int(year) + 1, 1, 1), measured]
+
+
 def _stage_band_sql(config, year, measured, schema="ded_public"):
     """One query for R12–R17.
 
@@ -611,6 +641,9 @@ def _stage_band_sql(config, year, measured, schema="ded_public"):
         return ""
     # The workbook groups by stage start and uses the full elapsed time. On
     # this branch an end after the snapshot is not yet an observed completion.
+    if _PARAM_STYLE.search(sql):
+        # The parameterised version already ends stages at the observation day.
+        return sql
     sql, count = re.subn(r"v\.started_at\s*<\s*p\.end_exclusive",
                         "v.started_at < p.end_exclusive\n"
                         "   AND v.started_at <= p.observed_at\n"
@@ -634,12 +667,26 @@ def _stage_band_rows(rows):
             except ValueError:
                 detail = {}
         detail = detail if isinstance(detail, dict) else {}
-        means = [dict(product=_text(item.get("产品类型")), days=_number(item.get("平均周期天")),
-                      samples=int(_number(item.get("参与平均样本数")) or 0))
-                 for item in detail.get("各产品动态平均周期及样本数") or [] if isinstance(item, dict)]
+        means = [dict(product=_text(item.get("产品类型")),
+                      days=_number(item.get("平均周期天", item.get("静态基线天"))),
+                      samples=int(_number(item.get("参与平均样本数", item.get("有效正周期样本数"))) or 0))
+                 for item in (detail.get("各产品动态平均周期及样本数")
+                              or detail.get("各产品静态基线及有效正周期样本数") or [])
+                 if isinstance(item, dict)]
+        summary = detail.get("严重超期汇总_跨阶段去重")
+        if isinstance(summary, dict) and "_severe" not in bands:
+            # BR-V09: severe overruns across stages, de-duplicated by opportunity.
+            bands["_severe"] = dict(
+                count=int(_number(summary.get("opportunity_count")) or 0),
+                records=int(_number(summary.get("stage_record_count")) or 0),
+                amount=_number(summary.get("amount_yi")), energy=_number(summary.get("energy_gwh")),
+                stages=int(_number(summary.get("hit_stage_count")) or 0),
+                missingAmount=int(_number(summary.get("missing_amount_opportunities")) or 0),
+                missingEnergy=int(_number(summary.get("missing_energy_opportunities")) or 0))
         opportunities = [dict(
             id=_text(item.get("商机ID")), product=_text(item.get("产品")), days=_number(item.get("实际天数")),
             baseline=_number(item.get("基线天数")), excess=_number(item.get("超基线比例_原始小数")),
+            excessDays=_number(item.get("超出基线天数")),
             amount=_number(item.get("预测金额_亿元")), energy=_number(item.get("预测电量_GWh")),
         ) for item in detail.get("商机明细") or [] if isinstance(item, dict)]
         count = _number(row.get("数量"))
@@ -723,6 +770,43 @@ def _annual_coverage_rows(rows):
         elif _text(row.get("account_id")):
             accounts[f"{_text(row.get('account_id'))}|{_product_key(product)}"] = item
     return dict(products=products, accounts=accounts)
+
+
+def _ontology_result(rows):
+    """First result row of an ontology metric SQL as plain values."""
+    row = next((item for item in rows or [] if isinstance(item, dict)), None)
+    if row is None:
+        return {}
+    detail = row.get("分组明细及缺口")
+    if isinstance(detail, str):
+        try:
+            detail = json.loads(detail)
+        except ValueError:
+            detail = None
+    return dict(amount=_number(row.get("金额_亿元")), energy=_number(row.get("电量_GWh")),
+                count=_number(row.get("数量")), ratio=_number(row.get("比率_原始小数")),
+                days=_number(row.get("平均周期_天")), status=_text(row.get("计算说明状态")),
+                detail=detail)
+
+
+# Ontology metric SQL run as-is (1117 parameterised version): label → metric.
+_ONTOLOGY_QUERIES = (
+    ("商机预测缺口", "R01"),
+    ("客户预测缺口", "R08"),
+    ("P0在途超期", "P0-09"),
+    ("战略重点商机储备", "C10"),
+    ("无商机战略客户", "R09"),
+)
+
+
+def _ontology_specs(config, year, measured, schema="ded_public"):
+    """(label, sql, params) for the parameterised ontology queries the card reads."""
+    specs = []
+    for label, code in _ONTOLOGY_QUERIES:
+        sql = _ontology_metric_sql(config, code, year, measured, schema)
+        if sql and _PARAM_STYLE.search(sql):
+            specs.append((label, sql, _ontology_params(sql, year, measured)))
+    return specs
 
 
 def _strip_sql_comments(sql):
@@ -1265,16 +1349,20 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         specs.insert(4, ("投标", bid_sql, [measured]))
     # RC04 is judged on the ontology's own C05 query (product team actual
     # sales minus annual target); it is not a core query.
-    team_gap_sql = _ontology_metric_sql(config, "C05", year, measured, schema)
+    # BR-V12 (1117): the product-team query no longer feeds any risk or cause.
+    team_gap_sql = (_ontology_metric_sql(config, "C05", year, measured, schema)
+                    if "RC04" in (config.get("causes") or {}) else "")
     if team_gap_sql:
-        specs.append(("产品部销售缺口", team_gap_sql, []))
+        specs.append(("产品部销售缺口", team_gap_sql, _ontology_params(team_gap_sql, year, measured)))
     # RK11 is judged on the ontology's own R12–R17 query.
     band_sql = _stage_band_sql(config, year, measured, schema)
     if band_sql:
-        specs.append(("阶段周期分档", band_sql, []))
-    # RK01 / RK05 / RK06 gaps and RK02's annual coverage use the ontology's
-    # 全年覆盖预测 branch (目标 −（进度 ＋ 预测）).
-    coverage_sql = _annual_coverage_sql(config, year, measured, schema)
+        specs.append(("阶段周期分档", band_sql, _ontology_params(band_sql, year, measured)))
+    # 1117: R01 / R08 / P0-09 / C10 / R09 run as the ontology wrote them; the
+    # card's own 全年覆盖预测 split is only for the older, unparameterised version.
+    ontology_specs = _ontology_specs(config, year, measured, schema)
+    specs.extend(ontology_specs)
+    coverage_sql = "" if ontology_specs else _annual_coverage_sql(config, year, measured, schema)
     if coverage_sql:
         specs.append(("全年覆盖预测", coverage_sql, []))
     if strategic_ok:
@@ -1547,6 +1635,9 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         stageBandStatus=query_status.get("阶段周期分档", "unavailable" if not band_sql else ""),
         annualCoverage=dict(_annual_coverage_rows(results.get("全年覆盖预测", [])),
                             status=query_status.get("全年覆盖预测", "unavailable" if not coverage_sql else "")),
+        ontologyResults={code: dict(_ontology_result(results.get(label, [])),
+                                    queryStatus=query_status.get(label, ""))
+                         for label, code in _ONTOLOGY_QUERIES if label in query_status},
         targets=targets,
         productTypes=product_types,
         targetEnergyDivisor=target_energy_divisor,
@@ -1985,6 +2076,27 @@ def evaluate(data, config=None, measured=None):
     # coverage and RK05 / RK06.  B02 stays the plain total forecast.  Without
     # that branch the gap is unknown, never the old target − B02.
     annual = data.get("annualCoverage") or {}
+    ontology_results = data.get("ontologyResults") or {}
+    r01 = ontology_results.get("R01") or {}
+    r01_all = next((item for item in (r01.get("detail") or []) if isinstance(item, dict)
+                    and _text(item.get("product_type")) == "全部"), None) \
+        if isinstance(r01.get("detail"), list) else None
+    if "R01" in ontology_results:
+        # 1117: R01's own SQL gives target, 进度, 预测 and gap for the whole
+        # scope (BR-V12: product_type = 全部); the target follows its B01.
+        annual = dict(status="ok" if r01_all and r01.get("queryStatus") == "ok" else "failed",
+                      products={"all": dict(
+                          progressAmount=r01_all.get("progress_amount"),
+                          progressEnergy=r01_all.get("progress_energy"),
+                          forecastAmount=r01_all.get("forecast_amount"),
+                          forecastEnergy=r01_all.get("forecast_energy"))} if r01_all else {},
+                      accounts={})
+        if r01_all:
+            if _number(r01_all.get("target_amount")) is not None:
+                target_amount = _number(r01_all.get("target_amount"))
+                target_source = "customer PostgreSQL · ded_public · 本体 R01"
+            if _number(r01_all.get("target_energy")) is not None:
+                target_energy = _number(r01_all.get("target_energy"))
     annual_status = _text(annual.get("status"))
     annual_ok = annual_status in {"ok", "truncated"} and bool(annual.get("products"))
     annual_accounts_ok = annual_status == "ok"
@@ -2474,9 +2586,11 @@ def evaluate(data, config=None, measured=None):
     band_meta = {}
     band_facts = {}
     band_details = []
+    # 1117 BR-Q06: fixed stage baselines replace the dynamic means.
+    static_baseline = (config.get("overrides") or {}).get("stageBaselines") or {}
     for code in (STAGE_BAND_CODES if band_available else ()):
         metric_name = _text(((config.get("metrics") or {}).get(code) or {}).get("name")) or code
-        severe = "及以上" in metric_name
+        severe = code in SEVERE_BAND_CODES
         stage = (stage_bands.get(code) or {}).get("stage") or metric_name.split("阶段")[0]
         band_meta[code] = dict(name=metric_name, stage=stage, severe=severe)
         item = stage_bands.get(code) or {} if band_ready else {}
@@ -2484,19 +2598,25 @@ def evaluate(data, config=None, measured=None):
         if count == 0 and not item.get("meanKnown"):
             count = None
         band_details.append(dict(
-            code=code, stage=stage, band="超均值 50% 及以上" if severe else "超均值未满 50%",
+            code=code, stage=stage, band=("严重超期（超基线 50% 及以上）" if severe else "超期（超基线未满 50%）")
+            if static_baseline else ("超均值 50% 及以上" if severe else "超均值未满 50%"),
             status=("unknown" if count is None else "clear" if not count else
                     "triggered" if severe else "watch"),
             count=count, amount=item.get("amount") if count is not None else None,
             energy=item.get("energy") if count is not None else None,
         ))
-        basis = ("实际周期 ≥ 同期间同阶段同产品真实动态平均周期 × 1.5" if severe else
-                 "实际周期 > 同期间同阶段同产品真实动态平均周期且 < × 1.5")
+        if static_baseline:
+            baseline = static_baseline.get({"商机获取": "P0", "技术交流": "P1", "方案推动": "P2"}.get(stage, ""))
+            basis = (f"实际周期 ≥ 阶段固定基线 {baseline} 天 × 1.5" if severe else
+                     f"实际周期 > 阶段固定基线 {baseline} 天且 < × 1.5")
+        else:
+            basis = ("实际周期 ≥ 同期间同阶段同产品真实动态平均周期 × 1.5" if severe else
+                     "实际周期 > 同期间同阶段同产品真实动态平均周期且 < × 1.5")
         band_facts[code] = [
-            fact(code, metric_name, count, "个", f"{stage}阶段已结束商机，{basis}；先平均后分档，只计已结束"),
-            fact(f"{code}-AMOUNT", f"{stage}阶段{'超均值≥50%' if severe else '超均值<50%'}商机预测（金额）",
+            fact(code, metric_name, count, "个", f"{stage}阶段已结束商机，{basis}；只计已结束"),
+            fact(f"{code}-AMOUNT", f"{stage}阶段{('严重超期' if severe else '超期') if static_baseline else ('超均值≥50%' if severe else '超均值<50%')}商机预测（金额）",
                  item.get("amount"), "亿元", "命中商机的期间预测金额合计；预测缺失不剔除商机"),
-            fact(f"{code}-ENERGY", f"{stage}阶段{'超均值≥50%' if severe else '超均值<50%'}商机预测（电量）",
+            fact(f"{code}-ENERGY", f"{stage}阶段{('严重超期' if severe else '超期') if static_baseline else ('超均值≥50%' if severe else '超均值<50%')}商机预测（电量）",
                  item.get("energy"), "GWh", "命中商机的期间预测电量合计"),
         ]
 
@@ -2542,7 +2662,7 @@ def evaluate(data, config=None, measured=None):
     lagging = [value for value in (lag_amount, lag_energy) if value is not None and value > 0]
     coverage_short = (coverage_rate_amount is not None and coverage_floor is not None
                       and coverage_rate_amount < coverage_floor)
-    if lagging or coverage_short:
+    if "RK02" in (config.get("risks") or {}) and (lagging or coverage_short):
         lag = max(lagging) if lagging else None
         level = ("" if lag is None else
                  "极高" if lag >= thresholds["signLagExtremePoints"] else
@@ -2622,7 +2742,61 @@ def evaluate(data, config=None, measured=None):
                                ["RK05", "R06", "B01", "R03"], evidence,
                                dict(amount=pending_amount, energy=pending_energy, count=bucket["pending_count"]), []))
 
-    # RK06
+    # RK06 (1117 BR-A06): judged only on R08's 风险专用正缺口汇总 — each
+    # customer's targets and forecasts are summed first, then the positive
+    # gaps are taken separately for amount and energy.
+    r08 = ontology_results.get("R08") or {}
+    r08_summary = next((item.get("风险专用正缺口汇总") for item in (r08.get("detail") or [])
+                        if isinstance(item, dict) and isinstance(item.get("风险专用正缺口汇总"), dict)), None) \
+        if isinstance(r08.get("detail"), list) else None
+    r08_metric = None
+    if "R08" in ontology_results:
+        customer_gaps = []
+        amount_side = (r08_summary or {}).get("金额口径") or {}
+        energy_side = (r08_summary or {}).get("电量口径") or {}
+        gap_count = _number((r08_summary or {}).get("任一口径正缺口客户数"))
+        evidence_facts[f_r08]["value"] = int(gap_count) if gap_count is not None else None
+        r08_metric = dict(count=int(gap_count) if gap_count is not None else None,
+                          amountCustomers=_number(amount_side.get("缺口客户数")),
+                          energyCustomers=_number(energy_side.get("缺口客户数")),
+                          amount=_number(amount_side.get("缺口金额_亿元")),
+                          energy=_number(energy_side.get("缺口电量_GWh")))
+        evidence_facts[f_r08]["definition"] = ("储能客户名单内，先按客户ID合计全部年度目标、进度和剩余预测，"
+                                               "再分别取金额、电量正缺口客户；客户数按客户ID去重")
+        side_facts = []
+        for basis, side, unit in (("金额", amount_side, "亿元"), ("电量", energy_side, "GWh")):
+            for key, value in side.items():
+                number = _number(value)
+                if number is not None:
+                    side_facts.append(fact(f"R08-{basis}-{key}", f"客户预测缺口·{basis}口径·{key}", number,
+                                           "家" if key.endswith("数") else unit))
+        if gap_count:
+            strategic = (_number(amount_side.get("战略客户数")) or 0) + (_number(energy_side.get("战略客户数")) or 0)
+            unknown_level = ((_number(amount_side.get("客户等级未知数")) or 0)
+                             + (_number(energy_side.get("客户等级未知数")) or 0))
+            level = "高" if strategic else ("" if unknown_level else "中")
+            parts = [f"{int(gap_count)}家客户的进度＋剩余预测低于客户目标"]
+            for basis, side, unit, key in (("金额", amount_side, "亿元", "金额"), ("电量", energy_side, "GWh", "电量")):
+                count = _number(side.get("缺口客户数"))
+                if not count:
+                    continue
+                value = lambda name: _number(side.get(f"{name}{key}_{unit}"))
+                text = f"{basis}口径 {int(count)} 家，目标 {value('目标') or 0:.2f} {unit}，进度 {value('进度') or 0:.2f} {unit}＋剩余预测 {value('剩余预测') or 0:.2f} {unit}，缺口合计 {value('缺口') or 0:.2f} {unit}"
+                parts.append(text)
+            evidence = [f_r08] + side_facts
+            rows = [item for item in (r08.get("detail") or []) if isinstance(item, dict) and item.get("account_id")]
+            rows.sort(key=lambda item: -(_number(item.get("gap_amount")) or 0))
+            for item in [row for row in rows if (_number(row.get("gap_amount")) or 0) > 0][:8]:
+                evidence.append(record(f"opp-v2:account:{item['account_id']}", customer=item.get("account_name"),
+                                       amount=_round(item.get("gap_amount"), 4), quantity=_round(item.get("gap_energy"), 4),
+                                       unit="亿元/GWh", value=item["account_id"], name=item.get("account_name")))
+            name = _risk_name(config, "RK06", "客户预测不足")
+            risks.append(_risk("RK06", name, level, f"RK06 {name}",
+                               parts[0] + ("：" + "；".join(parts[1:]) if parts[1:] else "") + "。",
+                               ["RK06", "R08", "C10", "R09"], evidence,
+                               dict(amount=_number(amount_side.get("缺口金额_亿元")),
+                                    energy=_number(energy_side.get("缺口电量_GWh")), count=int(gap_count)), []))
+    # RK06 (older ontology): customer × product pairs.
     if customer_gaps:
         level = "高" if any(gap.get("tier") == "strategic" for gap in customer_gaps) else "中"
         amount_gaps = [gap for gap in customer_gaps if (gap.get("amount") or 0) > 0]
@@ -2732,17 +2906,35 @@ def evaluate(data, config=None, measured=None):
                     if band_ready and band_meta[code]["severe"] and (stage_bands.get(code) or {}).get("count")]
                    if band_available else [])
     if severe_hits:
-        hit_count = sum(stage_bands[code]["count"] for code in severe_hits)
-        hit_amount = _sum(stage_bands[code].get("amount") for code in severe_hits)
-        hit_energy = _sum(stage_bands[code].get("energy") for code in severe_hits)
+        severe_total = stage_bands.get("_severe") or {}
+        if severe_total:
+            # BR-V09: across stages the opportunities are counted once and
+            # their forecast is summed once; stage amounts are not added up.
+            hit_count = severe_total.get("count") or 0
+            hit_amount, hit_energy = severe_total.get("amount"), severe_total.get("energy")
+            hit_stages = severe_total.get("stages") or len(severe_hits)
+            amount_complete = not severe_total.get("missingAmount")
+        else:
+            hit_count = sum(stage_bands[code]["count"] for code in severe_hits)
+            hit_amount = _sum(stage_bands[code].get("amount") for code in severe_hits)
+            hit_energy = _sum(stage_bands[code].get("energy") for code in severe_hits)
+            hit_stages, amount_complete = len(severe_hits), True
         stages_high = thresholds.get("stageBandStagesHigh")
         amount_high = thresholds.get("stageBandAmountHigh")
-        level = ("高" if (stages_high is not None and len(severe_hits) >= stages_high)
-                 or (amount_high is not None and (hit_amount or 0) >= amount_high) else "中")
-        # Card wording (2026-11-16): one short sentence; the per-stage split,
-        # the forecast involved and the watch band stay in metricDetails and
-        # the evidence.
-        description = f"{hit_count}条商机的阶段周期超均值50%及以上。"
+        if stages_high is not None and hit_stages >= stages_high:
+            level = "高"
+        elif hit_amount is None or not amount_complete:
+            level = ""  # 金额缺失或仅部分合计：等级待核实
+        else:
+            level = "高" if amount_high is not None and hit_amount >= amount_high else "中"
+        # Card wording: the severe count and the final, de-duplicated forecast
+        # total; the per-stage lines list only the severe band.
+        reference = "基线" if static_baseline else "均值"
+        description = (f"{hit_count}条商机的阶段周期超{reference}50%及以上（严重超期）"
+                       + (f"，涉及预测金额合计 {hit_amount:.2f} 亿元" if hit_amount is not None else "")
+                       + (f"、电量 {hit_energy:.2f} GWh" if hit_energy is not None else "")
+                       + ("（跨阶段按商机去重）" if severe_total else "")
+                       + ("，部分商机预测金额缺失，为部分合计" if not amount_complete else "") + "。")
         evidence = [fid for code in STAGE_BAND_CODES for fid in band_facts[code]]
         objects = []
         for code in severe_hits:
@@ -2760,7 +2952,39 @@ def evaluate(data, config=None, measured=None):
         name = _risk_name(config, "RK11", "商机推进阶段周期超均值较多，拖慢签单")
         risk = _risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],
                      evidence, dict(count=hit_count, amount=hit_amount, energy=hit_energy), objects[:40])
-        risks.append(dict(risk, metricDetails=band_details))
+        risks.append(dict(risk, metricDetails=[item for item in band_details
+                                               if item["code"] in SEVERE_BAND_CODES]))
+
+    # Facts the AI cause analysis reads for RK06 / RK11 (C10, R09, P0-09):
+    # the query's headline values and the scalar parts of its detail.
+    for code, unit in (("C10", "亿元"), ("R09", "家"), ("P0-09", "亿元")):
+        item = ontology_results.get(code) or {}
+        if not item:
+            continue
+        name = _text(((config.get("metrics") or {}).get(code) or {}).get("name")) or code
+        for key, label, value, value_unit in (("AMOUNT", "金额", item.get("amount"), "亿元"),
+                                              ("ENERGY", "电量", item.get("energy"), "GWh"),
+                                              ("COUNT", "数量", item.get("count"), "个"),
+                                              ("RATIO", "占比", (item.get("ratio") * 100) if item.get("ratio") is not None else None, "%")):
+            if value is not None:
+                fact(f"{code}-{key}", f"{name}（{label}）", value, value_unit)
+        detail = item.get("detail") if isinstance(item.get("detail"), dict) else {}
+        for key, value in detail.items():
+            nested = value if isinstance(value, dict) else {key: value}
+            for inner, number in nested.items():
+                if isinstance(number, (int, float)) and not isinstance(number, bool):
+                    label = key if nested is not value else f"{key}·{inner}"
+                    fact(f"{code}-{label}"[:80], f"{name}·{label}", number, "")
+
+    # The ontology's own R09 (储能范围, 截至日无商机战略客户) replaces the card's count.
+    r09 = ontology_results.get("R09") or {}
+    if r09.get("queryStatus") == "ok" and r09.get("count") is not None:
+        evidence_facts["opp-v2:metric:R09"].update(
+            value=int(r09["count"]), source="customer PostgreSQL · ded_public · 本体 R09")
+
+    # Only the risks the current ontology defines reach the card.
+    risk_specs_present = set(config.get("risks") or {})
+    risks = [risk for risk in risks if risk["code"] in risk_specs_present]
 
     # De-duplicate by code and sort by level, then normalised impact and code.
     # Money and energy remain separate fields; this is presentation order only.
@@ -2924,7 +3148,8 @@ def evaluate(data, config=None, measured=None):
             risks={"RK04", "RK05"} & {risk["code"] for risk in risks},
         )
     concentration = {key: ratio for key, ratio in product_pending_ratio.items()
-                     if ratio is not None and ratio >= thresholds["productPendingRatio"]}
+                     if ratio is not None and thresholds["productPendingRatio"] is not None
+                     and ratio >= thresholds["productPendingRatio"]}
     if concentration:
         parts = [f"{_product_name(key, config)} 待签占比 {ratio * 100:.1f}%" for key, ratio in concentration.items()]
         candidates["RC05"] = dict(
@@ -2934,7 +3159,8 @@ def evaluate(data, config=None, measured=None):
             evidence=[f_r05_a, f_r05_e, f_r06_a, f_r06_e],
             risks={"RK04", "RK05"} & {risk["code"] for risk in risks},
         )
-    if focus_ratio is not None and focus_ratio < thresholds["focusTrackingRatio"] and unsigned_amount:
+    if (focus_ratio is not None and thresholds["focusTrackingRatio"] is not None
+            and focus_ratio < thresholds["focusTrackingRatio"] and unsigned_amount):
         candidates["RC06"] = dict(
             kind="verified", status="supported", stage="opportunity",
             title="重点跟踪商机承接不足",
@@ -2942,7 +3168,8 @@ def evaluate(data, config=None, measured=None):
             evidence=[f_r04_a, f_r04_e, f_r02_a, f_r02_e],
             risks={"RK01", "RK02"} & {risk["code"] for risk in risks},
         )
-    if rest_ratio is not None and rest_ratio >= thresholds["otherPendingRatio"] and rest_p0:
+    if (rest_ratio is not None and thresholds["otherPendingRatio"] is not None
+            and rest_ratio >= thresholds["otherPendingRatio"] and rest_p0):
         amount = _sum(opp.get("forecastAmount") for opp in rest_p0)
         candidates["RC07"] = dict(
             kind="verified", status="supported", stage="opportunity",
@@ -3434,7 +3661,7 @@ def evaluate(data, config=None, measured=None):
                  forecastAmount=products["2"]["cover"]["forecast_amount"],
                  gapRateAmount=products["2"]["annual_gap_rate_amount"],
                  gapRateEnergy=products["2"]["annual_gap_rate_energy"]),
-        R08=dict(count=len(gap_accounts), pairs=len(customer_gaps)),
+        R08=r08_metric or dict(count=len(gap_accounts), pairs=len(customer_gaps)),
         R09=dict(count=no_opportunity_count),
         R10=dict(count=len(no_bidding)),
         R11=dict(count=len(in_progress_bids)),
@@ -4010,9 +4237,11 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     measured = _measurement_context(period, measurement_date)
     strategic_ok, _ = _strategic_scope(config)
     has_stage_bands = all(code in (config.get("metrics") or {}) for code in STAGE_BAND_CODES)
-    has_coverage = bool(_annual_coverage_sql(config, measured.year, measured))
+    extra = len(_ontology_specs(config, measured.year, measured)) or int(
+        bool(_annual_coverage_sql(config, measured.year, measured)))
+    has_team_gap = "RC04" in (config.get("causes") or {})
     _report_progress(progress, "fetching", message="查询数据库", completed=0,
-                     total=9 + int(strategic_ok) + int(has_stage_bands) + int(has_coverage))
+                     total=8 + int(has_team_gap) + int(strategic_ok) + int(has_stage_bands) + extra)
     try:
         data = collect(period, measured, database=database, config=config, progress=progress,
                        diagnostic_reporter=diagnostic_reporter)

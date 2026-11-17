@@ -363,3 +363,21 @@ def test_the_customer_round_reads_the_same_period_and_runs_opportunity_first():
     service = frozen.FrozenAnnualService.__new__(frozen.FrozenAnnualService)
     order = service.priority_order(page="analysis")
     assert order.index("opportunity-risk") < order.index("combined")
+
+
+def test_combined_card_reads_as_three_lines_for_opportunity_order_and_shipment():
+    # 商机本体 1117 BR-V01: 商机、订单、发货三行，各一句话。
+    groups = {"商机问题": [dict(title="IS09 商机覆盖问题", riskLevel="高")], "订未发问题": []}
+    risk_groups = [dict(category="商机问题", summary="商机预测覆盖不足且客户预测存在缺口。", summarySource="model"),
+                   dict(category="订单问题", summary="本类共 1 项问题：x。", summarySource="rule")]
+    assessments = [dict(code="IS04", ruleStatus="insufficient", include=False)]
+    lines = ss.stage_lines(groups, risk_groups, assessments, {"IS04": "订未发问题"})
+    assert [line["label"] for line in lines] == ["商机", "订单", "发货"]
+    assert lines[0]["text"] == "商机预测覆盖不足且客户预测存在缺口。"
+    assert lines[1]["text"] == "本期未发现订单环节业务问题。"
+    assert lines[2]["text"] == "发货环节部分问题数据不足，无法核实。"
+    # Without a model summary the line names the stage's own problems.
+    fallback = ss.stage_lines(groups, [], [], {})
+    assert fallback[0]["text"] == "商机环节存在 1 项问题：商机覆盖问题（高）。"
+    from bi_agent.cockpit.section_summary import risk_group_prompt
+    assert "每个分类只写一句话" in risk_group_prompt("销售额与出货量共同分析", "问题")

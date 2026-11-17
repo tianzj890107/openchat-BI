@@ -102,6 +102,9 @@ GLOBAL_CAUSE_PROMPT = (
     "每条风险给出 {low}～{high} 条根因，按可能性从高到低排列；不同风险可以指向同一方向，"
     "但每条根因的说明必须落到该风险自己的指标数据上。description 写清推理依据并引用输入中的具体数值，"
     "不得引入输入中没有的数字；需要补充核实的数据写在 dataGaps。"
+    "强制规则：根因显示在对应风险下面，不得重复该风险已有的内容——不得复述风险的 judgement（缺口、目标、进度、"
+    "预测、超期条数与金额等风险本身已写出的事实与数字），也不得以风险名称作为根因名称；根因只写导致该风险的"
+    "原因及支撑它的其他指标事实（例如客户、阶段、商机结构或在途情况）。"
     '只返回 JSON：{{"risks": [{{"code": "风险编码", "causes": [{{"title": "不超过20字的根因名称", '
     '"description": "不超过160字的推理依据，引用输入中的具体数值", '
     '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，不要输出其他内容。'
@@ -398,6 +401,25 @@ def _untraceable_numbers(text, allowed):
     return sorted(bad)
 
 
+def _repeats_risk(cause, risk):
+    """Why a cause restates its own risk instead of explaining it, or ""."""
+    text = f"{cause['title']} {cause['description']}"
+    name = _text(risk.get("name"))
+    if name and (name in cause["title"] or cause["title"] in name):
+        return f"根因名称与风险名称「{name}」重复"
+    judgement = _text(risk.get("judgement"))
+    for clause in re.split(r"[，。；：、（）()]+", judgement):
+        clause = clause.strip()
+        if len(clause) >= 8 and clause in text:
+            return f"复述了风险已有内容「{clause}」"
+    # Quoting several of the risk's own figures is restating it, not explaining it.
+    figures = {token for token in _numbers(judgement) if abs(token) > 12}
+    shared = figures & set(_numbers(text))
+    if len(shared) >= 3:
+        return "重复引用了风险已写出的数字 " + "、".join(f"{value:g}" for value in sorted(shared))
+    return ""
+
+
 def _global_causes(judge, request, progress, *, low, high):
     """One model pass over every established risk; never raises.
 
@@ -409,6 +431,7 @@ def _global_causes(judge, request, progress, *, low, high):
     from .opportunity_v2 import _allowed_model_numbers
 
     codes = [risk["code"] for risk in request["risks"]]
+    risks_by_code = {risk["code"]: risk for risk in request["risks"]}
     if progress is not None:
         progress("judging", message=f"模型全局分析 {len(codes)} 条风险的根因")
     if judge is None:
@@ -446,6 +469,11 @@ def _global_causes(judge, request, progress, *, low, high):
                 bad = _untraceable_numbers(f"{cause['title']} {cause['description']}", allowed)
                 if bad:
                     problems.append(f"{item['code']}「{cause['title']}」引用了输入中没有的数字 {'、'.join(bad)}")
+                    continue
+                # Strong rule: a cause sits under its risk and must not repeat it.
+                repeated = _repeats_risk(cause, risks_by_code[_text(item["code"])])
+                if repeated:
+                    problems.append(f"{item['code']}「{cause['title']}」{repeated}，根因不得重复风险已有内容")
                     continue
                 kept.append(cause)
             if kept:
@@ -889,7 +917,8 @@ def _indicators(spec):
     The cell may add prose ("R03、B01、B02；R02作为待签规模证据"); only the
     metric codes are taken from it.
     """
-    return list(dict.fromkeys(re.findall(r"[A-Z]+\d+(?:-\d+)?", _text(spec.get("indicators")))))
+    # “P0-09”“B01” are codes; a bare stage name such as “P0原因” is not.
+    return list(dict.fromkeys(re.findall(r"[A-Z]\d-\d{2}|[A-Z]+\d{2}", _text(spec.get("indicators")))))
 
 
 def _public(entry):

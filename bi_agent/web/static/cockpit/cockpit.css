@@ -35,6 +35,10 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .stage-risk-analysis__title{min-width:0;font-size:14px;font-weight:600;line-height:22px}
 .stage-risk-analysis__risk-group{margin:14px 0 0;font-size:13px;font-weight:600;line-height:22px}
 .stage-risk-analysis__risk-group-summary{margin:3px 0;font-size:13px;line-height:22px}
+.stage-risk-analysis__risk-group--strong{margin:16px 0 6px;padding:4px 10px;border-left:4px solid var(--cockpit-primary,#165dff);border-radius:2px;background:var(--cockpit-primary-10,rgba(22,93,255,.08));color:var(--cockpit-text);font-size:15px;font-weight:700;line-height:24px}
+.stage-risk-analysis__stage-lines{margin-top:8px}
+.stage-risk-analysis__stage-line{margin:6px 0;font-size:13.5px;line-height:22px;overflow-wrap:anywhere}
+.stage-risk-analysis__stage-line b{color:var(--cockpit-primary,#165dff);font-weight:700}
 .stage-risk-analysis__metric-details{margin:6px 0;padding-inline-start:20px}
 .stage-risk-analysis__head .stage-risk-analysis__title{flex:1 1 auto}
 .stage-risk-analysis__mark--risk{color:var(--cockpit-error)}

@@ -723,6 +723,38 @@ def _trace(config):
                 advice=entries("advice"), rules=entries("rules", ("description", "trigger", "result")))
 
 
+# BR-V01（商机本体 1117）：卡片固定三行，依次商机、订单、发货，每行一句话。
+STAGE_LINES = (("商机", "商机问题"), ("订单", "订单问题"), ("发货", "订未发问题"))
+
+
+def stage_lines(groups, risk_groups, assessments, issue_types):
+    """商机 / 订单 / 发货 one-sentence lines from the problem groups.
+
+    The model's group summary (asked for one sentence) is used as is; without
+    it the line names the group's problems.  A stage with no problem says so,
+    or that it cannot be verified when a problem was left undecided.
+    """
+    by_category = {group.get("category"): group for group in risk_groups or []}
+    lines = []
+    for label, category in STAGE_LINES:
+        findings = groups.get(category) or []
+        group = by_category.get(category) or {}
+        text = group.get("summary") if group.get("summarySource") == "model" else ""
+        if not text and findings:
+            names = "、".join(
+                re.sub(r"^(?:RK|IS|DQ)\d+\s*", "", finding.get("title") or "")
+                + (f"（{finding.get('riskLevel')}）" if finding.get("riskLevel") else "")
+                for finding in findings)
+            text = f"{label}环节存在 {len(findings)} 项问题：{names}。"
+        if not text:
+            undecided = any(item.get("ruleStatus") == "insufficient" and not item.get("include")
+                            and issue_types.get(item.get("code")) == category for item in assessments or [])
+            text = (f"{label}环节部分问题数据不足，无法核实。" if undecided
+                    else f"本期未发现{label}环节业务问题。")
+        lines.append(dict(label=label, category=category, text=text))
+    return lines
+
+
 def business_summary(groups):
     """Overall line in business language: how many problems each stage has."""
     total = sum(len(findings) for findings in groups.values())
@@ -789,6 +821,7 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
             group["summarySource"] = source
         judged["riskGroups"].append(group)
     judged["summary"] = business_summary(groups)
+    judged["stageLines"] = stage_lines(groups, judged["riskGroups"], judged.get("riskAssessments"), issue_types)
     notes = config.get("notes") or {}
     limitations = [f"{e['stage']} 取数未成功（{e['code']}）：{e['message']}" for e in data["errors"]][:10]
     if any(item.get("unevaluatedReason") == UPSTREAM_MISSING for item in evaluated["riskCandidates"]):

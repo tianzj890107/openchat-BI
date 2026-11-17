@@ -578,6 +578,24 @@ export function createStageRiskComponent(options = {}) {
         return map
       })
       const causesFor = finding => causesByFinding.value.get(finding?.id) || []
+      // 商机获取（本体 1117 BR-V03～V05）：分类标题加“及根因分析”并加粗醒目、
+      // 不显示分类汇总行、根因默认展开、风险与根因证据暂时隐藏。
+      const groupTitleSuffix = options.groupTitleSuffix || ''
+      const showGroupSummaries = options.groupSummaries !== false
+      const causesOpen = Boolean(options.causesOpen)
+      const showEvidence = options.showEvidence !== false
+      // 销售额与出货量共同分析（BR-V01）：只显示商机、订单、发货三行各一句话。
+      const stageLinesMode = Boolean(options.stageLines)
+      const stageLines = computed(() => {
+        if (!stageLinesMode) return []
+        const given = insight.result.value?.stageLines
+        if (Array.isArray(given) && given.length) return given
+        const groups = insight.result.value?.riskGroups || []
+        return [['商机', '商机问题'], ['订单', '订单问题'], ['发货', '订未发问题']].map(([label, category]) => {
+          const group = groups.find(item => item.category === category)
+          return {label, text: group?.summary || `本期未发现${label}环节业务问题。`}
+        })
+      })
       const judgementGroups = computed(() => insight.judgementGroups.value
         .filter(group => group.kind === 'risks'
           || (group.kind === 'causes' && showCauses)
@@ -607,7 +625,8 @@ export function createStageRiskComponent(options = {}) {
       const showOverallSummary = Boolean(options.showOverallSummary)
       return { ...insight, ...taskOrder, displayStage, headTitle, primaryLabel, judgementGroups, analysisDimensions,
                riskGroups, metricStatus, showOverallSummary, showSectionSummaries, showCauses, showRecommendations,
-               causesUnderRisks, causesFor,
+               causesUnderRisks, causesFor, groupTitleSuffix, showGroupSummaries, causesOpen, showEvidence,
+               stageLinesMode, stageLines,
                plain: stripOntologyCodes }
     },
     template: `
@@ -627,9 +646,12 @@ export function createStageRiskComponent(options = {}) {
               {{ headTitle || (displayStage + '当前' + primaryLabel + '判断') }}
             </div>
             <div v-if="showSectionSummaries && riskSummary" class="stage-risk-analysis__summary" :title="riskSummary"><number-text :text="riskSummary" /></div>
-            <div v-for="group in riskGroups" :key="group.category">
-              <h4 v-if="group.category" class="stage-risk-analysis__risk-group">{{ group.category }}</h4>
-              <p v-if="group.summary" class="stage-risk-analysis__risk-group-summary"><number-text :text="group.summary" /></p>
+            <div v-if="stageLinesMode" class="stage-risk-analysis__stage-lines">
+              <p v-for="line in stageLines" :key="line.label" class="stage-risk-analysis__stage-line"><b>{{ line.label }}</b>：<number-text :text="plain(line.text)" /></p>
+            </div>
+            <div v-for="group in (stageLinesMode ? [] : riskGroups)" :key="group.category">
+              <h4 v-if="group.category" :class="['stage-risk-analysis__risk-group', {'stage-risk-analysis__risk-group--strong': groupTitleSuffix}]">{{ group.category }}{{ groupTitleSuffix }}</h4>
+              <p v-if="showGroupSummaries && group.summary" class="stage-risk-analysis__risk-group-summary"><number-text :text="group.summary" /></p>
               <div v-for="{finding, number} in group.rows" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">{{ primaryLabel }}{{ number }}</span>
               <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ plain(finding.issueType) }}】</template>{{ plain(finding.title) }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
@@ -641,13 +663,13 @@ export function createStageRiskComponent(options = {}) {
                     · 预测电量 <number-text :text="metric.energy == null ? '—' : Number(metric.energy).toFixed(2) + ' GWh'" />
                   </li>
                 </ul>
-                <trace-details :trace="traces[finding.id]" :count="distinctEvidenceCount(finding)" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
-                <details v-if="causesUnderRisks && causesFor(finding).length" class="stage-risk-analysis__risk-causes">
+                <trace-details v-if="showEvidence" :trace="traces[finding.id]" :count="distinctEvidenceCount(finding)" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
+                <details v-if="causesUnderRisks && causesFor(finding).length" class="stage-risk-analysis__risk-causes" :open="causesOpen">
                   <summary class="stage-risk-analysis__risk-causes-summary">{{ causesFor(finding).length }} 项根因</summary>
                   <div v-for="(dimension, causeIndex) in causesFor(finding)" :key="dimension.id" class="stage-risk-analysis__cause stage-risk-analysis__risk-cause">
                     <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">根因{{ causeIndex + 1 }}</span>
                     <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : plain(dimension.title) }}</b><small v-if="dimension.inferred" class="stage-risk-analysis__decided">{{ dimension.analysis === 'ai' ? '（AI 分析 · 待核实）' : '（模型推理 · 本体根因未命中，待核实）' }}</small>——<number-text :text="dimension.description" /><small v-if="dimension.inferred && dimension.missingEvidence && dimension.missingEvidence.length" class="stage-risk-analysis__cause-meta">待补核实：{{ plain(dimension.missingEvidence.join('；')) }}</small>
-                      <trace-details :trace="traces[dimension.id]" :count="evidenceFor(dimension).length" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
+                      <trace-details v-if="showEvidence" :trace="traces[dimension.id]" :count="evidenceFor(dimension).length" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
                     </div>
                   </div>
                 </details>

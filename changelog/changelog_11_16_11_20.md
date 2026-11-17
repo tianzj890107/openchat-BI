@@ -199,6 +199,9 @@
 
 ### 2026-11-16 商机获取 · 销售额口径明细：风险规则修订本体、缺口口径与 AI 根因
 
+> 11-17 修订：卡片已改用《亿纬锂能本体文件_1117》，下文中的 RK02、RK05、RK03、RK07、RK10 不再输出，RK11 描述改为带去重
+> 叠加金额的写法；缺口口径与 AI 根因机制保留，见下一条。
+
 - 本体：收录客户新版《亿纬锂能_本体_商机获取节点_V3_风险规则及周期SQL修复》（根目录与 `docs/亿纬锂能/` 各一份），
   并由新脚本 `scripts/build_opportunity_ai_cause_ontology.py` 生成《…_V3_缺口口径及AI根因版》作为卡片本体，
   配置重生成为 `opportunity-v3-rules-13`（57 指标 / 8 风险 / 10 根因 / 12 建议 / 21 条链路）。
@@ -222,6 +225,31 @@
   `tests/cockpit_sales_shipment_issues.test.mjs`。
 - 验证：商机获取相关 Python 测试 170 项通过（1 项为缺少 `psycopg` 的既有失败）；Node 测试 143 项中 141 项通过（2 项为基线
   失败）。未连接客户数据库实跑新查询（SQL 已用 pglast 做语法解析），未在浏览器中查看；已发布卡片需重新分析后才显示新口径。
+
+### 2026-11-17 商机获取卡片改用《亿纬锂能本体文件_1117》，共同分析卡片改为三行总结
+
+- 本体：收录客户提供的《亿纬锂能本体文件_1117》（根目录与 `docs/亿纬锂能/` 各一份），配置重生成为
+  `opportunity-v3-rules-14`（59 指标 / 3 风险 / 8 根因 / 9 建议）。风险只保留商机预测覆盖不足（RK01）、客户预测不足（RK06）、
+  商机推进超期，影响签单（RK11）；签单进度滞后（RK02）等已去掉。配置生成脚本兼容新版阶段规则、储能范围写法、固定阶段基线
+  与已删除规则的阈值（仅当对应风险/根因仍在本体中时才要求）。
+- 取数：本体调用 SQL 改为三个绑定参数 `[期初, 次年初, 观察日]`；RK01 读 R01 总体行，RK06 读 R08“风险专用正缺口汇总”（按客户
+  合计后分别取金额、电量正缺口客户），RK11 读 R12～R17 分档及跨阶段去重汇总；新增 P0-09、C10、R09 查询作为根因输入；
+  产品部 C05 与卡片自建的全年覆盖查询不再执行。
+- 商机推进超期：只列商机获取、技术交流、方案推动三个阶段的严重超期（≥ 1.5 倍固定基线）各一行，超期未满 50% 的不显示；
+  风险描述给出跨阶段按商机去重的严重超期商机数及最终叠加预测金额、电量。
+- 页面：总标题改为“商机当前风险判断及根因分析”；分类标题改为“商机覆盖风险及根因分析”“商机转化风险及根因分析”，加粗、
+  左侧色条醒目显示；去掉“本类共 N 项风险：…”整行；每条风险下的根因默认展开；风险与根因的证据暂时隐藏。
+- 根因强制规则：根因不得重复所属风险已有的内容（不复述风险描述的句子和数字、不以风险名称作根因名称），提示词约束并由程序
+  校验，不合格时带原因重试一次，仍不合格的根因丢弃。
+- 销售额与出货量共同分析卡片：只显示“商机 / 订单 / 发货”三行，每行一句话（模型分类总结按一句话生成；没有模型总结时列出
+  该环节问题，没有问题时写“本期未发现…”或“数据不足，无法核实”）；已发布的旧结果在前端按原分类总结显示为三行。
+- 文档：重写 `docs/亿纬锂能/商机获取卡片_风险输出模板.md`，`docs/specs/cockpit-opportunity-v3-rules.md` 增加 1117 口径说明。
+- 主要文件：`bi_agent/cockpit/{opportunity_v2.py,opportunity_judgement.py,sales_shipment.py,section_summary.py}`、
+  `bi_agent/cockpit/assets/opportunity-v3/config.json`、`scripts/build_opportunity_v3_config.py`、
+  `bi_agent/web/static/cockpit/{cockpit.css,insight-components/shared.js,insight-components/opportunity-risk/index.js,insight-components/sales-shipment-issues/index.js}`、
+  `tests/{test_cockpit_opportunity_v2.py,test_cockpit_sales_shipment.py,cockpit_insight_runtime.test.mjs,cockpit_sales_shipment_issues.test.mjs}`。
+- 验证：商机获取、共同分析等相关 Python 测试 165 项通过；驾驶舱相关 Python 测试中 5 项为既有失败；Node 测试 142 项中 140 项通过
+  （2 项为基线失败）。未连接客户数据库实跑新 SQL，未在浏览器中查看；已发布卡片需重新分析后才按新本体显示风险与根因。
 
 ## 补齐说明
 

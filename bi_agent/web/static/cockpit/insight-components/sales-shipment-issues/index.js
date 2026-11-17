@@ -17,7 +17,9 @@ registerInsightComponent('sales-shipment-issues', createStageRiskComponent({
   primaryLabel: '问题',
   // Each parent group carries its own summary, so no per-section summary line.
   sectionSummaries: false,
-  showOverallSummary: true,
+  // 本体 1117 BR-V01：只显示商机、订单、发货三行，各一句话总结。
+  stageLines: true,
+  showOverallSummary: false,
   showCauses: false,
   showRecommendations: false,
 }))

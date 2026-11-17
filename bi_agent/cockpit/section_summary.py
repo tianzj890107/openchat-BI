@@ -52,7 +52,7 @@ def risk_group_prompt(card="商机获取", label="风险"):
     if card == "商机获取" and label == "风险":
         return RISK_GROUP_PROMPT
     return (RISK_GROUP_PROMPT.replace("商机获取卡片", f"{card}卡片").replace("风险", label)
-            + "用业务语言表述，不出现任何编码。")
+            + "用业务语言表述，不出现任何编码。每个分类只写一句话（只用一个句号），作为该环节的一行总结。")
 
 
 def summary_system_prompt(role=""):
