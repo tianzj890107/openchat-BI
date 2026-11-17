@@ -307,6 +307,11 @@
   `#pro-ui-empty-layer`（此前只隐藏 `#chat-empty`，欢迎层仍占高度，把会话区挤小到无法向上滚动）；
   Workbench 资源已重建，Node 174 项通过。
 
+- 2026-11-17 补记（Workbench 资源版本）：`index.html` 里写死的 `workbench.css?v=136` /
+  `workbench.js?v=171` 改为 `@@WORKBENCH_CSS_VERSION@@`/`@@WORKBENCH_JS_VERSION@@`，由
+  `_render_workbench_index()` 按文件 mtime 注入。此前 CSS 版本号从不变化，部署后浏览器仍用旧样式，
+  布局修复（欢迎层遮挡、滚动、空带）看起来“没生效”。
+
 ## 补齐说明
 
 - 2026-11-16 补记：`11-09` 至 `11-13` 的周文件此前缺失，已按 Git 记录新建

@@ -1243,6 +1243,16 @@ def _render_workbench_index() -> str:
     """
     template = _WORKBENCH_INDEX_TEMPLATE.read_text(encoding="utf-8")
     html = template.replace(_APP_ROOT_PATH_TOKEN, APP_ROOT_PATH)
+    # The bundle/CSS are shipped unversioned; a fixed ?v= in the template kept
+    # browsers on an old stylesheet across deployments.  Version them by mtime
+    # so every deploy invalidates exactly the files that changed.
+    bundle = STATIC_DIR / "vendor" / "antd"
+    for token, name in (("@@WORKBENCH_JS_VERSION@@", "workbench.js"),
+                        ("@@WORKBENCH_CSS_VERSION@@", "eimosp-ontology-agentic-analytics-workbench.css")):
+        try:
+            html = html.replace(token, str(int((bundle / name).stat().st_mtime)))
+        except OSError:
+            html = html.replace(token, "1")
     runtime_config = (
         '<script id="app-root-path-config">'
         "window.APP_ROOT_PATH = "
