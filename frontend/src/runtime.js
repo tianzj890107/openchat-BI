@@ -7728,6 +7728,9 @@ export function bootWorkbenchRuntime() {
     // conversation first, and a delayed handoff/answer never keeps the text.
     const text = takeComposerText(el.chatInput);
     if (!text) return;
+    // The visible composer mirrors the legacy field through its input listener;
+    // fire it so the controlled value empties at the same instant.
+    el.chatInput.dispatchEvent(new Event("input", { bubbles: true }));
     el.chatInput.style.height = "";
     sendMessage(text);
   }

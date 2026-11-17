@@ -1,3 +1,4 @@
+import {consumePrefill, markComposerGone, markComposerReady} from "./composerHandshake.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Switch, Tooltip } from "antd";
 import {
@@ -101,6 +102,12 @@ export default function ProUiComposer({ dispatchRuntime }) {
     window.addEventListener("bi-agent-busy", onBusy);
     window.addEventListener("bi-composer-state", onState);
     window.addEventListener("bi-composer-prefill", onPrefill);
+    // Tell late prefill senders the visible composer exists; a prefill queued
+    // before mount is applied here instead of being written to a hidden field.
+    window.dispatchEvent(new CustomEvent("bi-composer-ready", { detail: { source: "pro-x" } }));
+    markComposerReady();
+    const queued = consumePrefill();
+    if (queued?.text) onPrefill({ detail: { text: queued.text } });
     window.addEventListener("bi-composer-focus", onFocus);
     window.addEventListener("bi-settings-snapshot", onSettings);
     window.addEventListener("bi-settings-updated", onSettings);
@@ -112,6 +119,7 @@ export default function ProUiComposer({ dispatchRuntime }) {
       window.removeEventListener("bi-composer-focus", onFocus);
       window.removeEventListener("bi-settings-snapshot", onSettings);
       window.removeEventListener("bi-settings-updated", onSettings);
+      markComposerGone();
       input?.removeEventListener("input", onInput);
     };
   }, []);

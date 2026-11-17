@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 import { handoffSendMode } from '../bi_agent/web/static/analysis360-handoff.mjs';
 import { isComposerSendKey, takeComposerText, shouldPersistConversation } from '../frontend/src/composerInput.js';
+import { consumePrefill, isComposerReady, markComposerGone, markComposerReady, queuePrefill, resetHandshake } from '../frontend/src/composerHandshake.js';
 
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 
@@ -94,4 +95,26 @@ test('the handed-over clause reaches the visible controlled composer', async () 
   const handoff = await read('../bi_agent/web/static/analysis360-handoff.mjs');
   assert.match(handoff, /bi-composer-prefill/);
   assert.match(handoff, /CustomEvent\(\"bi-composer-prefill\"/);
+});
+
+test('a prefill that arrives before the visible composer mounts is applied, not lost', () => {
+  resetHandshake();
+  assert.equal(isComposerReady(), false);
+  queuePrefill('深度分析「战略客户需求确认未落实」根因', 'cause-1');
+  markComposerReady();
+  assert.equal(isComposerReady(), true);
+  assert.deepEqual(consumePrefill(), {text: '深度分析「战略客户需求确认未落实」根因', id: 'cause-1'});
+  assert.equal(consumePrefill(), null, 'the queue is consumed exactly once');
+  queuePrefill('', 'x');
+  assert.equal(consumePrefill(), null, 'an empty prefill is ignored');
+  markComposerGone();
+  assert.equal(isComposerReady(), false);
+});
+
+test('the visible composer announces readiness and the runtime empties it with the box', async () => {
+  const composer = await read('../frontend/src/ProUiComposer.jsx');
+  assert.match(composer, /bi-composer-ready/);
+  assert.match(composer, /consumePrefill\(\)/);
+  const runtime = await read('../frontend/src/runtime.js');
+  assert.match(runtime, /takeComposerText\(el\.chatInput\)[\s\S]{0,200}?dispatchEvent\(new Event\("input"/);
 });

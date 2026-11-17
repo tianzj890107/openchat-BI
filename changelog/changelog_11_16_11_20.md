@@ -286,6 +286,11 @@
   预填除写隐藏输入框外，同时派发 `bi-composer-prefill` 事件，派生给用户可见的受控输入框。已重建
   Workbench 资源；浏览器实点验收仍待执行。
 
+- 2026-11-17 补记（WB-03/WB-04）：新增可见 Composer 握手模块 `frontend/src/composerHandshake.js`
+  （就绪/离场/预填排队与一次性消费，重复初始化幂等）；`ProUiComposer` 挂载时广播
+  `bi-composer-ready` 并消费早到预填；`trySend()` 清空隐藏输入后补发 `input` 事件，让受控输入框
+  与桥接值同步清空。资源已重建，Node 169 项通过；iframe 内真实预填/清空仍待浏览器复验。
+
 ## 补齐说明
 
 - 2026-11-16 补记：`11-09` 至 `11-13` 的周文件此前缺失，已按 Git 记录新建
