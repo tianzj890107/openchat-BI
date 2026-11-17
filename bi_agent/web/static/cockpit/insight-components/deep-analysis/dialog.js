@@ -157,8 +157,9 @@ export const DeepAnalysisDialog = window.Vue.defineComponent({
                  aria-labelledby="deep-analysis-workbench-title" @keydown="onKeydown">
           <header class="deep-analysis-workbench__context">
             <div class="deep-analysis-workbench__context-main">
-              <h2 id="deep-analysis-workbench-title" class="deep-analysis-workbench__title">深度分析 · 根因</h2>
-              <span class="deep-analysis-workbench__name">{{ itemTitle }}</span>
+              <h2 id="deep-analysis-workbench-title" class="deep-analysis-workbench__title">
+                深度分析 · 根因：<span class="deep-analysis-workbench__name">{{ itemTitle }}</span>
+              </h2>
               <p v-if="item?.description" class="deep-analysis-workbench__desc">{{ item.description }}</p>
               <span class="deep-analysis-workbench__meta">{{ metaLine }}</span>
             </div>

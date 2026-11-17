@@ -124,3 +124,14 @@ test('a failed slot module is retried once with a fresh version instead of break
   assert.match(loader, /loadWithRetry/);
   assert.match(loader, /searchParams\.set\('v', String\(Date\.now\(\)\)\)/);
 });
+
+test('the dialog header is one line and the empty layer never grows a blank band', async () => {
+  const dialog = await read('../bi_agent/web/static/cockpit/insight-components/deep-analysis/dialog.js');
+  assert.match(dialog, /深度分析 · 根因：\s*<span class="deep-analysis-workbench__name">\{\{ itemTitle \}\}<\/span>/);
+  const css = await read('../frontend/src/workbench.css');
+  const block = css.slice(css.indexOf('body.pro-ui-workbench-body .pro-ui-empty-layer {'));
+  const rule = block.slice(0, block.indexOf('}'));
+  assert.match(rule, /flex:\s*0 0 auto/);
+  assert.doesNotMatch(rule, /flex:\s*1 1 auto/);
+  assert.match(css, /\.pro-ui-empty-layer:empty\s*\{\s*display:\s*none/);
+});

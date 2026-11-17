@@ -7128,15 +7128,22 @@ body.pro-ui-workbench-body .pro-ui-empty-layer {
   position: static;
   inset: auto;
   z-index: auto;
-  flex: 1 1 auto;
+  /* Never grows: once the conversation starts this layer must collapse instead
+   * of leaving a blank band between the SOP/progress rows and the messages. */
+  flex: 0 0 auto;
   min-height: 0;
   overflow-y: auto;
-  margin: clamp(8px, 3vh, 28px) 0;
+  margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 18px;
   pointer-events: none;
+}
+
+body.pro-ui-workbench-body .pro-ui-empty-layer:empty {
+  display: none;
+  padding: 0;
 }
 
 body.pro-ui-workbench-body .pro-ui-empty-layer > * {
