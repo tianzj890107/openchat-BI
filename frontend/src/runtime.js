@@ -13,6 +13,9 @@
  * SSE event shape is identical across modes; only the endpoints differ.
  * ===================================================================== */
 
+import {isComposerSendKey, takeComposerText} from "./composerInput.js";
+
+
 import {
   SOP_STEPS,
   applySopStep,
@@ -7717,9 +7720,10 @@ export function bootWorkbenchRuntime() {
       stopGeneration();
       return;
     }
-    const text = el.chatInput.value.trim();
+    // The box is emptied before the request starts: the message lands in the
+    // conversation first, and a delayed handoff/answer never keeps the text.
+    const text = takeComposerText(el.chatInput);
     if (!text) return;
-    el.chatInput.value = "";
     el.chatInput.style.height = "";
     sendMessage(text);
   }
@@ -7727,10 +7731,11 @@ export function bootWorkbenchRuntime() {
   el.btnSend.addEventListener("click", trySend);
   window.addEventListener("bi-stop-generation", stopGeneration);
   el.chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      trySend();
-    }
+    // Only the composer sends: buttons keep their own Enter behaviour, and an
+    // IME candidate selection never submits a half-typed question.
+    if (!isComposerSendKey(e)) return;
+    e.preventDefault();
+    trySend();
   });
   el.chatInput.addEventListener("input", () => {
     el.chatInput.style.height = "auto";

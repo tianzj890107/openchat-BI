@@ -8,6 +8,16 @@
 import { waitForWorkbench } from "./url-prompt.mjs";
 
 export const HANDOFF_PARAM = "a360";
+
+// The workbench page auto-sends the handed-over clause (the old behaviour).
+// The cockpit embed passes send=0 and waits for the user to press the button.
+export function handoffSendMode(search) {
+  try {
+    return new URLSearchParams(String(search ?? "")).get("send") === "0" ? "manual" : "auto";
+  } catch (_) {
+    return "auto";
+  }
+}
 export const HANDOFF_FIELD = "analysis360_handoff";
 const MODE_KEY = "eimosp-analysis360-mode";
 
@@ -97,7 +107,7 @@ export async function bootHandoff(window, document) {
   const { input, button } = await waitForWorkbench(window, document);
   input.value = handoff.prompt || "深度分析";
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
-  button.click();
+  if (handoffSendMode(url.search) === "auto") button.click();
   return true;
 }
 

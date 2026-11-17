@@ -151,7 +151,7 @@ function textOf(node) {
 }
 
 /** Mount a component with the real Vue runtime into a detached element tree. */
-async function mount(component, props = {}, {opener = false} = {}) {
+async function mount(component, props = {}, {opener = false, fetchImpl = null} = {}) {
   const Vue = await loadVue();
   const doc = makeDocument();
   const openerEl = opener ? doc.createElement('button') : null;
@@ -166,7 +166,8 @@ async function mount(component, props = {}, {opener = false} = {}) {
   const docWithBody = doc;
   docWithBody.querySelector = selector => (selector === 'body' ? body : null);
 
-  globalThis.window = { Vue, document: doc, crypto: { randomUUID: () => 'session-1' }, fetch: () => { throw new Error('fetch not stubbed'); } };
+  const fetchStub = fetchImpl || (() => { throw new Error('fetch not stubbed'); });
+  globalThis.window = { Vue, document: doc, crypto: { randomUUID: () => 'session-1' }, fetch: fetchStub };
   globalThis.Vue = Vue;
   globalThis.document = doc;
 
@@ -269,7 +270,8 @@ const PAYLOAD = {
 async function loadDialog() {
   const Vue = await loadVue();
   const doc = makeDocument();
-  globalThis.window = { Vue, document: doc, crypto: { randomUUID: () => 'session-1' }, fetch: () => { throw new Error('fetch not stubbed'); } };
+  const fetchStub = () => { throw new Error('fetch not stubbed'); };
+  globalThis.window = { Vue, document: doc, crypto: { randomUUID: () => 'session-1' }, fetch: fetchStub };
   globalThis.Vue = Vue;
   globalThis.document = doc;
   return import(`../bi_agent/web/static/cockpit/insight-components/deep-analysis/dialog.js?ui=${Math.random()}`);
@@ -287,110 +289,67 @@ test('the cockpit card registers the dialog component (it must not render a bare
     'createStageRiskComponent must register DeepAnalysisDialog');
 });
 
-test('the dialog template is valid and teleports to the page body', async () => {
+test('the dialog template compiles and carries no second chat composer', async () => {
   const { DeepAnalysisDialog } = await loadDialog();
   const Vue = await loadVue();
-  assert.match(DeepAnalysisDialog.template, /<teleport[^>]+to="body"/);
+  assert.match(DeepAnalysisDialog.template, /<iframe/);
   assert.doesNotThrow(() => Vue.compile(DeepAnalysisDialog.template));
 });
 
-test('opening the dialog shows the chosen cause and prefills an editable prompt', async () => {
-  const { DeepAnalysisDialog } = await loadDialog();
-  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '' });
-  const dialogs = byClass(mounted.tree, 'deep-analysis-dialog');
-  assert.equal(dialogs.length, 1);
-  assert.match(textOf(dialogs[0]), /深度分析 · 根因/);
-  assert.match(textOf(dialogs[0]), /供应链交期延迟/);
-  assert.match(textOf(dialogs[0]), /2025-10/);
-  const composer = findAll(mounted.tree, node => node.tagName === 'TEXTAREA')[0];
-  assert.equal(composer.value, '深度分析「供应链交期延迟」根因');
-  await new Promise(resolve => setTimeout(resolve, 5));
-  assert.equal(mounted.doc.activeElement, composer, 'the composer takes focus on open');
-});
-
-test('sending streams the answer into the dialog and clears the composer afterwards', async () => {
+test('opening the dialog embeds the real workbench for the chosen cause', async () => {
   const { DeepAnalysisDialog } = await loadDialog();
   const calls = [];
-  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '' });
-  globalThis.window.fetch = async (url, init) => {
-    calls.push({ url, body: init && init.body ? JSON.parse(init.body) : null });
-    if (String(url).endsWith('/api/analysis360/handoff')) return jsonResponse({ id: 'handoff-1', prompt: 'x' });
-    return sseResponse([
-      { type: 'text_delta', text: '先在全局本体中定位' },
-      { type: 'text_delta', text: '这条根因。' },
-      { type: 'done' },
-    ]);
-  };
-  const sendButton = findAll(mounted.tree, node => String(node.className).includes('deep-analysis-dialog__send'))[0];
-  trigger(sendButton, 'click');
-  await new Promise(resolve => setTimeout(resolve, 30));
+  const fetchImpl = async url => { calls.push(String(url)); return jsonResponse({ id: 'handoff-1' }); };
+  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '/app' }, { fetchImpl });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const frames = findAll(mounted.tree, node => node.tagName === 'IFRAME');
+  assert.equal(frames.length, 1, 'one embedded workbench');
+  assert.match(String(frames[0].props.src || frames[0].src || ''), /\/workbench\?/);
+  assert.match(String(frames[0].props.src || frames[0].src || ''), /embed=rootcause/);
+  assert.match(String(frames[0].props.src || frames[0].src || ''), /a360=handoff-1/);
+  assert.match(String(frames[0].props.src || frames[0].src || ''), /send=0/);
   const text = textOf(mounted.tree);
-  assert.match(text, /先在全局本体中定位这条根因。/);
-  const chat = calls.find(call => String(call.url).endsWith('/api/analysis360/chat'));
-  assert.equal(chat.body.analysis360_handoff, 'handoff-1');
-  assert.equal(chat.body.session_id, 'session-1');
-  const composer = findAll(mounted.tree, node => node.tagName === 'TEXTAREA')[0];
-  assert.equal(composer.value, '', 'the composer clears after the first answer');
-  const label = textOf(findAll(mounted.tree, node => String(node.className).includes('deep-analysis-dialog__send'))[0]);
-  assert.match(label, /发送/);
+  assert.match(text, /供应链交期延迟/);
+  assert.match(text, /交期超过 12 天/);
+  assert.match(text, /2025-10/);
+  assert.equal(findAll(mounted.tree, node => node.tagName === 'TEXTAREA').length, 0, 'the dialog has no own composer');
 });
 
-test('a follow-up question reuses the session and never repeats the handoff', async () => {
+test('closing before the handoff returns never mounts the workbench', async () => {
   const { DeepAnalysisDialog } = await loadDialog();
-  const calls = [];
-  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '' });
-  globalThis.window.fetch = async (url, init) => {
-    calls.push({ url, body: init && init.body ? JSON.parse(init.body) : null });
-    if (String(url).endsWith('/api/analysis360/handoff')) return jsonResponse({ id: 'handoff-1' });
-    if (String(url).endsWith('/api/analysis360/choice')) return sseResponse([{ type: 'text_delta', text: '继续下钻' }, { type: 'done' }]);
-    return sseResponse([{ type: 'text_delta', text: '先定位。' }, { type: 'done' }]);
-  };
-  trigger(findAll(mounted.tree, node => String(node.className).includes('deep-analysis-dialog__send'))[0], 'click');
-  await new Promise(resolve => setTimeout(resolve, 25));
-  const composer = findAll(mounted.tree, node => node.tagName === 'TEXTAREA')[0];
-  composer.listeners['onupdate:modelvalue']('那再查一下订单');
-  trigger(findAll(mounted.tree, node => String(node.className).includes('deep-analysis-dialog__send'))[0], 'click');
-  await new Promise(resolve => setTimeout(resolve, 25));
-  const chats = calls.filter(call => String(call.url).endsWith('/api/analysis360/chat'));
-  assert.equal(chats.length, 2);
-  assert.equal(chats[0].body.analysis360_handoff, 'handoff-1');
-  assert.equal(chats[1].body.analysis360_handoff, undefined);
-  assert.equal(chats[1].body.session_id, 'session-1');
-});
-
-test('closing before the handoff returns never starts the chat request', async () => {
-  const { DeepAnalysisDialog } = await loadDialog();
-  const calls = [];
   let releaseHandoff;
-  const handoffGate = new Promise(resolve => { releaseHandoff = resolve; });
-  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '' });
-  globalThis.window.fetch = async url => {
-    calls.push(String(url));
-    if (String(url).endsWith('/api/analysis360/handoff')) {
-      await handoffGate;
-      return jsonResponse({ id: 'handoff-1' });
-    }
-    return sseResponse([{ type: 'done' }]);
+  const gate = new Promise(resolve => { releaseHandoff = resolve; });
+  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '/app' });
+  globalThis.window.fetch = async () => {
+    await gate;
+    return jsonResponse({ id: 'handoff-late' });
   };
-  trigger(findAll(mounted.tree, node => String(node.className).includes('deep-analysis-dialog__send'))[0], 'click');
-  const close = findAll(mounted.tree, node => String(node.className).includes('deep-analysis-dialog__close'))[0];
+  const close = findAll(mounted.tree, node => String(node.className).includes('deep-analysis-workbench__close'))[0];
   trigger(close, 'click');
   releaseHandoff();
-  await new Promise(resolve => setTimeout(resolve, 30));
-  assert.ok(!calls.some(url => url.endsWith('/api/analysis360/chat')),
-    `closing must not start chat after the late handoff (calls: ${calls.join(', ')})`);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(findAll(mounted.tree, node => node.tagName === 'IFRAME').length, 0);
+});
+
+test('a rejected handoff shows the error inside the dialog', async () => {
+  const { DeepAnalysisDialog } = await loadDialog();
+  const fetchImpl = async () => ({ ok: false, status: 400,
+    json: async () => ({ detail: '深度分析交接已失效，请回到卡片重新点击“深度分析”' }) });
+  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '/app' }, { fetchImpl });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const text = textOf(mounted.tree);
+  assert.match(text, /交接已失效/);
+  assert.equal(findAll(mounted.tree, node => node.tagName === 'IFRAME').length, 0);
 });
 
 test('Escape closes the dialog and focus returns to the element that opened it', async () => {
   const { DeepAnalysisDialog } = await loadDialog();
-  // A real opener is focused when the dialog mounts, as on a card click.
-  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '' }, { opener: true });
+  const mounted = await mount(DeepAnalysisDialog, { open: true, payload: PAYLOAD, item: CAUSE, root: '/app' },
+    { opener: true, fetchImpl: async () => jsonResponse({ id: 'handoff-1' }) });
   const opener = mounted.opener;
-  const panel = byClass(mounted.tree, 'deep-analysis-dialog')[0];
-  assert.equal(panel.listeners.onkeydown === undefined, false, 'the panel owns a keydown handler');
-  panel.listeners.onkeydown({
-    key: 'Escape', isComposing: false, preventDefault() {}, stopPropagation() {},
-  });
+  const panel = byClass(mounted.tree, 'deep-analysis-workbench')[0];
+  assert.equal(typeof panel.listeners.onkeydown, 'function');
+  panel.listeners.onkeydown({ key: 'Escape', isComposing: false, preventDefault() {}, stopPropagation() {} });
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(mounted.doc.activeElement, opener, 'focus returns to the card entry');
 });

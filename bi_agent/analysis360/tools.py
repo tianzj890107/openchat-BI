@@ -135,8 +135,13 @@ class Run:
             except ValueError:
                 return dict(status="needs_clarification", message="期间不合法：需要 YYYY-MM-DD，且结束日晚于开始日。",
                             versions=self.versions())
-            observed = _text(params.get("observed_date"), 10) or _text((handoff or {}).get("measurementDate"), 10) \
-                or dt.date.today().isoformat()
+            observed = _text(params.get("observed_date"), 10) or _text((handoff or {}).get("measurementDate"), 10)
+            if not observed:
+                # A historical card must not silently analyse "today": ask for the
+                # snapshot day instead of substituting the wall clock.
+                return dict(status="needs_observation",
+                            message="缺少观察日（数据快照日期）：请确认要按哪一天的数据快照分析，不能默认使用系统今天。",
+                            anchors=anchors, versions=self.versions())
             period = dict(start=start, endExclusive=end, observedDate=observed, source=source,
                           semantics="统计期间为 [start, endExclusive)；observedDate 是观察日")
             if card_period and source.startswith("用户") and card_period[:4] != start[:4]:

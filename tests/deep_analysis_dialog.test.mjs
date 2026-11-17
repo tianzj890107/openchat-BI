@@ -73,10 +73,11 @@ test('the cockpit card opens the in-place dialog for every cause row', async () 
   assert.equal((shared.match(/class="stage-risk-analysis__deep"/g) || []).length, 2);
   assert.match(shared, /openCauseDeepAnalysis\(dimension\)/);
   assert.match(shared, /<deep-analysis-dialog v-if="deepAnalysis"/);
-  // The dialog talks to the 360-only endpoints and prefills the root cause.
+  // The dialog stores the clause, then embeds the 360 workbench (manual send).
   assert.match(dialog, /\/api\/analysis360\/handoff/);
-  assert.match(dialog, /\/api\/analysis360\/chat/);
-  assert.match(dialog, /\/api\/analysis360\/choice/);
+  assert.match(dialog, /embed=rootcause/);
+  assert.match(dialog, /send=0/);
+  assert.match(dialog, /<iframe/);
   // The new-tab helper may stay for other surfaces, but no entry calls it.
   assert.ok(!/await openDeepAnalysis\(/.test(shared), 'no new-tab deep analysis entry should remain');
 });

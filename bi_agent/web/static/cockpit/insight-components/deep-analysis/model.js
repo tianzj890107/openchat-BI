@@ -157,3 +157,17 @@ export function isSendKey(event) {
   if (event.isComposing || event.keyCode === 229 || event.which === 229) return false
   return true
 }
+
+
+/** The observation day of the card result, never the browser wall clock. */
+export function resolveMeasurementDate(result, slotProps, snapshotMeta) {
+  const candidates = [
+    result?.measurementDate, result?.trace?.measurementDate,
+    slotProps?.measurementDate, slotProps?.snapshotDate, snapshotMeta,
+  ]
+  for (const value of candidates) {
+    const text = String(value ?? '').trim().slice(0, 10)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+  }
+  return ''
+}

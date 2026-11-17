@@ -2,6 +2,7 @@ import {createTaskOrderController, ensureTaskOrderStyle} from './task-order/cont
 import {TaskOrderDialog} from './task-order/dialog.js'
 import {highlightNumbers, stripOntologyCodes} from './number-highlight.js'
 import {DeepAnalysisDialog} from './deep-analysis/dialog.js'
+import {resolveMeasurementDate} from './deep-analysis/model.js'
 
 export {highlightNumbers, stripOntologyCodes}
 
@@ -622,7 +623,9 @@ export function createStageRiskComponent(options = {}) {
           item: dimension,
           payload: deepAnalysisPayload('cause', clause, {
             period: props.analysis?.period || result.period || props.slotProps?.period || '',
-            measurementDate: result.measurementDate || result.trace?.measurementDate || '',
+            // Historical snapshots must not fall back to the system clock.
+            measurementDate: resolveMeasurementDate(result, props.slotProps,
+              document.querySelector('meta[name="cockpit-snapshot-date"]')?.content || ''),
             stage: displayStage.value,
             title: props.slotProps?.title || '',
             ontology: result.trace?.ontology || result.ontology?.name || '',

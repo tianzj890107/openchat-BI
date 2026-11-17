@@ -253,6 +253,32 @@
   `tests/test_analysis360.py` 39 项通过（含把改写后的问题送达 Agent 的端到端用例）；
   `git diff --check` 通过；未启动服务、未部署。
 
+### 2026-11-17 根因深度分析：改为嵌入分析 Workbench 的双栏工作区
+
+- 根因「深度分析」不再使用单栏小聊天框：弹层内嵌同源 `/workbench`（左侧会话与状态、
+  右侧结论/根因/建议/表格/图表看板），`?embed=rootcause&a360=<交接编号>&send=0` 只预填
+  `深度分析「<根因名称>」根因`，由用户手动发送；顶部保留根因名称、描述、环节、期间与快照
+  观察日，关闭后焦点回到根因入口。
+- 发送即清空：Workbench 的 `trySend()` 改为在发起任何请求前取出并清空输入（每次发送都适用），
+  复用的输入法判断与按钮键盘行为抽到 `frontend/src/composerInput.js`；Enter 只在输入区发送，
+  Shift+Enter 换行、输入法选词回车不发送，按钮保持自身键盘行为。
+- 观察日修复：卡片交接的 `measurementDate` 依次取卡片结果、插槽元数据与页面
+  `cockpit-snapshot-date`（2025-10-31）；`G360ResolveScope` 不再用 `date.today()` 兜底，
+  缺失时返回 `needs_observation` 让 Agent 询问，历史快照不会被当成今天。
+- 入口补齐：发货「主因与细分根因」的每个根因分组也挂同一入口，带入该组真实证据；
+  只展示问题或订单证据的行不新增按钮。
+- 静态资源：Workbench 前端改动已重新构建 `static/vendor/antd/workbench.js`；360 交接脚本
+  `static/analysis360-handoff.mjs` 增加 `send=0` 手动模式，旧 `/workbench?a360=` 仍自动发送。
+- 主要文件：`frontend/src/{runtime.js,composerInput.js}`、
+  `bi_agent/web/static/{analysis360-handoff.mjs,vendor/antd/workbench.js}`、
+  `bi_agent/web/static/cockpit/insight-components/{shared.js,deep-analysis/*,shipment-cause-breakdown/index.js}`、
+  `bi_agent/analysis360/tools.py`、`docs/analysis360.md`。
+- 验证：Node 163 项、`tests/test_analysis360.py` 41 项通过（含缺失观察日返回 `needs_observation`、
+  交接观察日进入期间、手动模式不自动发送、发送前清空与输入法回车）；真实挂载用例覆盖弹层
+  内嵌 iframe、交接失败提示、交接前关闭与焦点回归；未启动服务、未部署。
+- 未完成（如实记录）：断流后重试不重建会话（R5）与嵌入模式的历史保存策略（R8）沿用现有
+  Workbench 行为，尚未单独实现与验收。
+
 ## 补齐说明
 
 - 2026-11-16 补记：`11-09` 至 `11-13` 的周文件此前缺失，已按 Git 记录新建

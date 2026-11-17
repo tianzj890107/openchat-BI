@@ -154,7 +154,7 @@ def test_scope_routes_from_the_card_clause_first():
 
 
 def test_a_card_only_code_is_not_forced_onto_the_global_ontology():
-    context = handoff.normalise(dict(kind="issue", period="2025",
+    context = handoff.normalise(dict(kind="issue", period="2025", measurementDate="2025-11-14",
                                      clause=dict(code="IS01", title="销售额达成低于目标")))
     run, _ = _run(handoff_context=context)
     scope = run.resolve_scope({})
@@ -227,7 +227,7 @@ def test_a_registered_query_returns_evidence_with_its_hash_and_period(config):
 
 def test_mock_pending_and_unknown_queries_are_blocked_without_touching_the_database():
     run, database = _run()
-    run.resolve_scope(dict(anchor_codes=["RK-GF02"], year="2025"))
+    run.resolve_scope(dict(anchor_codes=["RK-GF02"], year="2025", observed_date="2025-11-14"))
     blocked = run.execute_query(dict(query_index="Q029"))
     assert blocked["status"] == "blocked" and blocked["gate"] == "mock" and "MOCK" in blocked["message"]
     assert run.execute_query(dict(query_index="Q999"))["status"] == "rejected"
@@ -264,7 +264,7 @@ def _delivery_run():
         return [dict(order_id="so-1", order_number="SO2025001")]
     database = FakeDatabase(rows=rows)
     run, _ = _run(database)
-    run.resolve_scope(dict(anchor_codes=["RK-GD01"], year="2025"))
+    run.resolve_scope(dict(anchor_codes=["RK-GD01"], year="2025", observed_date="2025-11-14"))
     run.get_subgraph({})
     return run, database
 
@@ -396,6 +396,21 @@ def test_the_first_turn_carries_the_question_the_user_edited():
     assert "为什么交期这么长？" in merged and "用户指令" in merged
     assert handoff.first_turn_message(context, "") == opening
     assert handoff.first_turn_message(context, "   ") == opening
+
+
+def test_a_missing_observation_date_is_asked_for_not_replaced_with_today():
+    context = handoff.normalise(dict(kind="risk", period="2025", clause=dict(code="RK02", title="签单进度滞后")))
+    run, _ = _run(handoff_context=context)
+    result = run.resolve_scope({"year": "2025"})
+    assert result["status"] == "needs_observation"
+    assert "不能默认使用系统今天" in result["message"]
+
+
+def test_the_handed_over_observation_date_becomes_the_scope_period():
+    run, _ = _run(handoff_context=_risk_handoff())
+    result = run.resolve_scope({"year": "2025"})
+    assert result["status"] == "ok"
+    assert result["period"]["observedDate"] == "2025-11-14"
 
 
 def test_the_store_returns_a_context_only_for_its_id():
