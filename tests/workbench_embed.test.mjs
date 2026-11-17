@@ -88,7 +88,7 @@ test('the welcome suggestions cannot be painted over the composer', async () => 
   const rule = block.slice(0, block.indexOf('}'));
   assert.doesNotMatch(rule, /position:\s*absolute/);
   assert.match(rule, /overflow-y:\s*auto/);
-  assert.match(rule, /flex:\s*1 1 auto/);
+  assert.match(rule, /flex:\s*0 0 auto/);
 });
 
 test('the handed-over clause reaches the visible controlled composer', async () => {
