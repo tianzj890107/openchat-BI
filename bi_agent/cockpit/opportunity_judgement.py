@@ -139,6 +139,21 @@ def _numbers(text):
     return sorted(values)
 
 
+def _output_tokens(messages, prompt, fallback):
+    """Output token budget of one judgement call.
+
+    With ``COCKPIT_MODEL_CONTEXT_TOKENS`` set (.env), the call may use what the
+    input leaves of that input + output budget, so a model that reasons before
+    answering is not cut off; ``fallback`` applies only when it is unset.
+    """
+    from ..llm.context_budget import cockpit_context_limit, estimate_request
+
+    limit = cockpit_context_limit()
+    if not limit:
+        return fallback
+    return max(256, limit - estimate_request(messages, prompt))
+
+
 def semantic_rewriter(payload):
     """One model call that rewrites the card's established risk rows."""
     from ..llm import provider
@@ -152,12 +167,14 @@ def semantic_rewriter(payload):
         timeout = 90
     timeout = max(15, min(timeout, 180))
     started = time.monotonic()
+    prompt = system_prompt(SEMANTIC_PROMPT)
+    max_tokens = _output_tokens(messages, prompt, 2000)
     try:
-        text, _, _ = v2._read_model_stream(provider, messages, system_prompt(SEMANTIC_PROMPT), key,
-                                           max_tokens=2000, timeout=timeout, step="风险行语义控制")
+        text, _, _ = v2._read_model_stream(provider, messages, prompt, key,
+                                           max_tokens=max_tokens, timeout=timeout, step="风险行语义控制")
         answer = v2._decode_model_json(text)
     except Exception as exc:  # noqa: BLE001 - annotated, the caller keeps the rule rows
-        v2._annotate_model_error(exc, key, messages, started, timeout, 2000)
+        v2._annotate_model_error(exc, key, messages, started, timeout, max_tokens)
         raise
     return dict(answer, _model=v2._model_route_name(key))
 
@@ -306,6 +323,7 @@ def _item_judge(request, role, infer_prompt):
         prompt = compose_system_prompt(role(), infer_prompt if inference else JUDGE_PROMPT.format(kind=label))
         max_tokens = 1200 if inference else 800
         step = f"{label} {request.get('code')}" if inference else f"判定{label} {request.get('code')}"
+    max_tokens = _output_tokens(messages, prompt, max_tokens)
     try:
         text, _, usage = v2._read_model_stream(
             provider, messages, prompt, key,

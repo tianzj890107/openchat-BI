@@ -2054,3 +2054,15 @@ def test_the_ontology_queries_bind_period_and_observation_day():
     assert [label for label, _, _ in specs] == ['商机预测缺口', '客户预测缺口', 'P0在途超期', '战略重点商机储备', '无商机战略客户']
     assert all(params == [date(2025, 1, 1), date(2026, 1, 1), date(2025, 10, 31)] for _, _, params in specs)
     assert all(sql.count('%s') == 3 for _, sql, _ in specs)
+
+
+def test_judgement_output_budget_comes_from_the_env_context_tokens(monkeypatch):
+    from bi_agent.cockpit.opportunity_judgement import _output_tokens
+    from bi_agent.llm.context_budget import estimate_request
+
+    messages = [dict(role='user', content='{"risks": []}')]
+    monkeypatch.delenv('COCKPIT_MODEL_CONTEXT_TOKENS', raising=False)
+    assert _output_tokens(messages, 'prompt', 1500) == 1500
+    # .env COCKPIT_MODEL_CONTEXT_TOKENS: the output may use what the input leaves.
+    monkeypatch.setenv('COCKPIT_MODEL_CONTEXT_TOKENS', '300000')
+    assert _output_tokens(messages, 'prompt', 1500) == 300000 - estimate_request(messages, 'prompt')

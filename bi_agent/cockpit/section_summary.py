@@ -121,6 +121,10 @@ def _call_model(payload, *, timeout, max_tokens, system=SYSTEM_PROMPT):
     messages = [dict(role="user", content=json.dumps(payload, ensure_ascii=False))]
     events = []
     from ..llm.context_budget import cockpit_context_limit
+    from .opportunity_judgement import _output_tokens
+    # COCKPIT_MODEL_CONTEXT_TOKENS (.env) sets the budget; the argument is the
+    # fallback when it is unset.
+    max_tokens = _output_tokens(messages, system, max_tokens)
     with request_config(thinking=False, request_timeout=timeout,
                         context_limit=cockpit_context_limit(), min_output_tokens=min(max_tokens, 600)):
         # An empty allowlist: this step never offers the model any tool.
