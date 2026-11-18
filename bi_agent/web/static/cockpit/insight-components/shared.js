@@ -673,6 +673,7 @@ export function createStageRiskComponent(options = {}) {
                     </div>
                   </div>
                 </details>
+                <p v-else-if="causesUnderRisks && finding.causeNote" class="stage-risk-analysis__cause-meta stage-risk-analysis__risk-cause-note">根因：{{ plain(finding.causeNote) }}</p>
               </div>
               </div>
             </div>

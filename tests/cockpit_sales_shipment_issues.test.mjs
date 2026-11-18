@@ -103,6 +103,8 @@ test('the 商机获取 card nests each risk\'s causes under it and hides advice'
   assert.match(shared, /<p v-if="showGroupSummaries && group\.summary"/);
   assert.equal((shared.match(/<trace-details v-if="showEvidence" /g) || []).length, 2);
   assert.match(shared, /name: 'StageTraceDetails'/);
+  // A risk without causes says why under it instead of showing nothing.
+  assert.match(shared, /<p v-else-if="causesUnderRisks && finding\.causeNote"[^>]*>根因：\{\{ plain\(finding\.causeNote\) \}\}<\/p>/);
 });
 
 test('the 商机获取 card shows its rows only, without per-section summaries', () => {

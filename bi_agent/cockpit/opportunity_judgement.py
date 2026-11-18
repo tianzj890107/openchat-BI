@@ -439,6 +439,9 @@ def _global_causes(judge, request, progress, *, low, high):
     allowed = _allowed_model_numbers(request)
     feedback = None
     best, calls, note, model, error = {}, 0, "", "", ""
+    # Causes whose numbers check out but that still restate their risk after
+    # the retry: used only so a risk is never left without any cause.
+    repeating = {}
     for _ in range(2):
         ask = dict(request, validationFeedback=feedback) if feedback else request
         calls += 1
@@ -474,6 +477,7 @@ def _global_causes(judge, request, progress, *, low, high):
                 repeated = _repeats_risk(cause, risks_by_code[_text(item["code"])])
                 if repeated:
                     problems.append(f"{item['code']}「{cause['title']}」{repeated}，根因不得重复风险已有内容")
+                    repeating.setdefault(_text(item["code"]), []).append(cause)
                     continue
                 kept.append(cause)
             if kept:
@@ -487,6 +491,11 @@ def _global_causes(judge, request, progress, *, low, high):
         if not problems:
             break
         feedback = problems
+    for code in codes:
+        # The no-repeat rule must not leave a risk with no cause at all: keep
+        # the model's own causes (their numbers are traceable) for that risk.
+        if not best.get(code) and repeating.get(code):
+            best[code] = repeating[code][-high:]
     if not best and not error:
         error = "模型没有给出可用的根因"
     return dict(causes=best, calls=calls, note=note, model=model, error=error)
@@ -814,6 +823,17 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
             missingEvidence=list(entry["missingEvidence"]) if entry.get("inferred") else [],
             **({"analysis": "ai"} if entry.get("aiAnalysis") else {}),
         ))
+    if include_downstream:
+        # A risk without any established cause says why under it, instead of
+        # the cause list silently disappearing.
+        explained_ids = {fid for item in causes for fid in item["findingIds"]}
+        for finding in findings:
+            if finding["id"] in explained_ids:
+                continue
+            notes = [entry.get("error") or entry.get("reason") for entry in cause_entries
+                     if finding["riskCode"] in (entry.get("linkedRisks") or [])
+                     and (entry.get("error") or entry.get("reason"))]
+            finding["causeNote"] = _text(notes[0] if notes else "本轮未得到该风险的根因")[:200]
     cause_by_code = {item["causeCode"]: item for item in causes}
     recommendations = []
     for entry in advice_entries:

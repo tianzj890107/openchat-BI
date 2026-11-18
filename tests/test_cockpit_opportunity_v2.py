@@ -2037,7 +2037,14 @@ def test_ai_root_causes_must_not_repeat_their_risk():
     assert len(calls) == 2 and '根因不得重复风险已有内容' in '；'.join(calls[1]['validationFeedback'])
     from bi_agent.cockpit.opportunity_judgement import GLOBAL_CAUSE_PROMPT
     assert '不得重复该风险已有的内容' in GLOBAL_CAUSE_PROMPT
-    assert not judged['causes']
+    # 2026-11-17: the rule never leaves a risk without causes: what still
+    # repeats after the retry is kept rather than hiding the cause list.
+    assert {code for cause in judged['causes'] for code in cause['riskCodes']} == set(established)
+    assert all('causeNote' not in finding for finding in judged['findings'])
+    # Without any usable cause, each risk says why under it.
+    empty = _judged(value, _ai_judge([dict(risks=[]), dict(risks=[])], []))
+    assert not empty['causes']
+    assert all(finding['causeNote'] for finding in empty['findings'])
 
 
 def test_the_ontology_queries_bind_period_and_observation_day():
