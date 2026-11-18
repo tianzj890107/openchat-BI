@@ -95,22 +95,26 @@ INFER_PROMPT = (
 GLOBAL_CAUSE_PROMPT = (
     "商机获取环节根因全局分析。输入 risks 是本卡片本轮已经成立的全部风险，每条给出风险编码、名称、等级、"
     "判定结果（judgement）、本体定义与判定规则，以及该风险涉及指标的本体口径与本轮取值（metrics、observed）。"
+    "每条风险的 ontologyCauses 是本体「根因」页中与该风险关联的根因定义（名称、描述、判定方式与 AI 分析要点），"
+    "是本次分析的上下文：以本轮指标结果为依据，参考这些本体根因的分析方向与口径推理；数据支持时可以在其基础上"
+    "补充本体未列出的原因，但不得写出数据不支持的本体根因。"
     "请把这些风险放在一起做一次全局分析：结合各风险的指标结果和风险之间的关联，为每一条风险推理最可能导致它的根因。"
-    "根因的分析维度由你依据数据自行确定（例如客户结构、产品结构、阶段推进节奏、签单节奏、预测质量、目标分解等），"
-    "不要套用或匹配任何固定的根因清单。"
     + ONTOLOGY_RULES.replace("{", "{{").replace("}", "}}") +
-    "每条风险给出 {low}～{high} 条根因，按可能性从高到低排列；不同风险可以指向同一方向，"
-    "但每条根因的说明必须落到该风险自己的指标数据上。description 写清推理依据并引用输入中的具体数值，"
-    "不得引入输入中没有的数字；需要补充核实的数据写在 dataGaps。"
-    "强制规则：根因显示在对应风险下面，不得重复该风险已有的内容——不得复述风险的 judgement（缺口、目标、进度、"
+    "每条风险只给出 1 条根因：把各方面原因按可能性从高到低合并写成一段连贯的话，不要分条、不要编号"
+    "（不要写“根因1”“根因2”“其一”“①”之类）；不同风险可以指向同一方向，但说明必须落到该风险自己的指标数据上。"
+    "description 写清推理依据并引用输入中的具体数值，不得引入输入中没有的数字；需要补充核实的数据写在 dataGaps。"
+    "数据一致：根因中出现与风险 judgement 相同的指标（目标、已签单、预测、缺口、缺口率、客户数、商机条数、金额等）时，"
+    "数值、单位与口径必须和 judgement 完全一致，不得给出与风险结论相反或矛盾的判断。"
+    "强制规则：根因显示在对应风险下面，不得重复该风险已有的内容——不得复述风险的 judgement（缺口、目标、已签单、"
     "预测、超期条数与金额等风险本身已写出的事实与数字），也不得以风险名称作为根因名称；根因只写导致该风险的"
     "原因及支撑它的其他指标事实（例如客户、阶段、商机结构或在途情况）。"
     '只返回 JSON：{{"risks": [{{"code": "风险编码", "causes": [{{"title": "不超过20字的根因名称", '
-    '"description": "不超过160字的推理依据，引用输入中的具体数值", '
-    '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，不要输出其他内容。'
+    '"description": "一段话，不超过240字，引用输入中的具体数值", '
+    '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，'
+    'causes 数组只含 1 项，不要输出其他内容。'
 )
 GLOBAL_CAUSE_RULE = dict(code="BR-L01", name="AI 全局根因分析", levelRule="",
-                         condition="大模型依据本轮已成立风险及其指标结果全局分析，不匹配本体根因库")
+                         condition="大模型依据本轮已成立风险及其指标结果全局分析，以本体根因页为上下文，每条风险一段根因")
 
 
 SEMANTIC_PROMPT = (
@@ -438,6 +442,31 @@ def _repeats_risk(cause, risk):
     return ""
 
 
+_FIGURE = re.compile(r"(?:^|[，。；：、\s（(])([\u4e00-\u9fa5]{2,6})\s*(-?\d+(?:\.\d+)?)")
+
+
+def _conflicts_risk(cause, risk):
+    """A figure the cause gives for one of the risk's own labelled figures, but different, or \"\"."""
+    own = {}
+    for label, number in _FIGURE.findall(_text(risk.get("judgement"))):
+        own.setdefault(label, set()).add(float(number))
+    for label, number in _FIGURE.findall(f"{cause['title']} {cause['description']}"):
+        values = own.get(label)
+        if values and not any(abs(float(number) - value) < 0.005 for value in values):
+            shown = "、".join(f"{value:g}" for value in sorted(values))
+            return f"「{label} {number}」与风险中的「{label} {shown}」不一致"
+    return ""
+
+
+def _merge_causes(causes):
+    """Several causes of one risk as one paragraph."""
+    if len(causes) <= 1:
+        return list(causes)
+    text = "；".join(cause["description"].rstrip("。；; ") for cause in causes if cause["description"])
+    gaps = "；".join(cause["dataGaps"] for cause in causes if cause["dataGaps"])
+    return [dict(title=causes[0]["title"], description=(text + "。") if text else "", dataGaps=gaps[:200])]
+
+
 def _global_causes(judge, request, progress, *, low, high):
     """One model pass over every established risk; never raises.
 
@@ -485,11 +514,17 @@ def _global_causes(judge, request, progress, *, low, high):
                 if not isinstance(cause, dict) or not _text(cause.get("title")):
                     continue
                 cause = dict(title=_text(cause.get("title"))[:40],
-                             description=_text(cause.get("description"))[:400],
+                             description=_text(cause.get("description"))[:500],
                              dataGaps=_text(cause.get("dataGaps"))[:200])
                 bad = _untraceable_numbers(f"{cause['title']} {cause['description']}", allowed)
                 if bad:
                     problems.append(f"{item['code']}「{cause['title']}」引用了输入中没有的数字 {'、'.join(bad)}")
+                    continue
+                # A cause must not contradict its risk's own figures; such a
+                # cause is never shown, not even as the last resort below.
+                conflict = _conflicts_risk(cause, risks_by_code[_text(item["code"])])
+                if conflict:
+                    problems.append(f"{item['code']}「{cause['title']}」{conflict}，根因数据不得与风险冲突")
                     continue
                 # Strong rule: a cause sits under its risk and must not repeat it.
                 repeated = _repeats_risk(cause, risks_by_code[_text(item["code"])])
@@ -499,7 +534,8 @@ def _global_causes(judge, request, progress, *, low, high):
                     continue
                 kept.append(cause)
             if kept:
-                found[_text(item["code"])] = kept[:high]
+                # Extra causes are merged into the one paragraph below, not dropped.
+                found[_text(item["code"])] = kept[:max(high, 3)]
         for code, causes in found.items():
             if len(causes) >= len(best.get(code) or []):
                 best[code] = causes
@@ -514,6 +550,8 @@ def _global_causes(judge, request, progress, *, low, high):
         # the model's own causes (their numbers are traceable) for that risk.
         if not best.get(code) and repeating.get(code):
             best[code] = repeating[code][-high:]
+    # One paragraph per risk (2026-11-17): never 根因1、根因2.
+    best = {code: _merge_causes(causes) for code, causes in best.items()}
     if not best and not error:
         error = "模型没有给出可用的根因"
     return dict(causes=best, calls=calls, note=note, model=model, error=error)
@@ -742,8 +780,8 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                                       missingEvidence=[item["dataGaps"]] if item["dataGaps"] else [],
                                       model=answer.get("model")))
     if ai_causes and risk_order:
-        low = max(1, int(cause_analysis.get("minPerRisk") or 1))
-        high = max(low, int(cause_analysis.get("maxPerRisk") or 2))
+        # One paragraph per risk (2026-11-17); the ontology's 1～2 is merged.
+        low = high = 1
         request = dict(
             kind="global_causes", code="BR-L01", period=period,
             causesPerRisk=dict(min=low, max=high),
@@ -752,6 +790,10 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                         judgement=risk.get("reason") or "", rule=risk["rule"],
                         ontology=element(risk_specs.get(risk["code"]) or {}, risk),
                         observed=risk["observed"],
+                        ontologyCauses=[element(cause_specs[code], dict(
+                            code=code, name=_text(cause_specs[code].get("name")) or code))
+                            for code in (links.get(risk["code"]) or {}).get("causes") or []
+                            if code in cause_specs],
                         metrics=_metric_context(config, indicator_codes(risk_specs.get(risk["code"])), facts))
                    for risk in risk_order])
         answer = _global_causes(judge, request, progress, low=low, high=high)

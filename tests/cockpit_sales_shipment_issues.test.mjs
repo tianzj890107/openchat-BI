@@ -79,7 +79,9 @@ test('the 商机获取 card nests each risk\'s causes under it and hides advice'
   assert.match(opportunity, /causesUnderRisks: true/);
   assert.match(opportunity, /showRecommendations: false/);
   assert.match(shared, /<details v-if="causesUnderRisks && causesFor\(finding\)\.length" class="stage-risk-analysis__risk-causes" :open="causesOpen">/);
-  assert.match(shared, /\{\{ causesFor\(finding\)\.length \}\} 项根因/);
+  // One paragraph per risk: no "N 项根因", no 根因1、根因2 numbering for a single cause.
+  assert.match(shared, /<summary class="stage-risk-analysis__risk-causes-summary">根因<\/summary>/);
+  assert.match(shared, /根因<template v-if="causesFor\(finding\)\.length > 1">\{\{ causeIndex \+ 1 \}\}<\/template>/);
   assert.match(shared, /v-for="\(dimension, causeIndex\) in causesFor\(finding\)"/);
   // A cause shared by two risks is listed under both.
   assert.match(shared, /for \(const id of new Set\(dimension\.findingIds \|\| \[\]\)\)/);
@@ -88,8 +90,9 @@ test('the 商机获取 card nests each risk\'s causes under it and hides advice'
   assert.doesNotMatch(nested, /riskLinks/);
   // Hidden advice also drops its acceptance lines from the footer.
   assert.match(shared, /in \(showRecommendations \? openRecommendations : \[\]\)/);
-  // Causes from the AI global analysis are labelled as such, not as an ontology miss.
-  assert.equal((shared.match(/dimension\.analysis === 'ai' \? '（AI 分析 · 待核实）'/g) || []).length, 2);
+  // AI global-analysis causes carry no "AI 分析 · 待核实" mark and no 待补核实 line.
+  assert.doesNotMatch(shared, /AI 分析 · 待核实|待补核实/);
+  assert.equal((shared.match(/dimension\.inferred && dimension\.analysis !== 'ai'/g) || []).length, 2);
   // Risk and cause evidence share one component.
   assert.equal((shared.match(/<trace-details /g) || []).length, 3);
   // 1117 BR-V02～V05 on the 商机获取 card: titles, no group summary row, causes open, evidence hidden.

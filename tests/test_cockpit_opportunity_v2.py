@@ -256,9 +256,9 @@ def test_gap_risk_states_target_progress_and_forecast():
     rk01 = next(risk for risk in value['risks'] if risk['code'] == 'RK01')
     # 缺口 ＝ 目标 −（进度 ＋ 预测）: 100 − (20 + 30) = 50, 100 − (10 + 40) = 50.
     assert rk01['description'] == (
-        '金额目标 100.00 亿元，进度 20.00 亿元（1—10月已签单）＋预测 30.00 亿元（11—12月），'
+        '金额目标 100.00 亿元，已签单 20.00 亿元（1—10月）＋预测 30.00 亿元（11—12月），'
         '缺口 50.00 亿元，缺口率 50.0%。'
-        '电量目标 100.00 GWh，进度 10.00 GWh＋预测 40.00 GWh，缺口 50.00 GWh，缺口率 50.0%。')
+        '电量目标 100.00 GWh，已签单 10.00 GWh＋预测 40.00 GWh，缺口 50.00 GWh，缺口率 50.0%。')
     assert rk01['level'] == '高'
     assert value['metrics']['R01']['amount'] == 50.0
     facts = {item['id']: item for item in value['evidence']['facts']}
@@ -1479,9 +1479,9 @@ def test_r08_pairs_customer_and_product_and_never_reads_a_missing_side_as_zero()
     rk06 = next(risk for risk in value['risks'] if risk['code'] == 'RK06')
     assert rk06['impact'] == dict(amount=2.0, energy=1.0, count=1)
     assert rk06['description'] == (
-        '1 家客户（1 个客户×产品组合）的进度＋预测低于客户目标：'
-        '金额目标 5.00 亿元，进度 1.00 亿元＋预测 2.00 亿元，缺口合计 2.00 亿元；'
-        '电量目标 2.00 GWh，进度 0.50 GWh＋预测 0.50 GWh，缺口合计 1.00 GWh。')
+        '1 家客户（1 个客户×产品组合）的已签单＋预测低于客户目标：'
+        '金额目标 5.00 亿元，已签单 1.00 亿元＋预测 2.00 亿元，缺口合计 2.00 亿元；'
+        '电量目标 2.00 GWh，已签单 0.50 GWh＋预测 0.50 GWh，缺口合计 1.00 GWh。')
     # Incomplete customer rows leave the customer gap unknown, not zero.
     partial = evaluate(_data(targets=targets, opportunities=opportunities,
                              allOpportunities=deepcopy(opportunities),
@@ -1899,13 +1899,17 @@ def test_ai_root_causes_come_from_one_global_analysis_of_the_established_risks()
     calls = [item for item in seen if item['kind'] == 'global_causes']
     # One call covering every established risk with its own metric results.
     assert len(calls) == 1 and [risk['code'] for risk in first['risks']] == established
-    assert first['causesPerRisk'] == dict(min=1, max=2)
+    # One paragraph per risk; the ontology 根因 page is the context of each risk.
+    assert first['causesPerRisk'] == dict(min=1, max=1)
     assert all(risk['metrics'] and 'judgement' in risk for risk in first['risks'])
-    assert 'ontologyCauses' not in first and not [item for item in seen if item['kind'] in ('cause', 'inference')]
-    # 1–2 causes per risk, nested under that risk only; no ontology cause is matched.
+    assert all(risk['ontologyCauses'] for risk in first['risks'])
+    assert all(item['code'].startswith('RC') and item['name'] for risk in first['risks']
+               for item in risk['ontologyCauses'])
+    assert not [item for item in seen if item['kind'] in ('cause', 'inference')]
+    # Several causes of one risk are merged into one paragraph under that risk.
     causes = judged['causes']
-    assert [item['causeCode'] for item in causes] == [
-        f'{code}-AI{index}' for code in established for index in (1, 2)]
+    assert [item['causeCode'] for item in causes] == [f'{code}-AI1' for code in established]
+    assert causes[0]['description'] == '依据输入数据推理；结合风险关联推理；超出上限。'
     assert all(item['analysis'] == 'ai' and item['inferred'] and item['decidedBy'] == 'model' for item in causes)
     assert all(len(item['findingIds']) == 1 for item in causes)
     assert causes[0]['missingEvidence'] == ['需补客户拜访记录']
@@ -1917,6 +1921,18 @@ def test_ai_root_causes_come_from_one_global_analysis_of_the_established_risks()
     assert {item['statusLabel'] for item in trace['advice']} == {'根因由 AI 全局分析给出，未关联本体行动建议'}
     assert trace['inferenceCalls'] == 1
     assert '根因由 AI 依据成立风险及其指标结果全局分析给出' in judged['summary']
+
+
+def test_ai_root_causes_never_contradict_their_risk_figures():
+    from bi_agent.cockpit.opportunity_judgement import _conflicts_risk
+
+    risk = dict(judgement='金额目标 120.00 亿元，已签单 20.00 亿元（1—9月）＋预测 40.00 亿元（10—12月），'
+                          '缺口 60.00 亿元，缺口率 50.0%。')
+    assert '缺口 55' in _conflicts_risk(dict(title='储备不足', description='全年缺口 55 亿元来自电芯'), risk) \
+        or _conflicts_risk(dict(title='储备不足', description='，缺口 55 亿元来自电芯'), risk)
+    assert _conflicts_risk(dict(title='储备不足', description='，缺口率 50% 主要来自电芯'), risk) == ''
+    # A different object's figure (储能客户缺口) is not the risk's own figure.
+    assert _conflicts_risk(dict(title='储备不足', description='其中储能客户缺口 12.5 亿元'), risk) == ''
 
 
 def test_ai_root_causes_quote_only_input_numbers_and_cover_every_risk():
@@ -1991,7 +2007,7 @@ def test_rk01_reads_the_ontology_r01_query_for_the_whole_scope():
     value = evaluate(_data(ontologyResults=dict(R01=r01)), measured=date(2025, 10, 31))
     rk01 = next(risk for risk in value['risks'] if risk['code'] == 'RK01')
     assert rk01['description'].startswith(
-        '金额目标 120.00 亿元，进度 20.00 亿元（1—9月已签单）＋预测 40.00 亿元（10—12月），缺口 60.00 亿元，缺口率 50.0%。')
+        '金额目标 120.00 亿元，已签单 20.00 亿元（1—9月）＋预测 40.00 亿元（10—12月），缺口 60.00 亿元，缺口率 50.0%。')
     facts = {item['id']: item for item in value['evidence']['facts']}
     assert facts['opp-v2:metric:B01-AMOUNT']['value'] == 120.0
     # A failed R01 query leaves RK01 undecided rather than using another source.
@@ -2009,8 +2025,8 @@ def test_rk06_is_judged_on_the_r08_positive_gap_summary():
     value = evaluate(_data(ontologyResults=dict(R08=r08)), measured=date(2025, 10, 31))
     rk06 = next(risk for risk in value['risks'] if risk['code'] == 'RK06')
     assert rk06['name'] == '客户预测不足'
-    assert rk06['description'] == ('5家客户的进度＋剩余预测低于客户目标：金额口径 4 家，目标 50.00 亿元，'
-                                   '进度 10.00 亿元＋剩余预测 15.00 亿元，缺口合计 25.00 亿元。')
+    assert rk06['description'] == ('5家客户的已签单＋剩余预测低于客户目标：金额口径 4 家，目标 50.00 亿元，'
+                                   '已签单 10.00 亿元＋剩余预测 15.00 亿元，缺口合计 25.00 亿元。')
     assert rk06['level'] == '中'  # no strategic customer among the gaps
     assert value['metrics']['R08']['count'] == 5
     no_gap = dict(r08, detail=[{'风险专用正缺口汇总': dict(summary, **{'任一口径正缺口客户数': 0})}])
@@ -2021,10 +2037,10 @@ def test_ai_root_causes_must_not_repeat_their_risk():
     from bi_agent.cockpit.opportunity_judgement import _repeats_risk
 
     risk = dict(name='商机预测覆盖不足',
-                judgement='金额目标 120.00 亿元，进度 20.00 亿元（1—9月已签单）＋预测 40.00 亿元（10—12月），缺口 60.00 亿元，缺口率 50.0%。')
+                judgement='金额目标 120.00 亿元，已签单 20.00 亿元（1—9月）＋预测 40.00 亿元（10—12月），缺口 60.00 亿元，缺口率 50.0%。')
     assert _repeats_risk(dict(title='商机预测覆盖不足', description='x'), risk)
     assert '复述' in _repeats_risk(dict(title='储备不足', description='缺口 60.00 亿元，缺口率 50.0%'), risk)
-    assert '数字' in _repeats_risk(dict(title='储备不足', description='目标 120 亿元而进度 20 加预测 40'), risk)
+    assert '数字' in _repeats_risk(dict(title='储备不足', description='目标 120 亿元而已签单 20 加预测 40'), risk)
     assert _repeats_risk(dict(title='战略客户需求未确认', description='C01 有 12 条战略客户 P0 商机未签单'), risk) == ''
     # The model is asked once more when a cause restates its risk; what still repeats is dropped.
     value = _strategic_value()

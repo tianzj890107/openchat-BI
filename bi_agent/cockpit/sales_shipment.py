@@ -403,8 +403,8 @@ def _opportunity_issues(values, params, data, measured, records):
         for label, unit, key, gap, target, side_rate in hit:
             months = key == "amount"
             parts.append(
-                f"{label}目标 {target or 0:.2f} {unit}，进度 {num(cov.get(f'progress_{key}')) or 0:.2f} {unit}"
-                + (f"（{progress_months}已签单）" if months and progress_months else "")
+                f"{label}目标 {target or 0:.2f} {unit}，已签单 {num(cov.get(f'progress_{key}')) or 0:.2f} {unit}"
+                + (f"（{progress_months}）" if months and progress_months else "")
                 + f"＋预测 {num(cov.get(f'forecast_{key}')) or 0:.2f} {unit}"
                 + (f"（{forecast_months}）" if months and forecast_months else "")
                 + f"，缺口 {gap:.2f} {unit}"
@@ -433,7 +433,7 @@ def _opportunity_issues(values, params, data, measured, records):
 
             def value(name, side=side, label=label, unit=unit):
                 return num(side.get(f"{name}{label}_{unit}")) or 0
-            parts.append(f"{label}口径 {int(side_count)} 家，目标 {value('目标'):.2f} {unit}，进度 {value('进度'):.2f} {unit}"
+            parts.append(f"{label}口径 {int(side_count)} 家，目标 {value('目标'):.2f} {unit}，已签单 {value('进度'):.2f} {unit}"
                          f"＋剩余预测 {value('剩余预测'):.2f} {unit}，缺口合计 {value('缺口'):.2f} {unit}")
         customers = sorted(entry.get("customers") or [], key=lambda row: -(num(row.get("gap_amount")) or 0))
         for item in [row for row in customers if (num(row.get("gap_amount")) or 0) > 0][:8]:
@@ -441,7 +441,7 @@ def _opportunity_issues(values, params, data, measured, records):
                                 label=f"客户预测缺口 {v2._text(item.get('account_name')) or item['account_id']}",
                                 value=num(item.get("gap_amount")), unit="亿元"))
         out["IS12"] = dict(status="triggered", level="高" if strategic else ("" if unknown else "中"),
-                           description=f"{int(count)}家客户的进度＋剩余预测低于客户目标"
+                           description=f"{int(count)}家客户的已签单＋剩余预测低于客户目标"
                                        + ("：" + "；".join(parts) if parts else "") + "。", codes=["OR08"])
     else:
         out["IS12"] = dict(status="not_triggered")

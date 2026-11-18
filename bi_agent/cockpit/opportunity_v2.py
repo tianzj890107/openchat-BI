@@ -2632,9 +2632,9 @@ def evaluate(data, config=None, measured=None):
         """目标、进度＋预测 → 缺口: the shared wording of every gap risk."""
         progress = parts[f"progress_{'amount' if unit == '亿元' else 'energy'}"]
         forecast = parts[f"forecast_{'amount' if unit == '亿元' else 'energy'}"]
-        progress_note = f"（{progress_months}已签单）" if months and progress_months else ""
+        progress_note = f"（{progress_months}）" if months and progress_months else ""
         forecast_note = f"（{forecast_months}）" if months and forecast_months else ""
-        return (f"{label}目标 {target_value:.2f} {unit}，进度 {progress:.2f} {unit}{progress_note}"
+        return (f"{label}目标 {target_value:.2f} {unit}，已签单 {progress:.2f} {unit}{progress_note}"
                 f"＋预测 {forecast:.2f} {unit}{forecast_note}，缺口 {gap:.2f} {unit}"
                 + (f"，缺口率 {rate * 100:.1f}%" if rate is not None else "") + "。")
 
@@ -2676,7 +2676,7 @@ def evaluate(data, config=None, measured=None):
             parts.append(f"电量签单达成率 {sign_progress_energy * 100:.1f}%，"
                          + (f"落后 {lag_energy:.1f} 个百分点。" if lag_energy > 0 else "未落后时间进度。"))
         if coverage_rate_amount is not None:
-            parts.append(f"全年金额覆盖率 {coverage_rate_amount * 100:.1f}%（进度 {cover['progress_amount']:.2f} 亿元"
+            parts.append(f"全年金额覆盖率 {coverage_rate_amount * 100:.1f}%（已签单 {cover['progress_amount']:.2f} 亿元"
                          f"＋预测 {cover['forecast_amount']:.2f} 亿元，年度目标 {target_amount:.2f} 亿元），"
                          + (f"低于 {coverage_floor * 100:.0f}% 预警线。" if coverage_short
                             else f"不低于 {coverage_floor * 100:.0f}%。"))
@@ -2775,13 +2775,13 @@ def evaluate(data, config=None, measured=None):
             unknown_level = ((_number(amount_side.get("客户等级未知数")) or 0)
                              + (_number(energy_side.get("客户等级未知数")) or 0))
             level = "高" if strategic else ("" if unknown_level else "中")
-            parts = [f"{int(gap_count)}家客户的进度＋剩余预测低于客户目标"]
+            parts = [f"{int(gap_count)}家客户的已签单＋剩余预测低于客户目标"]
             for basis, side, unit, key in (("金额", amount_side, "亿元", "金额"), ("电量", energy_side, "GWh", "电量")):
                 count = _number(side.get("缺口客户数"))
                 if not count:
                     continue
                 value = lambda name: _number(side.get(f"{name}{key}_{unit}"))
-                text = f"{basis}口径 {int(count)} 家，目标 {value('目标') or 0:.2f} {unit}，进度 {value('进度') or 0:.2f} {unit}＋剩余预测 {value('剩余预测') or 0:.2f} {unit}，缺口合计 {value('缺口') or 0:.2f} {unit}"
+                text = f"{basis}口径 {int(count)} 家，目标 {value('目标') or 0:.2f} {unit}，已签单 {value('进度') or 0:.2f} {unit}＋剩余预测 {value('剩余预测') or 0:.2f} {unit}，缺口合计 {value('缺口') or 0:.2f} {unit}"
                 parts.append(text)
             evidence = [f_r08] + side_facts
             rows = [item for item in (r08.get("detail") or []) if isinstance(item, dict) and item.get("account_id")]
@@ -2803,17 +2803,17 @@ def evaluate(data, config=None, measured=None):
         energy_gaps = [gap for gap in customer_gaps if (gap.get("energy") or 0) > 0]
         amount_total = _sum(gap.get("amount") for gap in amount_gaps)
         energy_total = _sum(gap.get("energy") for gap in energy_gaps)
-        parts = [f"{len(gap_accounts)} 家客户（{len(customer_gaps)} 个客户×产品组合）的进度＋预测低于客户目标"]
+        parts = [f"{len(gap_accounts)} 家客户（{len(customer_gaps)} 个客户×产品组合）的已签单＋预测低于客户目标"]
         if amount_total:
             parts.append(
                 f"金额目标 {_sum(gap.get('targetAmount') for gap in amount_gaps):.2f} 亿元，"
-                f"进度 {_sum(gap.get('progressAmount') for gap in amount_gaps) or 0:.2f} 亿元"
+                f"已签单 {_sum(gap.get('progressAmount') for gap in amount_gaps) or 0:.2f} 亿元"
                 f"＋预测 {_sum(gap.get('forecastAmount') for gap in amount_gaps) or 0:.2f} 亿元，"
                 f"缺口合计 {amount_total:.2f} 亿元")
         if energy_total:
             parts.append(
                 f"电量目标 {_sum(gap.get('targetEnergy') for gap in energy_gaps):.2f} GWh，"
-                f"进度 {_sum(gap.get('progressEnergy') for gap in energy_gaps) or 0:.2f} GWh"
+                f"已签单 {_sum(gap.get('progressEnergy') for gap in energy_gaps) or 0:.2f} GWh"
                 f"＋预测 {_sum(gap.get('forecastEnergy') for gap in energy_gaps) or 0:.2f} GWh，"
                 f"缺口合计 {energy_total:.2f} GWh")
         evidence = [f_r08]
@@ -3435,11 +3435,11 @@ def evaluate(data, config=None, measured=None):
     summary_parts = []
     if gap_amount is not None:
         summary_parts.append(
-            f"年度目标 {target_amount:.2f} 亿元，进度 {cover['progress_amount']:.2f} 亿元＋预测 "
+            f"年度目标 {target_amount:.2f} 亿元，已签单 {cover['progress_amount']:.2f} 亿元＋预测 "
             f"{cover['forecast_amount']:.2f} 亿元，缺口 {gap_amount:.2f} 亿元")
     elif gap_energy is not None:
         summary_parts.append(
-            f"年度电量目标 {target_energy:.2f} GWh，进度 {cover['progress_energy']:.2f} GWh＋预测 "
+            f"年度电量目标 {target_energy:.2f} GWh，已签单 {cover['progress_energy']:.2f} GWh＋预测 "
             f"{cover['forecast_energy']:.2f} GWh，缺口 {gap_energy:.2f} GWh")
     for risk in displayed[:2]:
         description = re.sub(r"\bRK\d+\b\s*", "", risk.get("description") or "").strip("。； ")

@@ -368,12 +368,12 @@ def test_opportunity_problems_are_judged_on_the_1117_sql_like_the_opportunity_ca
     # IS11 (BR-A01): 120 − (20 + 40) = 60, rate 50% ≥ 10% → 高; energy covered, not listed.
     coverage = findings["IS11"]
     assert coverage["decidedBy"] == "rule" and coverage["riskLevel"] == "高"
-    assert coverage["description"] == ("金额目标 120.00 亿元，进度 20.00 亿元（1—9月已签单）＋预测 40.00 亿元（10—12月），"
+    assert coverage["description"] == ("金额目标 120.00 亿元，已签单 20.00 亿元（1—9月）＋预测 40.00 亿元（10—12月），"
                                        "缺口 60.00 亿元，缺口率 50.0%。")
     # IS12 (BR-A06): R08's 风险专用正缺口汇总 only; a strategic customer → 高.
     customers = findings["IS12"]
     assert customers["riskLevel"] == "高"
-    assert customers["description"] == ("3家客户的进度＋剩余预测低于客户目标：金额口径 3 家，目标 30.00 亿元，进度 5.00 亿元"
+    assert customers["description"] == ("3家客户的已签单＋剩余预测低于客户目标：金额口径 3 家，目标 30.00 亿元，已签单 5.00 亿元"
                                         "＋剩余预测 10.00 亿元，缺口合计 15.00 亿元。")
     records = {r["id"]: r for r in card["evidence"]["records"]}
     assert "ss:customer-gap:A1" in records and "ss:customer-gap:A2" not in records
