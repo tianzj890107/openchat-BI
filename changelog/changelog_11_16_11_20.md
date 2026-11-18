@@ -256,6 +256,24 @@
 - 验证：商机获取、共同分析等相关 Python 测试 165 项通过；驾驶舱相关 Python 测试中 5 项为既有失败；Node 测试 142 项中 140 项通过
   （2 项为基线失败）。未连接客户数据库实跑新 SQL，未在浏览器中查看；已发布卡片需重新分析后才按新本体显示风险与根因。
 
+### 2026-11-17 销售额与出货量共同分析：商机部分本体同步《亿纬锂能本体文件_1117》（V4）
+
+- 本体：新增 `docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V4.xlsx`（V3 保留），由新脚本
+  `scripts/build_sales_shipment_ontology_v4.py` 在 V3 上同步 1117 的商机部分生成。商机问题改为 1117 的三个商机风险：
+  IS11 商机预测覆盖不足（RK01）、IS12 客户预测不足（RK06）、IS13 商机推进超期，影响签单（RK11）；1117 的 R01、R08、
+  R12～R17 以 OR01、OR08、OR12～OR17 收录（调用SQL原样、SQL 计算步骤一并收录），对应根因与行动建议收录为
+  RC13～RC20、AC14～AC22。删除 IS02 全年预计达成缺口、IS07 重点客户电量缺口、IS09 / IS10（原读取商机获取卡片发布结果）、
+  DQ06、RC07、AC07 及指标 C01～C08、C10、R04～R07；RC01、RC02 改按 OR01 与 OR13 / OR15 / OR17 判定。
+- 运行：配置重生成为 `sales-shipment-rules-4`（指标 39、问题 9＋数据校验 5、根因 19、建议 21）。卡片用 1117 SQL
+  在本卡片内判定商机问题（三个绑定参数 `[期初, 次年初, 观察日]`，六个分档共用一次执行），判定、等级与描述口径与商机获取
+  卡片一致：IS11 写目标、进度＋预测与缺口，IS12 只读 R08 风险专用正缺口汇总，IS13 只以严重超期成立并给出跨阶段去重的
+  最终叠加金额；不再依赖商机获取卡片先发布。卡片仍只显示商机、订单、发货三行。
+- 文档：`docs/specs/cockpit-sales-shipment-problem-ontology.md` 改为 V4 说明。
+- 主要文件：`bi_agent/cockpit/sales_shipment.py`、`bi_agent/cockpit/assets/sales-shipment/config.json`、
+  `scripts/{build_sales_shipment_ontology_v4.py,build_sales_shipment_config.py}`、`tests/test_cockpit_sales_shipment.py`。
+- 验证：共同分析卡片测试 14 项通过；驾驶舱 Python 测试 609 项通过，5 项为既有失败；26 条调用SQL绑定后经 pglast 解析通过；
+  相关 Node 测试 18 项通过。未连接客户数据库实跑，未在浏览器中查看；已发布的共同分析卡片需重新分析后才按 V4 显示。
+
 ## 补齐说明
 
 - 2026-11-16 补记：`11-09` 至 `11-13` 的周文件此前缺失，已按 Git 记录新建

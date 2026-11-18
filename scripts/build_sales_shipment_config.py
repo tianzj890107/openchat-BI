@@ -15,9 +15,9 @@ from pathlib import Path
 import openpyxl
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V3.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_销售额出货量共同问题分析_V4.xlsx"
 OUTPUT = ROOT / "bi_agent/cockpit/assets/sales-shipment/config.json"
-VERSION = "sales-shipment-rules-3"
+VERSION = "sales-shipment-rules-4"
 # Business problems are typed by stage; data checks are never shown as problems.
 DATA_TYPES = {"数据问题", "数据校验"}
 
@@ -70,7 +70,10 @@ def build():
             groupBy=[d.replace("YWLN_", "") for d in clean(row["看板查询键"]).split("|")[2].split(",") if d]
             if clean(row["看板查询键"]).count("|") >= 3 else [],
             sql=clean(row["调用SQL"]), sqlStatus=clean(row["SQL实现状态"]),
-            derived=clean(row["指标类型"]) == "派生指标", entities=clean(row["来源逻辑实体"]),
+            # V4: the 商机 metrics synced from 1117 are typed 派生指标 but carry
+            # their own SQL; only a metric without SQL is computed in code.
+            derived=clean(row["指标类型"]) == "派生指标" and not clean(row["调用SQL"]),
+            entities=clean(row["来源逻辑实体"]),
             boardCaliber=clean(row["当前看板SQL实际口径"]),
         )
     issues = {}

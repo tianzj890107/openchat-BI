@@ -10,7 +10,9 @@ advice.
 
 Everything is read from ``assets/sales-shipment/config.json``, built from the
 card's ontology workbook: every metric's executable SQL and every problem
-condition with its thresholds.  The run is rule first, like the 商机获取 card:
+condition with its thresholds.  From V4 (rules-4) the 商机问题 are 亿纬锂能本体文件_1117's
+three 商机 risks, judged here on 1117's own SQL (OR01 / OR08 / OR12～OR17 =
+1117 R01 / R08 / R12～R17, three bound parameters [期初, 次年初, 观察日]).  The run is rule first, like the 商机获取 card:
 rule functions settle what the data can settle and each remaining item goes to
 the model on its own.  A query that fails is reported as a data problem instead
 of failing the card; only a card with no usable query at all fails.
@@ -33,11 +35,15 @@ from .opportunity_judgement import judge_card, link_queries, make_item_judge
 
 SLOT_ID = "sales-shipment-issues"
 STAGE = "combined"
-RULES_VERSION = "sales-shipment-rules-3"
+RULES_VERSION = "sales-shipment-rules-4"
 CONFIG_PATH = Path(__file__).resolve().parent / "assets" / "sales-shipment" / "config.json"
 CORE_METRICS = ("B01", "B02", "B03", "B04")
-STRATEGIC_LEVELS = {"1": "战略大客户", "2": "重要大客户"}
 OVERDUE_HANDLING = {"overdue_uncompleted": "逾期未完成", "overdue_completed": "逾期完成"}
+# 商机问题 metrics synced from 1117: OR12～OR17 are its R12～R17 stage bands
+# (one statement returns all six); OR13 / OR15 / OR17 are the severe bands.
+BAND_CODES = tuple(f"OR{n}" for n in range(12, 18))
+SEVERE_CODES = ("OR13", "OR15", "OR17")
+OPPORTUNITY_CODES = ("OR01", "OR08") + BAND_CODES
 _CACHE: dict = {}
 
 
@@ -106,6 +112,21 @@ def _now_iso():
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
+def metric_sql(config, code, year, measured, schema="ded_public"):
+    """A metric's executable SQL for one period.
+
+    The six 1117 stage-band metrics differ only in their final
+    ``WHERE code = 'R1x'`` filter; each gets OR12's statement widened to all
+    six, so one execution feeds them all.
+    """
+    if code not in BAND_CODES:
+        return v2._ontology_metric_sql(config, code, year, measured, schema)
+    sql = v2._ontology_metric_sql(config, BAND_CODES[0], year, measured, schema)
+    wanted = "WHERE code IN (" + ", ".join(f"'R{c[2:]}'" for c in BAND_CODES) + ")"
+    sql, count = re.subn(r"WHERE\s+code\s*=\s*'R12'", wanted, sql)
+    return sql if count == 1 else ""
+
+
 def collect(period, measured, database=None, config=None, progress=None, diagnostic_reporter=None):
     """Run every ontology metric SQL of the card in one read-only snapshot.
 
@@ -133,7 +154,7 @@ def collect(period, measured, database=None, config=None, progress=None, diagnos
     for code, metric in metrics.items():
         if metric.get("derived"):
             continue
-        sql = v2._ontology_metric_sql(config, code, year, measured, schema)
+        sql = metric_sql(config, code, year, measured, schema)
         if not sql:
             results[code] = dict(status="unbound", rows=[], error=dict(code="SQL_UNBOUND",
                                  message="调用SQL无法绑定统计期间或观察时点"))
@@ -142,13 +163,14 @@ def collect(period, measured, database=None, config=None, progress=None, diagnos
     # Metrics taken from the same dashboard combination query share one
     # statement: it runs once and its row feeds every metric it carries.
     owners = {codes[0]: codes for codes in shared.values()}
-    specs = [(codes[0], sql) for sql, codes in shared.items()]
+    # 1117 SQL binds [期初, 次年初, 观察日]; the dashboard SQL has no parameters.
+    specs = [(codes[0], sql, v2._ontology_params(sql, year, measured)) for sql, codes in shared.items()]
     total = len(specs)
     done = 0
     started = time.monotonic()
     deadline = started + budget
 
-    def record(code, sql, status, rows, duration, error, meta):
+    def record(code, sql, params, status, rows, duration, error, meta):
         nonlocal done
         done += 1
         codes = owners.get(code, [code])
@@ -156,7 +178,7 @@ def collect(period, measured, database=None, config=None, progress=None, diagnos
         entry = dict(
             executionId=uuid.uuid4().hex, label="、".join(f"{c} {metrics[c]['name']}" for c in codes),
             metricCodes=list(codes),
-            sql=sql, params=[], status=status, durationSeconds=round(duration, 3),
+            sql=sql, params=[str(item) for item in params], status=status, durationSeconds=round(duration, 3),
             durationMs=int(round(duration * 1000)), startedAt=meta.get("startedAt", ""),
             finishedAt=meta.get("finishedAt", ""), rowCount=len(rows), truncated=status == "truncated",
             resultHash=row_meta["resultHash"], columns=row_meta["columns"], sampleRows=row_meta["sampleRows"],
@@ -182,19 +204,19 @@ def collect(period, measured, database=None, config=None, progress=None, diagnos
                             queryDurationSeconds=round(duration, 3))
 
     def run_one(reader, spec):
-        code, sql = spec
+        code, sql, params = spec
         begin, clock = _now_iso(), time.monotonic()
         try:
-            result = reader.run(sql, [], timeout_ms=timeout_ms)
+            result = reader.run(sql, params, timeout_ms=timeout_ms)
             rows = [dict(row) for row in result.rows]
             truncated = bool(getattr(result, "truncated", False))
             error = (dict(phase="database_query", query=code, code="ROW_LIMIT", message="row limit reached")
                      if truncated else None)
-            return code, sql, "truncated" if truncated else "ok", rows, time.monotonic() - clock, error, \
+            return code, sql, params, "truncated" if truncated else "ok", rows, time.monotonic() - clock, error, \
                 dict(startedAt=begin, finishedAt=_now_iso())
         except Exception as exc:  # noqa: BLE001 - one query failing is a data problem, not a crash
             duration = time.monotonic() - clock
-            return code, sql, "failed", [], duration, v2._query_failure(exc, code, duration), \
+            return code, sql, params, "failed", [], duration, v2._query_failure(exc, code, duration), \
                 dict(startedAt=begin, finishedAt=_now_iso())
 
     v2._report_progress(progress, "fetching", message=f"查询数据库 0/{total}", completed=0, total=total)
@@ -225,7 +247,7 @@ def collect(period, measured, database=None, config=None, progress=None, diagnos
                         try:
                             record(*future.result())
                         except Exception as exc:  # noqa: BLE001 - worker crash
-                            record(spec[0], spec[1], "failed", [], 0.0, v2._query_failure(exc, spec[0], 0.0), {})
+                            record(spec[0], spec[1], spec[2], "failed", [], 0.0, v2._query_failure(exc, spec[0], 0.0), {})
                 if pending:
                     for future in pending:
                         future.cancel()
@@ -234,7 +256,7 @@ def collect(period, measured, database=None, config=None, progress=None, diagnos
                         if callable(cancel):
                             cancel()
                     for spec in pending.values():
-                        record(spec[0], spec[1], "timeout", [], 0.0,
+                        record(spec[0], spec[1], spec[2], "timeout", [], 0.0,
                                dict(phase="database_query", query=spec[0], code="TIMEOUT",
                                     message="database fetch budget exhausted"), {})
             finally:
@@ -242,7 +264,7 @@ def collect(period, measured, database=None, config=None, progress=None, diagnos
         else:
             for spec in specs:
                 if time.monotonic() >= deadline:
-                    record(spec[0], spec[1], "timeout", [], 0.0,
+                    record(spec[0], spec[1], spec[2], "timeout", [], 0.0,
                            dict(phase="database_query", query=spec[0], code="TIMEOUT",
                                 message="database fetch budget exhausted"), {})
                     continue
@@ -271,7 +293,9 @@ def metric_values(data, config):
         dims = _dim_columns(metric)
         rows = result.get("rows") or []
         entry = dict(code=code, name=metric["name"], unit=metric["unit"], status=result.get("status"), value=None)
-        if result.get("status") == "ok" and rows:
+        if code in OPPORTUNITY_CODES:
+            entry.update(_opportunity_value(code, rows if result.get("status") == "ok" else []))
+        elif result.get("status") == "ok" and rows:
             if dims:
                 groups = [dict(dims={col.replace("YWLN_", ""): v2._text(row.get(col)) for col in dims},
                                value=v2._number(row.get(column))) for row in rows]
@@ -310,9 +334,27 @@ def metric_values(data, config):
     derive("C09", min([v for v in (coverage["amount"], coverage["energy"]) if v is not None], default=None),
            ["S04", "B01", "B02", "S03", "B03", "B04"])
     values["C09"].update(coverage)
-    c01, c04 = num("C01"), num("C04")
-    derive("C10", round(c04 / c01, 6) if c04 is not None and c01 else None, ["C04", "C01"])
     return values
+
+
+def _opportunity_value(code, rows):
+    """Headline value and parsed detail of a 1117 商机 metric (OR01 / OR08 / OR12～OR17)."""
+    if code in BAND_CODES:
+        bands = v2._stage_band_rows(rows)
+        band = bands.get(f"R{code[2:]}") or {}
+        return dict(value=band.get("count"), unit="条", band=band, severe=bands.get("_severe") or {},
+                    **({"amount": band.get("amount"), "energy": band.get("energy")} if band else {}))
+    result = v2._ontology_result(rows)
+    detail = result.get("detail") if isinstance(result.get("detail"), list) else []
+    if code == "OR01":
+        overall = next((item for item in detail if isinstance(item, dict)
+                        and v2._text(item.get("product_type")) == "全部"), None)
+        return dict(value=v2._number((overall or {}).get("gap_amount")), unit="亿元", coverage=overall)
+    summary = next((item.get("风险专用正缺口汇总") for item in detail
+                    if isinstance(item, dict) and isinstance(item.get("风险专用正缺口汇总"), dict)), None)
+    customers = [item for item in detail if isinstance(item, dict) and item.get("account_id")]
+    count = v2._number((summary or {}).get("任一口径正缺口客户数"))
+    return dict(value=int(count) if count is not None else None, unit="家", summary=summary, customers=customers)
 
 
 # ---------------------------------------------------------------- problem and cause rules
@@ -327,32 +369,128 @@ def _fmt(value, unit=""):
     return f"{text} {unit}".strip()
 
 
-def _level_name(level):
-    return {"1": "战略大客户", "2": "重要大客户", "3": "一般客户", "4": "BG 大客户"}.get(level, level)
+# Parsed 1117 detail kept out of the published metric values.
+_DETAIL_KEYS = {"groups", "coverage", "summary", "customers", "band", "severe"}
 
 
-UPSTREAM_CARD = "商机获取卡片（销售额口径明细）"
-UPSTREAM_MISSING = f"{UPSTREAM_CARD}尚未发布同期间分析结果，暂不判定"
+def _opportunity_issues(values, params, data, measured, records):
+    """IS11～IS13 by 亿纬锂能本体文件_1117 BR-A01 / BR-A06 / BR-A11, worded as the 商机获取 card.
 
-
-def upstream_category(upstream, category):
-    """Established risks and the group summary of one 商机获取 card category.
-
-    ``upstream`` is that card's last published item for the same period, or
-    ``None``.  Returns ``None`` when there is no usable result to read.
+    Returns {code: dict(status, level, description, codes, missing)}.
     """
-    result = (upstream or {}).get("result") if isinstance(upstream, dict) else None
-    if not isinstance(result, dict) or not isinstance(result.get("findings"), list):
-        return None
-    findings = [finding for finding in result["findings"]
-                if isinstance(finding, dict) and finding.get("riskCategory") == category]
-    group = next((group for group in result.get("riskGroups") or []
-                  if isinstance(group, dict) and group.get("category") == category), {})
-    return dict(findings=findings, summary=v2._text(group.get("summary")))
+    out = {}
+    num = v2._number
+    month = measured.month if measured is not None else int(str(data.get("measurementDate") or "0000-12")[5:7] or 12)
+    progress_months, forecast_months = v2._month_span(1, month - 1), v2._month_span(month, 12)
+
+    # IS11 商机预测覆盖不足: 缺口 ＝ 目标 −（进度 ＋ 预测）> 0, amount and energy separately.
+    cov = values["OR01"].get("coverage") or {}
+    p = params.get("IS11") or {}
+    sides = []
+    for label, unit, key in (("金额", "亿元", "amount"), ("电量", "GWh", "energy")):
+        gap, target, rate = (num(cov.get(f"gap_{key}")), num(cov.get(f"target_{key}")),
+                             num(cov.get(f"gap_rate_{key}")))
+        if rate is None and gap is not None and target:
+            rate = gap / target
+        sides.append((label, unit, key, gap, target, rate))
+    hit = [side for side in sides if side[3] is not None and side[3] > 0]
+    if hit:
+        rates = [side[5] for side in hit if side[5] is not None]
+        rate = max(rates) if rates else None
+        level = ("" if rate is None else "高" if rate >= p.get("gapRateHigh", 0.1)
+                 else "中" if rate >= p.get("gapRateMedium", 0.05) else "低")
+        parts = []
+        for label, unit, key, gap, target, side_rate in hit:
+            months = key == "amount"
+            parts.append(
+                f"{label}目标 {target or 0:.2f} {unit}，进度 {num(cov.get(f'progress_{key}')) or 0:.2f} {unit}"
+                + (f"（{progress_months}已签单）" if months and progress_months else "")
+                + f"＋预测 {num(cov.get(f'forecast_{key}')) or 0:.2f} {unit}"
+                + (f"（{forecast_months}）" if months and forecast_months else "")
+                + f"，缺口 {gap:.2f} {unit}"
+                + (f"，缺口率 {side_rate * 100:.1f}%" if side_rate is not None else "") + "。")
+        out["IS11"] = dict(status="triggered", level=level, description="".join(parts), codes=["OR01"])
+    elif not cov or all(side[3] is None for side in sides):
+        out["IS11"] = dict(status="insufficient", missing=["OR01"])
+    else:
+        out["IS11"] = dict(status="not_triggered")
+
+    # IS12 客户预测不足: only R08's 风险专用正缺口汇总 (each customer summed first).
+    entry = values["OR08"]
+    summary = entry.get("summary")
+    count = entry.get("value")
+    if entry.get("status") != "ok" or summary is None:
+        out["IS12"] = dict(status="insufficient", missing=["OR08"])
+    elif count:
+        amount_side, energy_side = summary.get("金额口径") or {}, summary.get("电量口径") or {}
+        strategic = (num(amount_side.get("战略客户数")) or 0) + (num(energy_side.get("战略客户数")) or 0)
+        unknown = (num(amount_side.get("客户等级未知数")) or 0) + (num(energy_side.get("客户等级未知数")) or 0)
+        parts = []
+        for label, side, unit in (("金额", amount_side, "亿元"), ("电量", energy_side, "GWh")):
+            side_count = num(side.get("缺口客户数"))
+            if not side_count:
+                continue
+
+            def value(name, side=side, label=label, unit=unit):
+                return num(side.get(f"{name}{label}_{unit}")) or 0
+            parts.append(f"{label}口径 {int(side_count)} 家，目标 {value('目标'):.2f} {unit}，进度 {value('进度'):.2f} {unit}"
+                         f"＋剩余预测 {value('剩余预测'):.2f} {unit}，缺口合计 {value('缺口'):.2f} {unit}")
+        customers = sorted(entry.get("customers") or [], key=lambda row: -(num(row.get("gap_amount")) or 0))
+        for item in [row for row in customers if (num(row.get("gap_amount")) or 0) > 0][:8]:
+            records.append(dict(id=f"ss:customer-gap:{item['account_id']}",
+                                label=f"客户预测缺口 {v2._text(item.get('account_name')) or item['account_id']}",
+                                value=num(item.get("gap_amount")), unit="亿元"))
+        out["IS12"] = dict(status="triggered", level="高" if strategic else ("" if unknown else "中"),
+                           description=f"{int(count)}家客户的进度＋剩余预测低于客户目标"
+                                       + ("：" + "；".join(parts) if parts else "") + "。", codes=["OR08"])
+    else:
+        out["IS12"] = dict(status="not_triggered")
+
+    # IS13 商机推进超期，影响签单: R13 / R15 / R17 severe overruns; the amount is
+    # de-duplicated by opportunity across stages (BR-V09), never a stage sum.
+    p = params.get("IS13") or {}
+    bands = {code: values[code] for code in BAND_CODES}
+    if any(item.get("status") != "ok" for item in bands.values()) or not any(item.get("band") for item in bands.values()):
+        out["IS13"] = dict(status="insufficient", missing=list(SEVERE_CODES))
+        return out
+    hits = [code for code in SEVERE_CODES if bands[code].get("value")]
+    if not hits:
+        out["IS13"] = dict(status="not_triggered", codes=list(BAND_CODES))
+        return out
+    total = bands[hits[0]].get("severe") or {}
+    if total:
+        count, amount, energy = total.get("count") or 0, total.get("amount"), total.get("energy")
+        stages, complete = total.get("stages") or len(hits), not total.get("missingAmount")
+    else:
+        count = sum(bands[code]["value"] for code in hits)
+        amount = v2._sum(bands[code].get("amount") for code in hits)
+        energy = v2._sum(bands[code].get("energy") for code in hits)
+        stages, complete = len(hits), True
+    if stages >= p.get("stagesHigh", 2):
+        level = "高"
+    elif amount is None or not complete:
+        level = ""  # 金额缺失或仅部分合计：等级待核实
+    else:
+        level = "高" if amount >= p.get("amountHigh", 10) else "中"
+    for code in hits:
+        band = bands[code]["band"]
+        records.append(dict(id=f"ss:stage-band:{code}", label=f"{band.get('stage') or code}阶段严重超期",
+                            value=band.get("count"), unit="条", amount=band.get("amount"), quantity=band.get("energy")))
+    out["IS13"] = dict(status="triggered", level=level, codes=list(SEVERE_CODES), description=(
+        f"{count}条商机的阶段周期超基线50%及以上（严重超期）"
+        + (f"，涉及预测金额合计 {amount:.2f} 亿元" if amount is not None else "")
+        + (f"、电量 {energy:.2f} GWh" if energy is not None else "")
+        + ("（跨阶段按商机去重）" if total else "")
+        + ("，部分商机预测金额缺失，为部分合计" if not complete else "") + "。"))
+    return out
 
 
 def evaluate(data, config, measured, upstream=None):
-    """Settle every problem and cause the data can settle; collect the evidence."""
+    """Settle every problem and cause the data can settle; collect the evidence.
+
+    ``upstream`` is no longer read: since V4 the 商机问题 are judged here on
+    the 1117 SQL.  The argument stays for callers that still pass it.
+    """
     values = metric_values(data, config)
     results = data.get("results") or {}
     facts, records = {}, []
@@ -406,17 +544,6 @@ def evaluate(data, config, measured, upstream=None):
             f"最多落后 {lag:.1f} 个百分点。"))
     else:
         settle("IS01", "not_triggered")
-    # IS02 全年预计达成缺口
-    r05, r07 = num("R05"), num("R07")
-    below = [(name, value) for name, value in (("销售额", r05), ("出货量", r07)) if value is not None and value < 1]
-    if below:
-        worst = min(value for _, value in below)
-        settle("IS02", "triggered", level="高" if worst < params["IS02"].get("highBelow", 0.9) else "中",
-               description="全年" + "、".join(f"{name}预计达成率 {_pct(value)}" for name, value in below) + "，低于 100%。")
-    elif r05 is None or r07 is None:
-        settle("IS02", "insufficient", missing=missing_of("R05", "R07"))
-    else:
-        settle("IS02", "not_triggered")
     # IS03 量价背离
     r03 = num("R03")
     if r03 is None:
@@ -462,24 +589,6 @@ def evaluate(data, config, measured, upstream=None):
                description=f"订单履约率 {_pct(o03)}，低于 {_pct(params['IS06'].get('below', 0.8))}。")
     else:
         settle("IS06", "not_triggered")
-    # IS07 重点客户电量缺口
-    c08 = values.get("C08") or {}
-    if c08.get("status") != "ok":
-        settle("IS07", "insufficient", missing=["C08"])
-    else:
-        hits = []
-        for group in c08.get("groups") or []:
-            level = group["dims"].get("D005", "")
-            key = next((k for k, name in STRATEGIC_LEVELS.items() if level in (k, name)), None)
-            if key and group["value"] is not None and group["value"] > 0:
-                hits.append((key, group["value"]))
-                records.append(dict(id=f"ss:customer-level:{key}", label=f"{_level_name(key)}电量缺口",
-                                    value=group["value"], unit="MWh"))
-        if hits:
-            settle("IS07", "triggered", level="高" if any(key == "1" for key, _ in hits) else "中",
-                   description="、".join(f"{_level_name(key)}电量缺口 {_fmt(value, 'MWh')}" for key, value in hits) + "。")
-        else:
-            settle("IS07", "not_triggered")
     # IS08 订单取消／变更冲减
     o04, o01 = num("O04"), num("O01")
     if o04 is None:
@@ -492,39 +601,11 @@ def evaluate(data, config, measured, upstream=None):
     else:
         settle("IS08", "not_triggered")
 
-    # IS09 / IS10 商机覆盖 / 商机转化问题: the 商机获取 card already judged these
-    # risks by its own ontology; take over each category's status as published.
-    for code, spec in issues.items():
-        if spec.get("kind") != "link":
-            continue
-        category = (spec.get("params") or {}).get("upstreamCategory", "")
-        linked = upstream_category(upstream, category)
-        if linked is None:
-            out[code] = dict(code=code, ruleStatus="insufficient", level="", description="", observed=[],
-                             evidenceIds=[], missingEvidence=[f"{UPSTREAM_CARD}发布结果"],
-                             requiresRuleEvidence=True, unevaluatedReason=UPSTREAM_MISSING)
-            continue
-        linked_rows, evidence_ids, names = [], [], []
-        for finding in linked["findings"]:
-            name = re.sub(r"^RK\d+\s*", "", v2._text(finding.get("title")))
-            level = v2._text(finding.get("riskLevel"))
-            rid = f"ss:upstream:opportunity-risk:{finding.get('riskCode') or finding.get('id')}"
-            records.append(dict(id=rid, label=f"商机获取 · {name}", value=level or "成立", unit="",
-                                status=category))
-            linked_rows.append(dict(id=rid, label=name, value=level or "成立", unit=""))
-            evidence_ids.append(rid)
-            names.append(f"{name}（{level}）" if level else name)
-        if not names:
-            out[code] = dict(code=code, ruleStatus="not_triggered", level="", description="",
-                             observed=[], evidenceIds=[], missingEvidence=[])
-            continue
-        level = min((v2._text(f.get("riskLevel")) for f in linked["findings"]),
-                    key=lambda value: v2._LEVEL_RANK.get(value, 9))
-        description = f"商机获取环节有 {len(names)} 项{category}成立：" + "、".join(names) + "。"
-        if linked["summary"]:
-            description += linked["summary"]
-        out[code] = dict(code=code, ruleStatus="triggered", level=level, description=description,
-                         observed=linked_rows, evidenceIds=evidence_ids, missingEvidence=[])
+    # IS11～IS13 商机问题: 亿纬锂能本体文件_1117 RK01 / RK06 / RK11 on its own SQL.
+    opportunity = _opportunity_issues(values, params, data, measured, records)
+    for code, item in opportunity.items():
+        item = dict(item)
+        settle(code, item.pop("status"), **item)
 
     # DQ01 指标取数失败或超时
     failed = [(code, item) for code, item in results.items() if item.get("status") not in ("ok",)]
@@ -581,20 +662,6 @@ def evaluate(data, config, measured, upstream=None):
             f"已发货金额 {_fmt(s02, '亿元')}，但计划外发货金额为空（日出货计划缺失或行匹配不唯一）。"))
     else:
         settle("DQ05", "not_triggered")
-    # DQ06 客户电量缺口单侧缺失
-    c07 = values.get("C07") or {}
-    if c07.get("status") != "ok" or c08.get("status") != "ok":
-        settle("DQ06", "insufficient", missing=[c for c in ("C07", "C08") if (values.get(c) or {}).get("status") != "ok"])
-    else:
-        gap_by_level = {g["dims"].get("D005", ""): g["value"] for g in c08.get("groups") or []}
-        one_sided = [g["dims"].get("D005", "") for g in c07.get("groups") or []
-                     if g["value"] is not None and gap_by_level.get(g["dims"].get("D005", "")) is None]
-        if one_sided:
-            settle("DQ06", "triggered", level="中", description="客户等级 " + "、".join(
-                _level_name(level) for level in one_sided) + " 有实际发货电量但电量缺口为空（目标缺失）。")
-        else:
-            settle("DQ06", "not_triggered")
-
     # ---- causes ---------------------------------------------------------
     causes = config["causes"]
     outcomes = {}
@@ -607,20 +674,21 @@ def evaluate(data, config, measured, upstream=None):
                               observed=observed(*used), evidenceIds=[fact(c) for c in used if c in values],
                               missingEvidence=list(missing))
 
-    c03 = num("C03")
-    if c03 is None:
-        cause_outcome("RC01", "insufficient", reason="商机预测缺口未取到", missing=["C03"])
-    elif c03 > 0:
-        cause_outcome("RC01", "triggered", reason=f"商机预测缺口 {_fmt(c03, '亿元')}，上游商机预测不足以覆盖目标。")
+    # RC01 / RC02 judge on the 1117 商机 metrics (OR01; OR13 / OR15 / OR17).
+    coverage_status = opportunity["IS11"]["status"]
+    if coverage_status == "insufficient":
+        cause_outcome("RC01", "insufficient", reason="商机预测缺口未取到", missing=["OR01"])
+    elif coverage_status == "triggered":
+        cause_outcome("RC01", "triggered", reason=opportunity["IS11"]["description"])
     else:
-        cause_outcome("RC01", "not_triggered", reason=f"商机预测缺口 {_fmt(c03, '亿元')}，未见上游覆盖不足。")
-    c10 = num("C10")
-    if c10 is None or b05 is None:
-        cause_outcome("RC02", "insufficient", reason="已签单商机占比或时间进度未取到", missing=missing_of("C04", "C01", "B05"))
-    elif c10 < b05:
-        cause_outcome("RC02", "triggered", reason=f"已签单商机占比 {_pct(c10)}，低于时间进度 {_pct(b05)}。")
+        cause_outcome("RC01", "not_triggered", reason="商机预测（进度＋预测）已覆盖年度目标。")
+    severe_status = opportunity["IS13"]["status"]
+    if severe_status == "insufficient":
+        cause_outcome("RC02", "insufficient", reason="商机阶段周期分档未取到", missing=list(SEVERE_CODES))
+    elif severe_status == "triggered":
+        cause_outcome("RC02", "triggered", reason=opportunity["IS13"]["description"], codes=SEVERE_CODES)
     else:
-        cause_outcome("RC02", "not_triggered", reason=f"已签单商机占比 {_pct(c10)}，不低于时间进度 {_pct(b05)}。")
+        cause_outcome("RC02", "not_triggered", reason="商机推进各阶段没有严重超期。", codes=SEVERE_CODES)
     s12 = values.get("S12") or {}
     if s05 is None:
         cause_outcome("RC03", "insufficient", reason="超期订未发金额未取到", missing=["S05"])
@@ -658,17 +726,6 @@ def evaluate(data, config, measured, upstream=None):
             f"实际单位电量销售额 {r09:.3f} 元/Wh，目标隐含 {r10:.3f} 元/Wh，偏离 {_pct(abs(r09 - r10) / r10)}。"))
     else:
         cause_outcome("RC06", "not_triggered", reason=f"实际与目标单位电量销售额偏离 {_pct(abs(r09 - r10) / r10)}，在阈值内。")
-    c06 = num("C06")
-    level_gaps = [g for g in c08.get("groups") or [] if g["value"] and g["value"] > 0
-                  and any(g["dims"].get("D005", "") in (k, n) for k, n in STRATEGIC_LEVELS.items())]
-    if c06 is None and c08.get("status") != "ok":
-        cause_outcome("RC07", "insufficient", reason="待突破战略客户数与客户电量缺口均未取到", missing=["C06", "C08"])
-    elif (c06 or 0) > 0 or level_gaps:
-        cause_outcome("RC07", "triggered", reason=(
-            (f"待突破战略客户 {int(c06)} 家" if c06 else "") + ("；" if c06 and level_gaps else "")
-            + ("、".join(f"{_level_name(g['dims'].get('D005', ''))}电量缺口 {_fmt(g['value'], 'MWh')}" for g in level_gaps))) + "。")
-    else:
-        cause_outcome("RC07", "not_triggered", reason="没有待突破战略客户，战略 / 重要大客户也没有电量缺口。")
     s13 = values.get("S13") or {}
     if s13.get("status") != "ok":
         cause_outcome("RC08", "insufficient", reason="发货办理状态未取到", missing=["S13"])
@@ -687,11 +744,11 @@ def evaluate(data, config, measured, upstream=None):
         cause_outcome("RC09", "triggered", reason=f"取消／变更订单电量 {_fmt(o04, 'GWh')}。")
     else:
         cause_outcome("RC09", "not_triggered", reason="没有取消或变更订单。")
-    dq = {code: out[code]["ruleStatus"] == "triggered" for code in ("DQ01", "DQ02", "DQ03", "DQ04", "DQ05", "DQ06")}
+    dq = {code: out[code]["ruleStatus"] == "triggered" for code in ("DQ01", "DQ02", "DQ03", "DQ04", "DQ05")}
     cause_outcome("RC10", "triggered" if dq["DQ01"] else "not_triggered",
                   reason=out["DQ01"]["description"] or "全部调用SQL取数成功。",
                   codes=[code for code, _ in failed] or CORE_METRICS)
-    missing_parts = [out[code]["description"] for code in ("DQ02", "DQ05", "DQ06") if dq[code]]
+    missing_parts = [out[code]["description"] for code in ("DQ02", "DQ05") if dq[code]]
     cause_outcome("RC11", "triggered" if missing_parts else "not_triggered",
                   reason="；".join(missing_parts) or "未发现结果为空或单侧缺失的源数据。")
     mismatch = [out[code]["description"] for code in ("DQ03", "DQ04") if dq[code]]
@@ -707,7 +764,7 @@ def evaluate(data, config, measured, upstream=None):
                     periods=[data.get("period")], dataAsOf=data.get("measurementDate"))
     return dict(values=values, risks=triggered, riskCandidates=list(out.values()), causeOutcomes=outcomes,
                 evidence=evidence, result=dict(measurementDate=data.get("measurementDate")),
-                metrics={code: {k: v for k, v in entry.items() if k != "groups"} for code, entry in values.items()})
+                metrics={code: {k: v for k, v in entry.items() if k not in _DETAIL_KEYS} for code, entry in values.items()})
 
 
 # ---------------------------------------------------------------- card
@@ -768,9 +825,8 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
                diagnostic_reporter=None, summarize_groups=None, upstream=None):
     """Build one complete ``combined`` (销售额／出货量共同问题分析) publication payload.
 
-    ``upstream`` is the 商机获取 card's last published item for the same period
-    (or ``None``); its 商机覆盖 / 商机转化 categories become this card's linked
-    商机问题.
+    ``upstream`` (the 商机获取 card's published item) is accepted and ignored:
+    since V4 the 商机问题 are judged on 1117's own SQL.
     """
     v2._report_progress(progress, "ontology", message="读取本体与规则配置")
     config = config or load_config()
@@ -786,7 +842,7 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
         error.diagnostic_message = str(error)
         raise error
     v2._report_progress(progress, "rules", message="规则函数判定问题")
-    evaluated = evaluate(data, config, measured, upstream=upstream)
+    evaluated = evaluate(data, config, measured)
     v2._report_progress(progress, "analysing", message="逐条判定规则无法确定的问题")
     # The rule engine keeps the full ontology in the trace, but this delivery
     # evaluates the business problem layer only: data checks (DQ*) neither
@@ -824,9 +880,6 @@ def build_card(period, database=None, measurement_date=None, config=None, judge=
     judged["stageLines"] = stage_lines(groups, judged["riskGroups"], judged.get("riskAssessments"), issue_types)
     notes = config.get("notes") or {}
     limitations = [f"{e['stage']} 取数未成功（{e['code']}）：{e['message']}" for e in data["errors"]][:10]
-    if any(item.get("unevaluatedReason") == UPSTREAM_MISSING for item in evaluated["riskCandidates"]):
-        limitations.append(f"{UPSTREAM_CARD}尚未发布同期间分析结果，商机覆盖、商机转化问题暂未纳入；"
-                           "该卡片分析完成后重新分析本卡片即可纳入。")
     limitations += [note for note in (notes.get("caliber"), notes.get("dataGaps")) if note]
     if notes.get("pending"):
         limitations.append("部分问题阈值为建议值，待业务确认（见本体“说明·待确认”）。")
