@@ -667,8 +667,8 @@ export function createStageRiskComponent(options = {}) {
                 <details v-if="causesUnderRisks && causesFor(finding).length" class="stage-risk-analysis__risk-causes" :open="causesOpen">
                   <summary class="stage-risk-analysis__risk-causes-summary">根因</summary>
                   <div v-for="(dimension, causeIndex) in causesFor(finding)" :key="dimension.id" class="stage-risk-analysis__cause stage-risk-analysis__risk-cause">
-                    <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">根因<template v-if="causesFor(finding).length > 1">{{ causeIndex + 1 }}</template></span>
-                    <div class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : plain(dimension.title) }}</b><small v-if="dimension.inferred && dimension.analysis !== 'ai'" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" />
+                    <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">根因</span>
+                    <div class="stage-risk-analysis__cause-text"><b>{{ dimension.title === dimension.stageLabel ? '' : plain(dimension.title) }}</b><small v-if="dimension.inferred && dimension.analysis !== 'ai'" class="stage-risk-analysis__decided">（模型推理 · 本体根因未命中，待核实）</small>——<number-text :text="dimension.description" />
                       <trace-details v-if="showEvidence" :trace="traces[dimension.id]" :count="evidenceFor(dimension).length" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
                     </div>
                   </div>

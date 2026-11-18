@@ -1899,17 +1899,17 @@ def test_ai_root_causes_come_from_one_global_analysis_of_the_established_risks()
     calls = [item for item in seen if item['kind'] == 'global_causes']
     # One call covering every established risk with its own metric results.
     assert len(calls) == 1 and [risk['code'] for risk in first['risks']] == established
-    # One paragraph per risk; the ontology 根因 page is the context of each risk.
-    assert first['causesPerRisk'] == dict(min=1, max=1)
+    # 1～3 causes per risk; the ontology 根因 page is the context of each risk.
+    assert first['causesPerRisk'] == dict(min=1, max=3)
     assert all(risk['metrics'] and 'judgement' in risk for risk in first['risks'])
     assert all(risk['ontologyCauses'] for risk in first['risks'])
     assert all(item['code'].startswith('RC') and item['name'] for risk in first['risks']
                for item in risk['ontologyCauses'])
     assert not [item for item in seen if item['kind'] in ('cause', 'inference')]
-    # Several causes of one risk are merged into one paragraph under that risk.
+    # Each cause stays its own item under its risk.
     causes = judged['causes']
-    assert [item['causeCode'] for item in causes] == [f'{code}-AI1' for code in established]
-    assert causes[0]['description'] == '依据输入数据推理；结合风险关联推理；超出上限。'
+    assert [item['causeCode'] for item in causes] == [
+        f'{code}-AI{index}' for code in established for index in (1, 2, 3)]
     assert all(item['analysis'] == 'ai' and item['inferred'] and item['decidedBy'] == 'model' for item in causes)
     assert all(len(item['findingIds']) == 1 for item in causes)
     assert causes[0]['missingEvidence'] == ['需补客户拜访记录']

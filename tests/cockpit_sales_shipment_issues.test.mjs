@@ -79,9 +79,9 @@ test('the 商机获取 card nests each risk\'s causes under it and hides advice'
   assert.match(opportunity, /causesUnderRisks: true/);
   assert.match(opportunity, /showRecommendations: false/);
   assert.match(shared, /<details v-if="causesUnderRisks && causesFor\(finding\)\.length" class="stage-risk-analysis__risk-causes" :open="causesOpen">/);
-  // One paragraph per risk: no "N 项根因", no 根因1、根因2 numbering for a single cause.
+  // Causes under a risk: no "N 项根因", no 根因1、根因2 numbering, no 【商机获取】 prefix.
   assert.match(shared, /<summary class="stage-risk-analysis__risk-causes-summary">根因<\/summary>/);
-  assert.match(shared, /根因<template v-if="causesFor\(finding\)\.length > 1">\{\{ causeIndex \+ 1 \}\}<\/template>/);
+  assert.match(shared, /stage-risk-analysis__tag--cause">根因<\/span>\n\s*<div class="stage-risk-analysis__cause-text"><b>\{\{ dimension\.title === dimension\.stageLabel/);
   assert.match(shared, /v-for="\(dimension, causeIndex\) in causesFor\(finding\)"/);
   // A cause shared by two risks is listed under both.
   assert.match(shared, /for \(const id of new Set\(dimension\.findingIds \|\| \[\]\)\)/);
