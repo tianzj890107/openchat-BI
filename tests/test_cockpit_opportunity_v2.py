@@ -1994,13 +1994,13 @@ def test_rk11_lists_only_severe_overruns_and_states_the_deduplicated_total():
                              stageBandStatus='ok')
     rk11 = next(risk for risk in value['risks'] if risk['code'] == 'RK11')
     # BR-V09: counted once per opportunity across stages, forecast summed once.
-    assert rk11['description'] == '300 条商机在已结束阶段出现严重超期，预测金额 123.46 亿元，预测电量 45.60 GWh。'
+    assert rk11['description'] == '300 条商机在已结束阶段出现严重超期，涉及预测金额 123.46 亿元，涉及预测电量 45.60 GWh。'
     assert rk11['level'] == '高'  # three stages hit
     # Only the severe band is listed, one line per stage; the < 50% band is not shown.
     assert [(item['code'], item['stage'], item['count']) for item in rk11['metricDetails']] == [
         ('R13', '商机获取', 200), ('R15', '技术交流', 100), ('R17', '方案推动', 58)]
     assert all(item['band'] == '严重超期' for item in rk11['metricDetails'])
-    assert rk11['metricDetails'][0]['amountText'] == '预测金额 100.00 亿元'
+    assert rk11['metricDetails'][0]['amountText'] == '涉及预测金额 100.00 亿元'
     # One stage, amount below 10 亿元 → 中; an incomplete amount leaves the level open.
     one = _strategic_value(stageBands=_severe_bands(dict(opportunity_count=4, amount_yi=6.0, energy_gwh=1.0,
                                                          hit_stage_count=1), R13=4), stageBandStatus='ok')
@@ -2009,7 +2009,7 @@ def test_rk11_lists_only_severe_overruns_and_states_the_deduplicated_total():
                                                              missing_amount_opportunities=1), R13=4),
                                stageBandStatus='ok')
     rk11 = next(r for r in partial['risks'] if r['code'] == 'RK11')
-    assert rk11['level'] == '' and '预测金额 6.00 亿元' in rk11['description']
+    assert rk11['level'] == '' and '已记录预测金额 6.00 亿元' in rk11['description']
     assert '预测电量待核实' in rk11['description']
 
 
@@ -2101,11 +2101,11 @@ def test_ai_root_causes_follow_the_1119_publishing_rules():
     # Wording: no “反映”, business stage names.
     assert _tidy('数据反映出P0阶段停留较长，正缺口客户集中') == '商机获取阶段停留较长，存在缺口的客户集中'
     # Completeness wording (BR-V09) and the fixed P0-09 sentence (BR-V12).
-    assert _volume_phrase('金额', 5.0, '亿元', 4, 0) == '预测金额 5.00 亿元'
-    assert _volume_phrase('金额', 5.0, '亿元', 4, 1) == '预测金额 5.00 亿元'
+    assert _volume_phrase('金额', 5.0, '亿元', 4, 0) == '涉及预测金额 5.00 亿元'
+    assert _volume_phrase('金额', 5.0, '亿元', 4, 1) == '已记录预测金额 5.00 亿元'
     assert _volume_phrase('金额', None, '亿元', 4, 4) == '预测金额待核实'
     assert _inflight_sentence(dict(count=9, amount=2.5, energy=None, missingAmount=0)) == (
-        '截至观察日，仍处于商机获取阶段且严重超期的商机有 9 个，预测金额 2.50 亿元。')
+        '截至观察日，仍处于商机获取阶段且严重超期的商机有 9 个，涉及预测金额 2.50 亿元。')
 
 
 def test_ai_root_causes_use_only_their_own_risk_evidence():
@@ -2144,26 +2144,3 @@ def test_judgement_output_budget_comes_from_the_env_context_tokens(monkeypatch):
     # .env COCKPIT_MODEL_CONTEXT_TOKENS: the output may use what the input leaves.
     monkeypatch.setenv('COCKPIT_MODEL_CONTEXT_TOKENS', '300000')
     assert _output_tokens(messages, 'prompt', 1500) == 300000 - estimate_request(messages, 'prompt')
-
-
-def test_ai_root_cause_prompt_requires_complete_segments_and_plain_wording():
-    from bi_agent.cockpit import opportunity_judgement as oj
-    prompt = oj.GLOBAL_CAUSE_PROMPT
-    assert "规模" in prompt and "范围" in prompt and "机制" in prompt and "影响" in prompt
-    assert "已记录" in prompt and "不要使用" not in prompt.split("已记录")[0][-20:]
-
-def test_global_cause_output_budget_has_a_floor_and_env_override(monkeypatch):
-    from bi_agent.cockpit import opportunity_judgement as oj
-    monkeypatch.delenv("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", raising=False)
-    assert oj.global_cause_max_tokens(4) >= 4000
-    monkeypatch.setenv("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", "6000")
-    assert oj.global_cause_max_tokens(4) == 6000
-
-def test_forecast_wording_drops_recorded_and_about_prefixes():
-    from bi_agent.cockpit import opportunity_v2 as v2
-    assert v2._volume_phrase('金额', 1.33, '亿元') == '预测金额 1.33 亿元'
-    assert v2._volume_phrase('电量', 0.25, 'GWh') == '预测电量 0.25 GWh'
-    assert v2._volume_phrase('金额', 1.33, '亿元', count=12, missing=3) == '预测金额 1.33 亿元'
-    assert v2._volume_phrase('金额', None, '亿元', count=0) == '预测金额待核实'
-    for text in (v2._volume_phrase('金额', 1.33, '亿元'), v2._volume_phrase('电量', 0.2, 'GWh', count=3, missing=1)):
-        assert '已记录' not in text and '涉及' not in text

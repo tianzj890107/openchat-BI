@@ -115,10 +115,6 @@ GLOBAL_CAUSE_PROMPT = (
     "必须写明客户范围。不得描述“仍处于商机获取阶段”或在途商机（该事实由程序按固定句式单独展示）。"
     "需求确认滞后、协议签署延误等具体活动原因，必须有同一商机的状态、活动时间或进展记录支持；"
     "只有金额完整且范围可比时才比较三个阶段的影响金额。"
-    "完整性：每条根因的 description 必须写全四段——规模（条数、金额、电量）、范围（具体环节或客户范围）、"
-    "机制（为什么发生、卡在哪个环节）、影响（对签单或覆盖的影响）；缺数据时在 dataGaps 说明缺什么，不要省略段落。"
-    "用语：直接陈述证据，不用“反映”等引导词；不使用“已记录”“涉及”等前缀词，直接写“预测金额 X 亿元、"
-    "预测电量 Y GWh”。"
     "用语：直接陈述证据，不用“反映”等引导词；写“商机获取阶段”“技术交流阶段”“方案推动阶段”“三个阶段”"
     "“存在缺口的客户”，不写 P0、P1、P2 或“正缺口客户”。"
     '只返回 JSON：{{"risks": [{{"code": "风险编码", "causes": [{{"title": "不超过20字的根因名称", '
@@ -127,20 +123,6 @@ GLOBAL_CAUSE_PROMPT = (
     '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，'
     '不要输出其他内容。'
 )
-def global_cause_max_tokens(risks):
-    """Output budget for the global root-cause call.
-
-    Long rule/ontology text used to be truncated by a 4000-token ceiling and the
-    whole JSON was dropped.  Keep a floor and honour the override that the error
-    hints advertise (COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS).
-    """
-    override = os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", "").strip()
-    if override.isdigit() and int(override) > 0:
-        return int(override)
-    count = risks if isinstance(risks, int) else len(risks or [])
-    return min(8000, max(4000, 600 + 450 * count))
-
-
 GLOBAL_CAUSE_RULE = dict(code="BR-L01", name="AI 全局根因分析", levelRule="",
                          condition="大模型依据本轮已成立风险及其指标结果全局分析，以本体根因页为上下文，每条风险 0～2 条有独立证据的根因，发布前按风险校验证据归属与禁止结论")
 
@@ -349,7 +331,7 @@ def _item_judge(request, role, infer_prompt):
         limits = request.get("causesPerRisk") or {}
         task = GLOBAL_CAUSE_PROMPT.format(low=limits.get("min", 1), high=limits.get("max", 2))
         prompt = compose_system_prompt(role(), task)
-        max_tokens = global_cause_max_tokens(request.get("risks"))
+        max_tokens = min(4000, 600 + 450 * len(request.get("risks") or []))
         step = "AI 全局根因分析"
     else:
         prompt = compose_system_prompt(role(), infer_prompt if inference else JUDGE_PROMPT.format(kind=label))

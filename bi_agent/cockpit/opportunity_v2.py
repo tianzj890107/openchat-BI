@@ -1706,8 +1706,9 @@ def _volume_phrase(label, value, unit, count=None, missing=None):
     """
     if value is None or (count and missing is not None and missing >= count):
         return f"预测{label}待核实"
-    # The card wording must stay plain: no “已记录 / 涉及” qualifier prefixes.
-    return f"预测{label} {value:.2f} {unit}"
+    if missing:
+        return f"已记录预测{label} {value:.2f} {unit}"
+    return f"涉及预测{label} {value:.2f} {unit}"
 
 
 def _month_span(first, last):
@@ -2720,9 +2721,9 @@ def evaluate(data, config=None, measured=None):
         level = "高" if focus_has_strategic else "中"
         parts = [f"战略及重点客户未签单商机 {focus_count} 条"]
         if focus_amount:
-            parts.append(f"预测金额 {focus_amount:.2f} 亿元")
+            parts.append(f"涉及预测金额 {focus_amount:.2f} 亿元")
         if focus_energy:
-            parts.append(f"预测电量 {focus_energy:.2f} GWh")
+            parts.append(f"涉及预测电量 {focus_energy:.2f} GWh")
         evidence = [f_r04_count, f_r04_a, f_r04_e, f_r01_a, f_r01_e]
         name = _risk_name(config, "RK03", "战略及重点客户存在缺口")
         risks.append(_risk("RK03", name, level, f"RK03 {name}",
@@ -3554,7 +3555,7 @@ def evaluate(data, config=None, measured=None):
     ])
     if unknown_contract_count:
         data_issues.append(
-            f"{unknown_contract_count} 条商机签单状态未知，预测金额 {unknown_amount or 0:.2f} 亿元、"
+            f"{unknown_contract_count} 条商机签单状态未知，涉及预测金额 {unknown_amount or 0:.2f} 亿元、"
             f"电量 {unknown_energy or 0:.2f} GWh；未知单列，既不计入明确未确认，也不视为已签。")
     limitations.extend(data_issues)
     limitations.extend(caliber_notes)

@@ -382,7 +382,7 @@ def test_opportunity_problems_are_judged_on_the_1117_sql_like_the_opportunity_ca
     # one stage and 8.5 亿元 < 10 → 中.
     overrun = findings["IS13"]
     assert overrun["riskLevel"] == "中"
-    assert overrun["description"] == "300 条商机在已结束阶段出现严重超期，预测金额 8.50 亿元，预测电量 4.20 GWh。"
+    assert overrun["description"] == "300 条商机在已结束阶段出现严重超期，涉及预测金额 8.50 亿元，涉及预测电量 4.20 GWh。"
     assert records["ss:stage-band:OR13"]["value"] == 300 and "ss:stage-band:OR15" not in records
     # Rule-decided: none of them goes to the model; no upstream gap is noted.
     assert not any(r.get("code") in {"IS11", "IS12", "IS13"} for r in requests)
@@ -413,7 +413,7 @@ def test_opportunity_problems_levels_and_gaps_follow_1117():
     bands[0] = _band("R12", "商机获取", "超期", 1, 0.1, 0.1, partial)
     bands[3] = _band("R15", "技术交流", "严重超期", 0, 0, 0)
     finding = next(f for f in _card(opportunity=dict(BANDS=bands))["result"]["findings"] if f["riskCode"] == "IS13")
-    assert finding["riskLevel"] == "" and "预测金额 8.50 亿元" in finding["description"]
+    assert finding["riskLevel"] == "" and "已记录预测金额 8.50 亿元" in finding["description"]
     # A failed 1117 query leaves the problem undecided (and limits the card).
     failed = _card(fail={"OR01"})
     judged = {r["code"]: r for r in failed["result"]["ontologyJudgement"]["risks"]}
