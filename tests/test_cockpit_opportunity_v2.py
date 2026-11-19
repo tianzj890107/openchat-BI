@@ -2144,3 +2144,17 @@ def test_judgement_output_budget_comes_from_the_env_context_tokens(monkeypatch):
     # .env COCKPIT_MODEL_CONTEXT_TOKENS: the output may use what the input leaves.
     monkeypatch.setenv('COCKPIT_MODEL_CONTEXT_TOKENS', '300000')
     assert _output_tokens(messages, 'prompt', 1500) == 300000 - estimate_request(messages, 'prompt')
+
+
+def test_ai_root_cause_prompt_requires_complete_segments_and_plain_wording():
+    from bi_agent.cockpit import opportunity_judgement as oj
+    prompt = oj.GLOBAL_CAUSE_PROMPT
+    assert "规模" in prompt and "范围" in prompt and "机制" in prompt and "影响" in prompt
+    assert "已记录" in prompt and "不要使用" not in prompt.split("已记录")[0][-20:]
+
+def test_global_cause_output_budget_has_a_floor_and_env_override(monkeypatch):
+    from bi_agent.cockpit import opportunity_judgement as oj
+    monkeypatch.delenv("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", raising=False)
+    assert oj.global_cause_max_tokens(4) >= 4000
+    monkeypatch.setenv("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", "6000")
+    assert oj.global_cause_max_tokens(4) == 6000
