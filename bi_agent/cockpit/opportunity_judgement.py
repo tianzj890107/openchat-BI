@@ -100,12 +100,30 @@ GLOBAL_CAUSE_PROMPT = (
     "不要套用或匹配任何固定的根因清单。"
     + ONTOLOGY_RULES.replace("{", "{{").replace("}", "}}") +
     "每条风险给出 {low}～{high} 条根因，按可能性从高到低排列；不同风险可以指向同一方向，"
-    "但每条根因的说明必须落到该风险自己的指标数据上。description 写清推理依据并引用输入中的具体数值，"
-    "不得引入输入中没有的数字；需要补充核实的数据写在 dataGaps。"
+    "但每条根因的说明必须落到该风险自己的指标数据上。"
+    "每条根因的 description 必须写全四段：规模（条数、金额、电量）、范围（具体环节或客户范围）、"
+    "机制（为什么发生、卡在哪个环节）、影响（对签单或覆盖的影响）；缺数据时在 dataGaps 说明缺什么，"
+    "不要省略段落。不要使用“已记录”“涉及”等前缀词，直接写“预测金额 X 亿元、预测电量 Y GWh”。"
+    "不要输出只描述整体规模、整体商机池不足而没有落到具体环节或客户范围的根因；这类结论写入 note。"
+    "description 写清推理依据并引用输入中的具体数值，不得引入输入中没有的数字；需要补充核实的数据写在 dataGaps。"
     '只返回 JSON：{{"risks": [{{"code": "风险编码", "causes": [{{"title": "不超过20字的根因名称", '
     '"description": "不超过160字的推理依据，引用输入中的具体数值", '
     '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，不要输出其他内容。'
 )
+def global_cause_max_tokens(risks):
+    """Output budget for the global root-cause call.
+
+    The call used to be capped at 4000 tokens with no override, so long rule
+    text truncated the JSON and whole causes were dropped.  Keep a floor and
+    honour COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS (advertised in the error
+    hints but previously never read).
+    """
+    override = os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", "").strip()
+    if override.isdigit() and int(override) > 0:
+        return int(override)
+    count = risks if isinstance(risks, int) else len(risks or [])
+    return min(8000, max(4000, 600 + 450 * count))
+
 GLOBAL_CAUSE_RULE = dict(code="BR-L01", name="AI 全局根因分析", levelRule="",
                          condition="大模型依据本轮已成立风险及其指标结果全局分析，不匹配本体根因库")
 
@@ -297,7 +315,7 @@ def _item_judge(request, role, infer_prompt):
         limits = request.get("causesPerRisk") or {}
         task = GLOBAL_CAUSE_PROMPT.format(low=limits.get("min", 1), high=limits.get("max", 2))
         prompt = compose_system_prompt(role(), task)
-        max_tokens = min(4000, 600 + 450 * len(request.get("risks") or []))
+        max_tokens = global_cause_max_tokens(request.get("risks"))
         step = "AI 全局根因分析"
     else:
         prompt = compose_system_prompt(role(), infer_prompt if inference else JUDGE_PROMPT.format(kind=label))

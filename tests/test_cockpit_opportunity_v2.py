@@ -2193,3 +2193,22 @@ def test_ai_root_causes_quote_only_input_numbers_and_cover_every_risk():
     missing = [item for item in failing['ontologyJudgement']['causes'] if item['code'].endswith('-AI')]
     assert {item['code'] for item in missing} == {f'{code}-AI' for code in established}
     assert all(item['established'] is None for item in missing)
+
+
+def test_ai_root_cause_prompt_demands_complete_segments_and_plain_wording():
+    from bi_agent.cockpit import opportunity_judgement as oj
+    prompt = oj.GLOBAL_CAUSE_PROMPT
+    # Every cause must carry 规模 / 范围 / 机制 / 影响 instead of a bare headline.
+    assert "规模" in prompt and "范围" in prompt and "机制" in prompt and "影响" in prompt
+    # No "已记录 / 涉及" prefixes in the rendered cause text.
+    assert "已记录" in prompt and "不要使用" in prompt
+    # Macro "整体规模不足" style causes without a concrete locus are rejected.
+    assert "商机池" in prompt or "整体规模" in prompt
+
+def test_global_cause_output_budget_has_a_floor_and_env_override(monkeypatch):
+    from bi_agent.cockpit import opportunity_judgement as oj
+    monkeypatch.delenv("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", raising=False)
+    assert oj.global_cause_max_tokens(4) >= 4000
+    assert oj.global_cause_max_tokens(12) >= oj.global_cause_max_tokens(4)
+    monkeypatch.setenv("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", "6000")
+    assert oj.global_cause_max_tokens(4) == 6000
