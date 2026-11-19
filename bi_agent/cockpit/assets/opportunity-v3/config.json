@@ -1,9 +1,9 @@
 {
-  "version": "opportunity-v3-rules-14",
+  "version": "opportunity-v3-rules-15",
   "ontology": "商机获取节点 V3 本体文件_1117（第三版执行口径）",
   "source": {
     "path": "docs/亿纬锂能/亿纬锂能本体文件_1117.xlsx",
-    "sha256": "027ae85b7bab00fc8c6da80795e06f2541771492e22049680c21a75e4d09053b"
+    "sha256": "a60b71d11b93cd66796669ef3397fdf93dc559de2ac73209c9f75ec80462344f"
   },
   "dictionary": {
     "path": "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx",
@@ -1268,7 +1268,7 @@
     "B02": {
       "code": "B02",
       "name": "商机总预测金额／电量",
-      "definition": "汇总所选预测业务期间内的纯商机预测，按new_accountdate所属月份归期。先筛createdon早于观察日次日，再按商机ID＋预测月份，依次按createdon、modifiedon、new_oppmonthid降序且NULLS LAST取最新。同一商机不同月份分别计入；不混入实际销售额。年度查询取1至12月并共用年度观察截止；单独月度查询只取所选月并共用该月观察截止。",
+      "definition": "汇总所选预测业务期间内的纯商机预测，按new_accountdate所属月份归期。先筛createdon早于观察日次日，再按商机ID＋预测月份，依次按createdon、modifiedon、new_oppmonthid降序且NULLS LAST取最新。同一商机不同月份分别计入；不混入实际销售额。年度查询取1至12月并共用年度观察截止；单独月度查询只取所选月并共用该月观察截止。 B02的所选期间商机总预测仅供同范围诊断，禁止用作R01的剩余预测或全年覆盖。",
       "formula": "作为纯预测总量基准；R01仍按本文件既有“进度＋预测”分支计算缺口。商机先按opportunityid、modifiedon DESC NULLS LAST、createdon DESC NULLS LAST取最新，再校验该最新记录createdon早于观察日次日；不因最新记录超出截止而回取同ID的旧商机记录。业务月份范围与版本可见时间分别限定；截至前录入的未来业务月份预测，仅在该指标业务范围包含该月份时计入。年度查询及其12个月分解共用调用端传入的同一个年度观察截止，标准为该年年底；单独月度查询使用传入的该月观察截止，标准为该月月末。年度汇总不采用各月各自月末快照相加。观察日期由参数绑定，不在SQL中写死或自动替换。",
       "caliber": "无维度总额：所选期间内每商机仅取最新一条月度预测。电量＝预测金额÷Wh单价÷10^9；金额：已历月份用new_amt_rmb、当月及以后用new_forecast_amt_rmb；产品团队组合直接使用预测金额。",
       "type": "原子指标",
@@ -1310,7 +1310,7 @@
     "R01": {
       "code": "R01",
       "name": "商机预测缺口",
-      "definition": "B01 年度目标 −（进度＋预测）。缺口＝目标－（进度＋预测）。进度＝观察月以前各月已签单商机预测；预测＝观察当月至12月全部商机预测（含已签、未签）；进度＋预测即R03明细的全年覆盖预测，取数分支与R03、R06相同（先筛截至观察日可用的预测记录，再按商机ID＋月份取最新版本）。不混入实际销售额或实际出货量。金额、电量分别计算，并输出缺口率＝缺口÷目标。\n全年拼接覆盖仍为观察月以前各月已签预测＋观察当月至12月全部预测；前段仅取signed IS TRUE，后段不按已签/未签状态筛除。观察月由所选期间与观察日期的有效截止确定，不使用执行当天替代。 已签/未签统一执行BR-Q02：真实订单关联且商机P3结束new_stage4enddate早于观察日次日为已签；无订单、P3结束空或截至后结束均按未签。",
+      "definition": "B01 年度目标 −（进度＋预测）。缺口＝目标－（进度＋预测）。进度＝观察月以前各月已签单商机预测；预测＝观察当月至12月全部商机预测（含已签、未签）；进度＋预测即R03明细的全年覆盖预测，取数分支与R03、R06相同（先筛截至观察日可用的预测记录，再按商机ID＋月份取最新版本）。不混入实际销售额或实际出货量。金额、电量分别计算，并输出缺口率＝缺口÷目标。\n全年拼接覆盖仍为观察月以前各月已签预测＋观察当月至12月全部预测；前段仅取signed IS TRUE，后段不按已签/未签状态筛除。观察月由所选期间与观察日期的有效截止确定，不使用执行当天替代。 已签/未签统一执行BR-Q02：真实订单关联且商机P3结束new_stage4enddate早于观察日次日为已签；无订单、P3结束空或截至后结束均按未签。 风险正文从R01总体明细取值。已签单取progress_amount或progress_energy，剩余预测取forecast_amount或forecast_energy，全年覆盖取coverage_amount或coverage_energy。金额与电量独立。",
       "formula": "缺口大于 0，即判为商机全年覆盖（进度＋预测）不足；等级按缺口率。目标缺失或为 0 时缺口率保持 NULL。\n目标、预测及关联客户/商机均按同一观察日期限定可见性；原阈值、缺值保护及正负差额方式保持。",
       "caliber": "现有标量缺口以目标金额减预测金额；其中预测直接取new_forecast_amt_rmb，与B02无维度总额的历月实际/未来预测混合取值不同；缺一侧时部分SQL把缺值按0参与差额。",
       "type": "复合指标",
@@ -1554,7 +1554,7 @@
     "R08": {
       "code": "R08",
       "name": "客户目标、商机预测及缺口",
-      "definition": "按客户ID汇总客户全部年度目标、进度和剩余预测后，分别计算金额缺口与电量缺口；各自缺口>0的客户构成风险专用正缺口集合。每客户一行，目标、进度、预测、总覆盖预测和缺口使用同一客户集合。",
+      "definition": "按客户ID汇总客户全部年度目标、进度和剩余预测后，分别计算金额缺口与电量缺口；各自缺口>0的客户构成风险专用正缺口集合。每客户一行，目标、进度、预测、总覆盖预测和缺口使用同一客户集合。 对外将正缺口客户称作“存在缺口的客户”。总客户数取两口径并集，金额与电量子集各自列示。",
       "formula": "仅按R08明细中唯一的“风险专用正缺口汇总”判断：金额口径或电量口径的正缺口客户数>0即成立。先按客户ID汇总同一客户全部年度目标、进度和剩余预测，再分别计算金额缺口和电量缺口；各口径仅筛客户汇总缺口>0的客户集合，客户数按客户ID去重。目标、进度、剩余预测、总覆盖预测和缺口必须读取各口径同一正缺口客户集合的SQL汇总；同一客户的全部目标和预测先合并，不拆分后先筛子集，也不用其他客户的负缺口抵销正缺口。不得按明细数组长度判定。R04有未签商机或R09有无商机客户仅为原因事实，不能单独OR触发客户目标不足。必要输入缺失按缺失说明处理，不把未知补成0。",
       "caliber": "客户表单位MWh。名为“客户商机预测缺口电量”的YWLN_M_CUSTOMER_OPPORTUNITY_GAP实际返回已签＋未签预测合计，未减目标；“客户电量缺口”则是目标－实际发货。两者均不能直接当R08预测缺口。",
       "type": "派生指标",
@@ -3166,7 +3166,7 @@
       "code": "R12",
       "name": "商机获取阶段超期商机数及预测量",
       "definition": "P0（createdon→new_stage1enddate）完整有效已结束且周期严格大于0的阶段中，0<超静态基线比例<50%的商机数与期间预测。本阶段静态基线为32.6天，同一阶段统一使用，不随所选期间或样本变化。",
-      "formula": "以本阶段结束时间归期，开始可跨年；使用P0固定基线32.6天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%并列展示，R13/R15/R17为超基线比例>=50%触发原风险；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“超期”，并列展示。",
+      "formula": "以本阶段结束时间归期，开始可跨年；使用P0固定基线32.6天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%，供基础指标查询，R13/R15/R17为超基线比例>=50%触发RK11并在卡片展示；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“超期”，，供基础指标查询。",
       "caliber": "看板无同名分档查询",
       "type": "派生指标",
       "entities": [
@@ -3206,7 +3206,7 @@
       "code": "R13",
       "name": "商机获取阶段严重超期商机数及预测量",
       "definition": "P0（createdon→new_stage1enddate）完整有效已结束且周期严格大于0的阶段中，超静态基线比例>=50%的商机数与期间预测。本阶段静态基线为32.6天，同一阶段统一使用，不随所选期间或样本变化。",
-      "formula": "以本阶段结束时间归期，开始可跨年；使用P0固定基线32.6天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%并列展示，R13/R15/R17为超基线比例>=50%触发原风险；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“严重超期”。",
+      "formula": "以本阶段结束时间归期，开始可跨年；使用P0固定基线32.6天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%，供基础指标查询，R13/R15/R17为超基线比例>=50%触发RK11并在卡片展示；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“严重超期”。",
       "caliber": "看板无同名分档查询",
       "type": "派生指标",
       "entities": [
@@ -3250,7 +3250,7 @@
       "code": "R14",
       "name": "技术交流阶段超期商机数及预测量",
       "definition": "P1（new_stage1enddate→new_stage2enddate）完整有效已结束且周期严格大于0的阶段中，0<超静态基线比例<50%的商机数与期间预测。本阶段静态基线为21.8天，同一阶段统一使用，不随所选期间或样本变化。",
-      "formula": "以本阶段结束时间归期，开始可跨年；使用P1固定基线21.8天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%并列展示，R13/R15/R17为超基线比例>=50%触发原风险；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“超期”，并列展示。",
+      "formula": "以本阶段结束时间归期，开始可跨年；使用P1固定基线21.8天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%，供基础指标查询，R13/R15/R17为超基线比例>=50%触发RK11并在卡片展示；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“超期”，，供基础指标查询。",
       "caliber": "看板无同名分档查询",
       "type": "派生指标",
       "entities": [
@@ -3290,7 +3290,7 @@
       "code": "R15",
       "name": "技术交流阶段严重超期商机数及预测量",
       "definition": "P1（new_stage1enddate→new_stage2enddate）完整有效已结束且周期严格大于0的阶段中，超静态基线比例>=50%的商机数与期间预测。本阶段静态基线为21.8天，同一阶段统一使用，不随所选期间或样本变化。",
-      "formula": "以本阶段结束时间归期，开始可跨年；使用P1固定基线21.8天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%并列展示，R13/R15/R17为超基线比例>=50%触发原风险；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“严重超期”。",
+      "formula": "以本阶段结束时间归期，开始可跨年；使用P1固定基线21.8天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%，供基础指标查询，R13/R15/R17为超基线比例>=50%触发RK11并在卡片展示；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“严重超期”。",
       "caliber": "看板无同名分档查询",
       "type": "派生指标",
       "entities": [
@@ -3332,7 +3332,7 @@
       "code": "R16",
       "name": "方案推动阶段超期商机数及预测量",
       "definition": "P2（new_stage2enddate→new_stage3enddate）完整有效已结束且周期严格大于0的阶段中，0<超静态基线比例<50%的商机数与期间预测。本阶段静态基线为7.2天，同一阶段统一使用，不随所选期间或样本变化。",
-      "formula": "以本阶段结束时间归期，开始可跨年；使用P2固定基线7.2天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%并列展示，R13/R15/R17为超基线比例>=50%触发原风险；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“超期”，并列展示。",
+      "formula": "以本阶段结束时间归期，开始可跨年；使用P2固定基线7.2天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%，供基础指标查询，R13/R15/R17为超基线比例>=50%触发RK11并在卡片展示；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“超期”，，供基础指标查询。",
       "caliber": "看板无同名分档查询",
       "type": "派生指标",
       "entities": [
@@ -3372,7 +3372,7 @@
       "code": "R17",
       "name": "方案推动阶段严重超期商机数及预测量",
       "definition": "P2（new_stage2enddate→new_stage3enddate）完整有效已结束且周期严格大于0的阶段中，超静态基线比例>=50%的商机数与期间预测。本阶段静态基线为7.2天，同一阶段统一使用，不随所选期间或样本变化。",
-      "formula": "以本阶段结束时间归期，开始可跨年；使用P2固定基线7.2天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%并列展示，R13/R15/R17为超基线比例>=50%触发原风险；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“严重超期”。",
+      "formula": "以本阶段结束时间归期，开始可跨年；使用P2固定基线7.2天，逐笔计算(实际天数－静态基线)÷静态基线。只计完整已结束且严格正周期，0天、缺值、逆序及未结束不参与。R12/R14/R16为0<超基线比例<50%，供基础指标查询，R13/R15/R17为超基线比例>=50%触发RK11并在卡片展示；同一阶段统一使用该静态基线。不同阶段可重复命中，跨阶段合计须区分阶段累加和商机去重。结束还须早于观察日次日，缺预测不排除周期样本，当前阶段枚举不作过滤。 展示档位为“严重超期”。",
       "caliber": "看板无同名分档查询",
       "type": "派生指标",
       "entities": [
@@ -3413,7 +3413,7 @@
     "P0-09": {
       "code": "P0-09",
       "name": "P0在途超期及严重超期商机数与预测量",
-      "definition": "全体截至P0在途商机，阶段一截至日未结束；商机最新记录创建早于观察日次日，不设本期期初创建下限。",
+      "definition": "全体截至P0在途商机，阶段一截至日未结束；商机最新记录创建早于观察日次日，不设本期期初创建下限。 对外标为“截至观察日仍处于商机获取阶段”。R13的展示标签为“已结束商机获取阶段”。",
       "formula": "日期链只检查截至已见完成事件，异常不判；时长严格>0，>32.6且<48.9天超期，>=48.9天严重超期。顶部数量/金额/电量为严重档，普通档另列；缺预测不影响计数，不进入已结束均值。",
       "caliber": "新增本体取数，不自动改看板。",
       "type": "派生指标",
@@ -3445,7 +3445,7 @@
       "advice": [
         "AC16"
       ],
-      "role": "P0在途根因取数；不混已结束平均或独立新增风险门槛；最终分析仅读总体、客户、商机及阶段事实，范围见BR-V12",
+      "role": "P0在途根因取数；不混已结束平均或独立新增风险门槛；最终分析仅读总体、客户、商机及阶段事实，范围见BR-V12 前台仅适用RK11/RC13；字段范围及输出句式按BR-V11、BR-V12。",
       "cteCount": "15",
       "ctes": "parameters → context → account_rows → accounts → opportunity_rows → opportunities → orders → order_line_links → signed_orders → opportunity_flags → forecast_rows → forecast_facts → opportunity_forecast → p0_inflight_source → p0_inflight_facts",
       "sql": "WITH parameters AS MATERIALIZED (\nSELECT\n    CAST(%s AS DATE) AS start_date,\n    CAST(%s AS DATE) AS end_exclusive,\n    CAST(%s AS TIMESTAMP) AS observed_at,\n    CAST(ARRAY['1'] AS TEXT[]) AS strategic_levels,\n    CAST(ARRAY['1', '2'] AS TEXT[]) AS focus_levels,\n    CAST(1000000 AS DECIMAL) AS target_power_units_per_gwh\n),\ncontext AS MATERIALIZED (\nSELECT\n    p.*,\n    CAST((\n      DATE_TRUNC('DAY', observed_at) + INTERVAL '1 DAY'\n    ) AS TIMESTAMP) AS as_of_exclusive,\n    LEAST(\n      CAST(end_exclusive AS TIMESTAMP),\n      DATE_TRUNC('DAY', observed_at) + INTERVAL '1 DAY'\n    ) AS effective_end_exclusive,\n    LEAST(\n      CAST(end_exclusive AS TIMESTAMP),\n      DATE_TRUNC('DAY', observed_at) + INTERVAL '1 DAY'\n    ) - INTERVAL '1 MICROSECOND' AS cutoff,\n    MAKE_DATE(CAST(EXTRACT(YEAR FROM start_date) AS INT), 1, 1) AS year_start,\n    MAKE_DATE(CAST(EXTRACT(YEAR FROM start_date) AS INT) + 1, 1, 1) AS next_year_start,\n    GREATEST(\n      CAST(0 AS DECIMAL),\n      LEAST(\n        CAST(1 AS DECIMAL),\n        CAST((\n          CAST(LEAST(\n            CAST(end_exclusive AS TIMESTAMP),\n            DATE_TRUNC('DAY', observed_at) + INTERVAL '1 DAY'\n          ) AS DATE) - MAKE_DATE(CAST(EXTRACT(YEAR FROM start_date) AS INT), 1, 1)\n        ) AS DECIMAL) / (\n          MAKE_DATE(CAST(EXTRACT(YEAR FROM start_date) AS INT) + 1, 1, 1) - MAKE_DATE(CAST(EXTRACT(YEAR FROM start_date) AS INT), 1, 1)\n        )\n      )\n    ) AS time_progress\n  FROM parameters AS p\n),\naccount_rows AS MATERIALIZED (\nSELECT\n    CAST(a.accountid AS TEXT) AS account_id,\n    CAST(a.name AS TEXT) AS account_name,\n    CAST(a.new_accountlevel AS TEXT) AS level_code,\n    CAST(a.new_sapdate AS TIMESTAMP) AS sap_created_at,\n    CAST(a.new_sapsubmitdate AS TIMESTAMP) AS sap_submitted_at,\n    CAST(a.new_approved_time_facreview AS TIMESTAMP) AS account_factory_approved_at,\n    CAST(a.new_submit_time_facreview AS TIMESTAMP) AS account_factory_submitted_at,\n    CAST(a.new_sinosurestartdate AS TIMESTAMP) AS account_sinosure_start,\n    CAST(a.new_sinosureenddate AS TIMESTAMP) AS account_sinosure_end,\n    CAST(a.new_submit_time_accredit AS TIMESTAMP) AS account_credit_submitted_at,\n    CAST(a.new_approvaltime_accredit AS TIMESTAMP) AS account_credit_approved_at,\n    CAST(a.new_cdastartdate AS TIMESTAMP) AS account_cda_start,\n    CAST(a.new_cdaenddate AS TIMESTAMP) AS account_cda_end,\n    CAST(a.new_cda_submittime AS TIMESTAMP) AS account_cda_submitted_at,\n    CAST(a.new_cda_approved_time AS TIMESTAMP) AS account_cda_approved_at,\n    CAST(a.new_approvalstatus_facreview AS TEXT) AS account_factory_approval_status,\n    CAST(a.new_sapcode AS TEXT) AS sap_code,\n    CAST(a.new_issap AS TEXT) AS sap_registered,\n    CAST(a.new_issapnew AS TEXT) AS sap_registration_kind,\n    ROW_NUMBER() OVER (\n      PARTITION BY a.accountid\n      ORDER BY a.modifiedon DESC NULLS LAST, a.createdon DESC NULLS LAST\n    ) AS rn\n  FROM (\n    SELECT\n      __x360_raw.*\n    FROM ded_public.p_fm_edw_v_ods_crm_account_esb AS __x360_raw\n    CROSS JOIN context AS __x360_ctx\n    WHERE\n      CAST(__x360_raw.createdon AS TIMESTAMP) < __x360_ctx.as_of_exclusive\n  ) AS a\n  WHERE\n    NULLIF(TRIM(CAST(a.accountid AS TEXT)), '') IS NOT NULL\n),\naccounts AS MATERIALIZED (\nSELECT\n    account_id,\n    account_name,\n    level_code,\n    sap_created_at,\n    sap_submitted_at,\n    account_factory_approved_at,\n    account_factory_submitted_at,\n    account_sinosure_start,\n    account_sinosure_end,\n    account_credit_submitted_at,\n    account_credit_approved_at,\n    account_cda_start,\n    account_cda_end,\n    account_cda_submitted_at,\n    account_cda_approved_at,\n    account_factory_approval_status,\n    sap_code,\n    sap_registered,\n    sap_registration_kind\n  FROM account_rows\n  WHERE\n    rn = 1\n),\nopportunity_rows AS MATERIALIZED (\nSELECT\n    ranked.*\n  FROM (\n    SELECT\n      CAST(o.opportunityid AS TEXT) AS opportunity_id,\n      CAST(o.parentaccountid AS TEXT) AS account_id,\n      CAST(o.name AS TEXT) AS project_name,\n      CAST(o.ownerid AS TEXT) AS owner_id,\n      CASE\n        WHEN CAST(o.new_accproducttype AS TEXT) IN ('1', '电芯')\n        THEN '电芯'\n        WHEN CAST(o.new_accproducttype AS TEXT) IN ('2', 'PACK')\n        THEN 'PACK'\n        ELSE '其他'\n      END AS product_type,\n      o.__x360_asof_process_stage AS process_stage,\n      CAST(o.statecode AS TEXT) AS system_state,\n      CAST(o.new_demandinput AS TEXT) AS demand_status,\n      CAST(o.createdon AS TIMESTAMP) AS created_at,\n      CAST(o.new_stage1enddate AS TIMESTAMP) AS s1,\n      CAST(o.new_stage2enddate AS TIMESTAMP) AS s2,\n      CAST(o.new_stage3enddate AS TIMESTAMP) AS s3,\n      CAST(o.new_stage4enddate AS TIMESTAMP) AS s4,\n      CAST(o.new_stage5enddate AS TIMESTAMP) AS s5,\n      CAST(o.new_cdastartdate AS TIMESTAMP) AS new_cdastartdate,\n      CAST(o.new_cdaenddate AS TIMESTAMP) AS new_cdaenddate,\n      CAST(o.new_approved_time_acneed AS TIMESTAMP) AS new_approved_time_acneed,\n      CAST(o.new_submit_time_acneed AS TIMESTAMP) AS new_submit_time_acneed,\n      CAST(o.new_approved_time_projectassess AS TIMESTAMP) AS new_approved_time_projectassess,\n      CAST(o.new_submit_time_projectassess AS TIMESTAMP) AS new_submit_time_projectassess,\n      CAST(o.new_sampletestpass_time AS TIMESTAMP) AS new_sampletestpass_time,\n      CAST(o.new_sampletime AS TIMESTAMP) AS new_sampletime,\n      CAST(o.new_technicalsigningdate AS TIMESTAMP) AS new_technicalsigningdate,\n      CAST(o.new_submit_time_techcon AS TIMESTAMP) AS new_submit_time_techcon,\n      CAST(o.new_warrantysigningdate AS TIMESTAMP) AS new_warrantysigningdate,\n      CAST(o.new_submit_time_qsl AS TIMESTAMP) AS new_submit_time_qsl,\n      CAST(o.new_isneedcda AS TEXT) AS new_isneedcda,\n      CAST(o.new_approvalstatus_acneed AS TEXT) AS new_approvalstatus_acneed,\n      CAST(o.new_approvalstatus_projectassess AS TEXT) AS new_approvalstatus_projectassess,\n      CAST(o.new_approvalstatus_techcon AS TEXT) AS new_approvalstatus_techcon,\n      CAST(o.new_approvalstatus_qsl AS TEXT) AS new_approvalstatus_qsl,\n      CAST(o.new_sampletestresult AS TEXT) AS new_sampletestresult,\n      ROW_NUMBER() OVER (\n        PARTITION BY o.opportunityid\n        ORDER BY o.modifiedon DESC NULLS LAST, o.createdon DESC NULLS LAST\n      ) AS rn\n    FROM (\n      SELECT\n        __x360_raw.*,\n        CASE\n          WHEN CAST(__x360_raw.new_stage1enddate AS TIMESTAMP) IS NULL\n          OR CAST(__x360_raw.new_stage1enddate AS TIMESTAMP) >= __x360_ctx.as_of_exclusive\n          THEN '11'\n          WHEN CAST(__x360_raw.new_stage2enddate AS TIMESTAMP) IS NULL\n          OR CAST(__x360_raw.new_stage2enddate AS TIMESTAMP) >= __x360_ctx.as_of_exclusive\n          THEN '12'\n          WHEN CAST(__x360_raw.new_stage3enddate AS TIMESTAMP) IS NULL\n          OR CAST(__x360_raw.new_stage3enddate AS TIMESTAMP) >= __x360_ctx.as_of_exclusive\n          THEN '13'\n          WHEN CAST(__x360_raw.new_stage4enddate AS TIMESTAMP) IS NULL\n          OR CAST(__x360_raw.new_stage4enddate AS TIMESTAMP) >= __x360_ctx.as_of_exclusive\n          THEN '14'\n          WHEN CAST(__x360_raw.new_stage5enddate AS TIMESTAMP) IS NULL\n          OR CAST(__x360_raw.new_stage5enddate AS TIMESTAMP) >= __x360_ctx.as_of_exclusive\n          THEN '15'\n          ELSE 'completed'\n        END AS __x360_asof_process_stage\n      FROM ded_public.p_fm_edw_v_ods_crm_opportunity_esb AS __x360_raw\n      CROSS JOIN context AS __x360_ctx\n    ) AS o\n    WHERE\n      NULLIF(TRIM(CAST(o.opportunityid AS TEXT)), '') IS NOT NULL\n  ) AS ranked\n  CROSS JOIN context AS p\n  WHERE\n    ranked.created_at < p.as_of_exclusive\n),\nopportunities AS MATERIALIZED (\nSELECT\n    o.opportunity_id,\n    o.account_id,\n    o.project_name,\n    o.owner_id,\n    o.product_type,\n    o.process_stage,\n    o.demand_status,\n    o.created_at,\n    o.s1,\n    o.s2,\n    o.s3,\n    o.s4,\n    o.s5,\n    a.account_name,\n    a.level_code,\n    o.new_cdastartdate,\n    o.new_cdaenddate,\n    o.new_approved_time_acneed,\n    o.new_submit_time_acneed,\n    o.new_approved_time_projectassess,\n    o.new_submit_time_projectassess,\n    o.new_sampletestpass_time,\n    o.new_sampletime,\n    o.new_technicalsigningdate,\n    o.new_submit_time_techcon,\n    o.new_warrantysigningdate,\n    o.new_submit_time_qsl,\n    o.new_isneedcda,\n    o.new_approvalstatus_acneed,\n    o.new_approvalstatus_projectassess,\n    o.new_approvalstatus_techcon,\n    o.new_approvalstatus_qsl,\n    o.new_sampletestresult,\n    a.sap_created_at,\n    a.sap_submitted_at,\n    a.sap_code,\n    a.account_factory_approved_at,\n    a.account_factory_submitted_at,\n    a.account_sinosure_start,\n    a.account_sinosure_end,\n    a.account_credit_submitted_at,\n    a.account_credit_approved_at,\n    a.account_cda_start,\n    a.account_cda_end,\n    a.account_cda_submitted_at,\n    a.account_cda_approved_at,\n    a.account_factory_approval_status\n  FROM opportunity_rows AS o\n  LEFT JOIN accounts AS a\n    USING (account_id)\n  CROSS JOIN context AS p\n  WHERE\n    o.rn = 1 AND (\n      o.created_at < p.as_of_exclusive\n    )\n),\norders AS MATERIALIZED (\nSELECT DISTINCT\n    CAST(salesorderid AS TEXT) AS order_id\n  FROM ded_public.p_fm_edw_v_ods_crm_salesorder_esb\n  WHERE\n    NULLIF(TRIM(CAST(salesorderid AS TEXT)), '') IS NOT NULL\n),\norder_line_links AS MATERIALIZED (\nSELECT DISTINCT\n    CAST(l.new_opportunity_id AS TEXT) AS opportunity_id,\n    CAST(l.salesorderid AS TEXT) AS order_id\n  FROM ded_public.p_fm_edw_v_ods_crm_salesorderdetail_esb AS l\n  WHERE\n    NULLIF(TRIM(CAST(l.new_opportunity_id AS TEXT)), '') IS NOT NULL\n    AND NULLIF(TRIM(CAST(l.salesorderid AS TEXT)), '') IS NOT NULL\n),\nsigned_orders AS MATERIALIZED (\nSELECT\n    l.opportunity_id,\n    COUNT(DISTINCT l.order_id) AS order_count\n  FROM order_line_links AS l\n  JOIN orders AS o\n    USING (order_id)\n  GROUP BY\n    l.opportunity_id\n),\nopportunity_flags AS MATERIALIZED (\nSELECT\n    o.*,\n    COALESCE(s.order_count, 0) AS order_count,\n    CASE\n      WHEN COALESCE(s.order_count, 0) = 0\n      THEN FALSE\n      WHEN o.s4 IS NULL\n      THEN FALSE\n      ELSE o.s4 < p.as_of_exclusive\n    END AS signed,\n    (\n      COALESCE(s.order_count, 0) > 0 AND o.s4 IS NULL\n    ) AS missing_p3_end\n  FROM opportunities AS o\n  LEFT JOIN signed_orders AS s\n    USING (opportunity_id)\n  CROSS JOIN context AS p\n),\nforecast_rows AS MATERIALIZED (\nSELECT\n    CAST(m.new_oppmonthid AS TEXT) AS forecast_id,\n    CAST(m.new_opportunity_id AS TEXT) AS opportunity_id,\n    CAST(m.new_accountdate AS TIMESTAMP) AS forecast_month,\n    CAST(m.new_forecast_amt_rmb AS DECIMAL) AS amount_yuan,\n    CAST(m.new_whprice AS DECIMAL) AS wh_price,\n    ROW_NUMBER() OVER (\n      PARTITION BY m.new_opportunity_id, DATE_TRUNC('MONTH', CAST(m.new_accountdate AS TIMESTAMP))\n      ORDER BY m.createdon DESC NULLS LAST, m.modifiedon DESC NULLS LAST, m.new_oppmonthid DESC NULLS LAST\n    ) AS rn\n  FROM (\n    SELECT\n      __x360_raw.*\n    FROM ded_public.p_fm_edw_v_ods_crm_new_oppmonth_esb AS __x360_raw\n    CROSS JOIN context AS __x360_ctx\n    WHERE\n      CAST(__x360_raw.createdon AS TIMESTAMP) < __x360_ctx.as_of_exclusive\n  ) AS m\n  CROSS JOIN context AS p\n  WHERE\n    NULLIF(TRIM(CAST(m.new_oppmonthid AS TEXT)), '') IS NOT NULL\n    AND NULLIF(TRIM(CAST(m.new_opportunity_id AS TEXT)), '') IS NOT NULL\n    AND CAST(m.new_accountdate AS TIMESTAMP) >= p.start_date\n    AND CAST(m.new_accountdate AS TIMESTAMP) < p.end_exclusive\n),\nforecast_facts AS MATERIALIZED (\nSELECT\n    f.forecast_id,\n    f.forecast_month,\n    o.*,\n    f.amount_yuan / CAST(100000000 AS DECIMAL) AS amount_yi,\n    f.amount_yuan / NULLIF(f.wh_price, 0) / CAST(1000000000 AS DECIMAL) AS energy_gwh\n  FROM forecast_rows AS f\n  JOIN opportunity_flags AS o\n    USING (opportunity_id)\n  WHERE\n    f.rn = 1\n),\nopportunity_forecast AS MATERIALIZED (\nSELECT\n    opportunity_id,\n    COUNT(*) AS forecast_rows,\n    SUM(amount_yi) AS amount_yi,\n    SUM(energy_gwh) AS energy_gwh,\n    COUNT(*) FILTER(WHERE\n      amount_yi IS NULL) AS missing_amount_rows,\n    COUNT(*) FILTER(WHERE\n      energy_gwh IS NULL) AS missing_energy_rows\n  FROM forecast_facts\n  GROUP BY\n    opportunity_id\n),\np0_inflight_source AS MATERIALIZED (\nSELECT o.opportunity_id,o.product_type,o.created_at,o.s1,\n p.as_of_exclusive-INTERVAL '1 microsecond' AS observed_through,32.6::numeric AS baseline_days,\n CASE WHEN (v1 IS NULL AND COALESCE(v2,v3,v4,v5) IS NOT NULL)\n   OR(v2 IS NULL AND COALESCE(v3,v4,v5) IS NOT NULL)\n   OR(v3 IS NULL AND COALESCE(v4,v5) IS NOT NULL) OR(v4 IS NULL AND v5 IS NOT NULL)\n   THEN '前序未完成或缺日期，但后序已截至完成'\n   WHEN v1<o.created_at OR v2<v1 OR v3<v2 OR v4<v3 OR v5<v4 THEN '已见阶段日期逆序'\n   ELSE '有效' END AS date_chain_status\n FROM opportunity_rows o CROSS JOIN context p\n CROSS JOIN LATERAL(SELECT\n   CASE WHEN o.s1<p.as_of_exclusive THEN o.s1 END v1,\n   CASE WHEN o.s2<p.as_of_exclusive THEN o.s2 END v2,\n   CASE WHEN o.s3<p.as_of_exclusive THEN o.s3 END v3,\n   CASE WHEN o.s4<p.as_of_exclusive THEN o.s4 END v4,\n   CASE WHEN o.s5<p.as_of_exclusive THEN o.s5 END v5\n )v\n WHERE o.rn=1 AND (o.s1 IS NULL OR o.s1>=p.as_of_exclusive)\n),\np0_inflight_facts AS MATERIALIZED (\nSELECT d.*,f.forecast_rows,f.amount_yi,f.energy_gwh,f.missing_amount_rows,f.missing_energy_rows,\n (dwell_days-baseline_days) AS excess_days,\n (dwell_days-baseline_days)/NULLIF(baseline_days,0) AS excess_ratio,\n CASE WHEN dwell_days>baseline_days AND dwell_days<baseline_days*1.5 THEN 'LT50'\n      WHEN dwell_days>=baseline_days*1.5 THEN 'GE50'\n      WHEN dwell_days IS NOT NULL THEN 'NOT_OVERDUE' END AS band_code\n FROM(SELECT s.*,CASE WHEN date_chain_status='有效' AND observed_through>created_at\n   THEN EXTRACT(EPOCH FROM(observed_through-created_at))/86400::numeric END AS dwell_days\n   FROM p0_inflight_source s)d\n LEFT JOIN opportunity_forecast f USING(opportunity_id)\n),\nmetric_results AS MATERIALIZED (\nSELECT 86 AS sort_no,'P0-09'::text AS code,\n 'P0在途超期及严重超期商机数与预测量'::text AS metric_name,NULL::text AS product_team,\n SUM(amount_yi) FILTER(WHERE band_code='GE50') AS amount_yi,\n SUM(energy_gwh) FILTER(WHERE band_code='GE50') AS energy_gwh,\n COUNT(*) FILTER(WHERE band_code='GE50')::bigint AS item_count,\n NULL::numeric AS ratio_value,NULL::numeric AS days_value,\n '已实现；仅截至P0在途存量，主数量为严重超期'::text AS status,\n '商机按ID取最新后只设观察创建上限；阶段一截至日未结束且日期链有效，时长算至观察日全天末。固定基线32.6天，超过但未满1.5倍为超期，达到1.5倍为严重超期。不进已结束均值；预测按本期最新版本左关联，缺预测不挡计数。'::text AS note,\n JSONB_BUILD_OBJECT('静态基线_天',32.6,'严重超期阈值_天',48.9,\n  '截至P0候选数',COUNT(*),'有效在途样本数',COUNT(dwell_days),\n  '日期异常候选数',COUNT(*) FILTER(WHERE date_chain_status<>'有效'),\n  '普通超期汇总',JSONB_BUILD_OBJECT('商机数',COUNT(*)FILTER(WHERE band_code='LT50'),\n   '预测金额_亿元',SUM(amount_yi)FILTER(WHERE band_code='LT50'),'预测电量_GWh',SUM(energy_gwh)FILTER(WHERE band_code='LT50')),\n  '严重超期汇总',JSONB_BUILD_OBJECT('商机数',COUNT(*)FILTER(WHERE band_code='GE50'),\n   '预测金额_亿元',SUM(amount_yi)FILTER(WHERE band_code='GE50'),'预测电量_GWh',SUM(energy_gwh)FILTER(WHERE band_code='GE50'),\n   '无期间预测商机数',COUNT(*)FILTER(WHERE band_code='GE50' AND forecast_rows IS NULL),\n   '金额不可计算商机数',COUNT(*)FILTER(WHERE band_code='GE50' AND amount_yi IS NULL),\n   '电量不可计算商机数',COUNT(*)FILTER(WHERE band_code='GE50' AND energy_gwh IS NULL),\n   '金额缺失预测记录数',SUM(missing_amount_rows)FILTER(WHERE band_code='GE50'),\n   '电量输入缺失预测记录数',SUM(missing_energy_rows)FILTER(WHERE band_code='GE50')),\n  '在途商机明细',COALESCE(JSONB_AGG(TO_JSONB(f) ORDER BY dwell_days DESC NULLS LAST,opportunity_id),'[]'::jsonb),\n  '口径说明','已结束与在途按阶段一结束时点互斥；不得与R13直接累计为同一种周期样本；预测金额缺失可能是部分合计。') AS detail\n FROM p0_inflight_facts f\n)\nSELECT\n  r.code AS \"指标序号\",\n  r.metric_name AS \"指标名称\",\n  r.product_team AS \"产品团队\",\n  p.start_date AS \"期间开始\",\n  p.end_exclusive AS \"期间结束不含\",\n  p.cutoff AS \"周期观察截止\",\n  r.amount_yi AS \"金额_亿元\",\n  r.energy_gwh AS \"电量_GWh\",\n  r.item_count AS \"数量\",\n  r.ratio_value AS \"比率_原始小数\",\n  r.days_value AS \"平均周期_天\",\n  CASE\n    WHEN r.status = '查询已实现；缺失输入及部分合计见明细'\n    THEN CASE\n      WHEN r.amount_yi IS NOT NULL\n      OR r.energy_gwh IS NOT NULL\n      OR r.item_count IS NOT NULL\n      OR r.ratio_value IS NOT NULL\n      OR r.days_value IS NOT NULL\n      THEN '已有查询结果；完整性与适用列见明细'\n      ELSE '没有可计算结果；检查输入、时间及关联范围'\n    END\n    ELSE r.status\n  END AS \"计算说明状态\",\n  r.note AS \"取值说明\",\n  r.detail AS \"分组明细及缺口\"\nFROM metric_results AS r\nCROSS JOIN context AS p\nORDER BY\n  r.sort_no,\n  r.product_team;"
@@ -3608,7 +3608,7 @@
     "BR-A01": {
       "code": "BR-A01",
       "name": "商机预测覆盖不足判定",
-      "description": "商机全年覆盖（进度＋预测）低于年度目标。缺口＝目标－（进度＋预测）。进度＝观察月以前各月已签单商机预测；预测＝观察当月至12月全部商机预测（含已签、未签）；进度＋预测即R03明细的全年覆盖预测，取数分支与R03总体全年覆盖分支一致（先筛截至观察日可用的预测记录，再按商机ID＋月份取最新版本）。不混入实际销售额或实际出货量。",
+      "description": "商机全年覆盖（进度＋预测）低于年度目标。缺口＝目标－（进度＋预测）。进度＝观察月以前各月已签单商机预测；预测＝观察当月至12月全部商机预测（含已签、未签）；进度＋预测即R03明细的全年覆盖预测，取数分支与R03总体全年覆盖分支一致（先筛截至观察日可用的预测记录，再按商机ID＋月份取最新版本）。不混入实际销售额或实际出货量。 风险正文从R01总体明细取值。已签单取progress_amount或progress_energy，剩余预测取forecast_amount或forecast_energy，全年覆盖取coverage_amount或coverage_energy。金额与电量独立。",
       "trigger": "指标计算完成后检测",
       "result": "R01 缺口＝目标－（进度＋预测）> 0 成立（金额、电量分别判断）；等级：缺口率 ≥ 10% 高；5%~10% 中；< 5% 低",
       "action": "生成指标异常并登记风险实例",
@@ -3670,8 +3670,8 @@
       "name": "AI 全局根因分析",
       "description": "对本轮全部已成立风险做一次大模型全局分析：输入只含各风险的判定结果与其指标取值，模型为每条风险给出最可能的根因；分析维度由模型依据数据自行确定，不从根因库匹配或套用已有根因 最终输入仅读取BR-V12约定的总体、客户、商机与阶段事实。",
       "trigger": "风险判定完成后",
-      "result": "每条已成立风险输出1～2条有指标支撑、待核实的原因，仍由AI全局分析而非自动匹配原因库。客户风险在适用且有事实时按C10储备RC12、R09无商机RC09顺序定位，不强制描述推进缓慢；周期风险把P0已结束与P0在途汇为一个RC13原因段，P2影响金额RC11可作另一个原因。根因顺序优先RC13、RC11，仅对实际适用对象输出；不适用时不硬套示例，小环节缺事件证据时只列待核实。根因默认展开，证据先放在根因后面，后续再移除证据入口。所有数值遵守BR-D02。",
-      "action": "—",
+      "result": "每条已成立风险输出0～2条有独立证据的原因，标注“AI 分析 · 待核实”。先去除风险正文复述，再按指标、期间、对象集合、样本状态和结论跨风险去重。C10储备及占比归RK06，R09用于同范围无商机客户。RK11可用RC13解释已结束与仍处于商机获取阶段的不同样本，用RC11比较有完整预测数据的阶段。具体活动原因须有同一商机的事件、状态或进展记录。无合格原因时显示“暂无可验证根因”。根因默认展开，证据内部保留。 本卡所有风险均停用总体层面的“商机储备严重不足”根因。标题、正文和兜底均排除同义结论（如整体商机池不足、全局商机储备偏少），即使数值可核实也不发布。RK06仅可在实际客户集合内解释C10结构或R09逐户无商机事实。",
+      "action": "发布前按风险、结论类型和证据字段逐条校验。仅由已允许的结构化结论与绑定字段渲染标题、正文，丢弃未经校验的模型原文。违规候选整条丢弃，空列表显示“暂无可验证根因”。缓存与兜底同样经过校验。",
       "category": "风险根因关联",
       "relatedElements": "风险：RK01、RK06、RK11；根因与行动仅引用本文件现有编码；最终输入输出范围执行BR-V12。"
     },
@@ -3690,7 +3690,7 @@
       "name": "数字来源约束",
       "description": "AI 输出中的金额、电量、比例、数量必须来自指标结果或证据，不得自行计算或编造",
       "trigger": "AI 根因分析与建议生成",
-      "result": "输出后校验：出现输入中没有的数字即判失败并重试",
+      "result": "输出后校验：出现输入中没有的数字即判失败并重试 校验每个业务数字的指标、字段、观察日、窗口、对象集合、单位与样本状态；即使数值在输入中出现，口径不符也删除对应结论。序号与月份标签单独处理。",
       "action": "—",
       "category": "行动建议规则",
       "relatedElements": "指标：全部59项（原57项保留，新增C10、P0-09）；风险/根因/行动使用本文件现有编码；新增汇总、占比与日期差均由SQL产生，AI不自行拼算。"
@@ -3708,12 +3708,12 @@
     "BR-A11": {
       "code": "BR-A11",
       "name": "已结束阶段超期及严重超期判定",
-      "description": "三个阶段P0/P1/P2已结束的有效正周期逐笔与各阶段固定基线比较，展示超期与严重超期两档；P0仍未结束的在途严重超期另作根因输入，不混入已结束平均、分档或合计。",
+      "description": "按商机获取、技术交流、方案推动三个阶段的固定基线对已结束商机分档，卡片仅展示严重超期。仍处于商机获取阶段的商机单列为根因证据。",
       "trigger": "指标计算完成后检测",
-      "result": "R13、R15、R17任一已结束严重超期商机数>0即成立。普通超期并列展示，第三版仅删除“列为关注”措辞，未新增普通超期独立成立门槛。P0-09在途数据仅作原因取数，不单独新增风险门槛。已结束样本须阶段结束落业务期间且早于观察日次日、起止完整且周期>0；开始可早于期初。静态基线P0=32.6、P1=21.8、P2=7.2、P3=57.2、P4=15.3天，同一阶段统一使用上述固定基线。",
-      "action": "仅对已结束严重超期量值生成风险实例；超期档并列展示，P0在途严重超期放入原因，不重复生成独立风险。",
+      "result": "R13、R15、R17任一已结束严重超期商机数>0即成立。普通超期保留供查询，卡片只列严重超期。P0-09在途数据仅作原因取数，不单独新增风险门槛。已结束样本须阶段结束落业务期间且早于观察日次日、起止完整且周期>0；开始可早于期初。静态基线P0=32.6、P1=21.8、P2=7.2、P3=57.2、P4=15.3天，同一阶段统一使用上述固定基线。",
+      "action": "仅对已结束严重超期生成风险实例并展示阶段行。仍处于商机获取阶段的严重超期只供根因分析。",
       "category": "指标异常判定（→ 风险）",
-      "relatedElements": "风险：RK11；成立指标：R13、R15、R17；超期展示：R12、R14、R16；原因：P0-09、P0-01、P0-02、RC13、RC11"
+      "relatedElements": "风险：RK11；成立指标：R13、R15、R17；普通超期查询：R12、R14、R16；原因：P0-09、P0-01、P0-02、RC13、RC11"
     },
     "BR-C10": {
       "code": "BR-C10",
@@ -3751,7 +3751,7 @@
       "description": "R13、P0-09、P0-01、P0-02取数用于原因事实核对",
       "trigger": "RK11已成立且（R13已结束P0严重超期数>0，或P0-09在途严重超期数>0）；两者不独立触发RK11",
       "result": "RK11已成立，且（R13已结束P0严重超期数>0，或P0-09在途严重超期数>0）时，分别引用两组P0事实。已结束用new_stage1enddate－createdon，在途用观察日全天结束－createdon；均按32.6天固定基线，严重超期≥48.9天。两组样本互斥、分开列示，在途不参与P0-01平均或已结束R13及三阶段合计。P0-02严格>48.9天只作历史兼容诊断，不与R13相加，也不作为该根因唯一进入条件。",
-      "action": "AI全局分析参考，不凭统计重复风险结论；所有数值引用SQL结果，原因待核实。",
+      "action": "AI分析及内部核对按原口径执行。P0-09对外仅在RK11使用允许的客观阶段句式，发布前执行BR-V12。",
       "category": "根因分析参考",
       "relatedElements": "根因：RC13；判定输入：R13、P0-09、P0-01、P0-02"
     },
@@ -3797,8 +3797,8 @@
     },
     "BR-V05": {
       "code": "BR-V05",
-      "name": "根因默认展开及证据后置",
-      "description": "根因默认展开；现阶段证据数量、按钮和明细放到对应根因后面。后续页面再去除证据入口；本轮不提前隐藏。内部RUN01/RUN06及SQL明细继续保留用于核实。",
+      "name": "根因默认展开及证据展示",
+      "description": "根因默认展开。当前卡片隐藏风险和根因的证据数量、按钮、规则、SQL及明细，同时隐藏行动建议。RUN01、RUN06及明细保留供核对。",
       "trigger": "分析结果展示/生成时",
       "result": "按本规则约束输出，不额外计算风险阈值",
       "action": "由读取本体的生成端或页面落实；本文件修订不等同已修改在线页面。",
@@ -3818,7 +3818,7 @@
     "BR-V07": {
       "code": "BR-V07",
       "name": "客户预测不足及两类储备原因",
-      "description": "主风险名称“客户预测不足”，仅按R08风险专用正缺口汇总成立；原因1用C10同范围战略重点储备及占比，原因2用R09无商机战略客户及逐户目标。既不把低结构占比单独当成目标不足，也不从无商机推出无拜访或缺口金额。示例数字动态取数，不强制根因描述推进缓慢。 R08先按客户ID汇总全部目标和预测，再筛各口径正缺口客户；C10严格使用同一客户ID集合。",
+      "description": "主风险名称“客户预测不足”，仅按R08风险专用正缺口汇总成立；原因1用C10同范围战略重点储备及占比，原因2用R09无商机战略客户及逐户目标。既不把低结构占比单独当成目标不足，也不从无商机推出无拜访或缺口金额。示例数字动态取数，不强制根因描述推进缓慢。 R08先按客户ID汇总全部目标和预测，再筛各口径正缺口客户；C10严格使用同一客户ID集合。 卡片称“存在缺口的客户”，各口径显示已签单、剩余预测与缺口。C10储备的同一解释仅出现在RK06。",
       "trigger": "分析结果展示/生成时",
       "result": "按本规则约束输出，不额外计算风险阈值",
       "action": "由读取本体的生成端或页面落实；本文件修订不等同已修改在线页面。",
@@ -3828,7 +3828,7 @@
     "BR-V08": {
       "code": "BR-V08",
       "name": "阶段分档名称",
-      "description": "R12/R14/R16称“超期”（基线<实际周期<1.5倍），R13/R15/R17称“严重超期”（>=1.5倍）。两档并列展示，删除“列为关注”措辞；第三版未定义新风险门槛，普通超期不独立成立。P0-09在途同样分档，但只放根因，同一阶段统一使用固定基线。",
+      "description": "普通超期为固定基线<周期<1.5倍基线，严重超期为周期≥1.5倍基线。基础查询保留两档。卡片仅列命中严重超期的阶段，标签为“严重超期”，省略阈值和触发提示。按商机获取、技术交流、方案推动顺序显示。",
       "trigger": "分析结果展示/生成时",
       "result": "按本规则约束输出，不额外计算风险阈值",
       "action": "由读取本体的生成端或页面落实；本文件修订不等同已修改在线页面。",
@@ -3838,7 +3838,7 @@
     "BR-V09": {
       "code": "BR-V09",
       "name": "严重超期数量及影响金额",
-      "description": "已结束严重超期摘要同时给阶段记录数、跨阶段去重商机数、去重预测金额/电量，分阶段另列两档及各自预测。跨阶段金额先按商机去重，不能直接加R13/R15/R17。P0-09在途数量和量值另列在根因，不加入已结束358类示例合计；不固定写示例数量金额。缺输入显示部分或无法核实。 第三版截图5指向周期风险7摘要整块：名称更新为“商机推进超期，影响签单”，同时显示已结束严重超期数量及对应金额、电量；分阶段超期/严重超期行同步使用新名称。截图示意与生成内容按同一指标取值，不固定照抄旧358等数字。",
+      "description": "风险摘要取已结束严重超期的去重商机数，金额、电量先按商机ID去重再分别合计。完整时写“涉及预测金额/电量”，部分可得时写“已记录预测金额/电量”，全缺时显示“预测金额/电量待核实”。每个命中阶段单列数量与量值，同样区分完整性。卡片省略算法和缺值尾注。P0-09仅作原因输入。",
       "trigger": "分析结果展示/生成时",
       "result": "按本规则约束输出，不额外计算风险阈值",
       "action": "由读取本体的生成端或页面落实；本文件修订不等同已修改在线页面。",
@@ -3858,7 +3858,7 @@
     "BR-V11": {
       "code": "BR-V11",
       "name": "周期风险与P0原因合并",
-      "description": "原RK10不独立生成，归入RK11的P0原因RC13。RC13分开列R13已结束P0严重超期和P0-09未结束P0在途严重超期；两组互斥，不与P0-02重复累加，不把在途混入已结束均值或风险合计。RC08在RK11仅定位具体小环节，不重复输出另一个P0统计原因。",
+      "description": "原RK10不独立生成，归入RK11的P0原因RC13。RC13分开列R13已结束P0严重超期和P0-09未结束P0在途严重超期；两组互斥，不与P0-02重复累加，不把在途混入已结束均值或风险合计。RC08在RK11仅定位具体小环节，不重复输出另一个P0统计原因。 对外分别写“已结束商机获取阶段”和“截至观察日仍处于商机获取阶段”，用“商机获取阶段”及“三个阶段”等业务用语。根因直接陈述指标事实，删除“反映”等推断性引导词。 P0-09仅按BR-V12规定的字段和模板发布。",
       "trigger": "分析结果展示/生成时",
       "result": "按本规则约束输出，不额外计算风险阈值",
       "action": "由读取本体的生成端或页面落实；本文件修订不等同已修改在线页面。",
@@ -3870,7 +3870,7 @@
       "name": "最终风险与根因输入输出范围",
       "description": "最终风险、等级、根因、行动及其展示仅使用总体、客户、商机、阶段和质量事实。产品分组、产品标签、产品部、客户×产品配对及产品口径样本数不得作为最终判定、等级、原因或叙述输入；基础指标明细内的产品信息仅供独立指标查询，不得将包含这些信息的明细整包用于最终风险分析。",
       "trigger": "风险判定、AI根因分析、行动生成和展示时",
-      "result": "RK01仅读R01总体（product_type=全部）及同范围B01/B02总体；RK06仅读R08按客户ID汇总后筛出的金额/电量各自正缺口客户集合，C10使用同一集合全部商机预测。C01的strategic_p0_values仅取总体（product_type=全部），C06仅取总体；阶段平均周期及其有效样本数必须分别读取对应P0-01～P4-01总体主均值与主数量（完整严格正周期样本），不得使用R13等期间阶段记录数替代均值样本数。环节均值取总体主值和同一总体有效样本数，不引用产品分组sample_count或商机明细中的产品口径“有效正周期样本数”。RK11按现有严重超期指标及固定阶段基线判断；阶段、客户和商机去重、缺值保护及已结束/在途边界沿各自规则。R05、R06、C03、C04、C05保留独立基础查询，不派生本文件最终风险或根因。",
+      "result": "RK01仅读R01总体（product_type=全部）及同范围B01/B02总体；RK06仅读R08按客户ID汇总后筛出的金额/电量各自正缺口客户集合，C10使用同一集合全部商机预测。C01的strategic_p0_values仅取总体（product_type=全部），C06仅取总体；阶段平均周期及其有效样本数必须分别读取对应P0-01～P4-01总体主均值与主数量（完整严格正周期样本），不得使用R13等期间阶段记录数替代均值样本数。环节均值取总体主值和同一总体有效样本数，不引用产品分组sample_count或商机明细中的产品口径“有效正周期样本数”。RK11按现有严重超期指标及固定阶段基线判断；阶段、客户和商机去重、缺值保护及已结束/在途边界沿各自规则。R05、R06、C03、C04、C05保留独立基础查询，不派生本文件最终风险或根因。 RK01正文只使用R01总体分量。B02作同范围独立查询；其总预测不得改名为剩余预测。 P0-09仅供RK11/RC13使用。覆盖风险RK01、RK06的根因输入和输出均排除该指标及其派生汇总。RK11只可按模板展示截至观察日仍处于该阶段的客观超期事实。无期间预测商机数及同义字段只供内部核对，前台不展示。禁止用P0-09推断需求确认阻塞或预测覆盖受影响。",
       "action": "生成端按本体取值约定读取已有SQL结果；所有数字仍遵守BR-D02，不新增计算门槛。",
       "category": "风险根因输入输出规则",
       "relatedElements": "风险：RK01、RK06、RK11；根因、行动及其链路；基础指标保留。"
@@ -3880,7 +3880,7 @@
     "RK01": {
       "code": "RK01",
       "name": "商机预测覆盖不足",
-      "description": "商机全年覆盖（进度＋预测）低于年度目标，存在缺口",
+      "description": "年度目标高于观察月以前的已签单商机预测与观察月至年底剩余预测之和，金额、电量分别列示缺口。",
       "indicators": "R01、B01、B02",
       "rule": "BR-A01",
       "condition": "R01 缺口＝年度目标－（进度＋预测）> 0 成立（金额、电量分别判断）；进度＝观察月以前已签单商机预测，预测＝观察当月至12月全部商机预测\n关联数据统一按观察截至可见版本取数；已签/未签沿BR-Q02二态，P3结束缺失归未签。",
@@ -3896,7 +3896,7 @@
     "RK06": {
       "code": "RK06",
       "name": "客户预测不足",
-      "description": "客户全部年度目标与总覆盖预测（进度＋剩余预测）先按客户ID汇总后比较；按各口径正缺口客户集合判断，战略重点储备与战略无商机情况用于原因定位。",
+      "description": "按客户分别比较全年覆盖与年度目标，列出存在缺口的客户数及其缺口合计。金额与电量各按对应客户集合取值。",
       "indicators": "R08（风险专用正缺口汇总）；C10、R09作根因输入",
       "rule": "BR-A06",
       "condition": "仅按R08明细中唯一的“风险专用正缺口汇总”判断：金额口径或电量口径的正缺口客户数>0即成立。先按客户ID汇总同一客户全部年度目标、进度和剩余预测，再分别计算金额缺口和电量缺口；各口径仅筛客户汇总缺口>0的客户集合，客户数按客户ID去重。目标、进度、剩余预测、总覆盖预测和缺口必须读取各口径同一正缺口客户集合的SQL汇总；同一客户的全部目标和预测先合并，不拆分后先筛子集，也不用其他客户的负缺口抵销正缺口。不得按明细数组长度判定。R04有未签商机或R09有无商机客户仅为原因事实，不能单独OR触发客户目标不足。必要输入缺失按缺失说明处理，不把未知补成0。",
@@ -3911,10 +3911,10 @@
     "RK11": {
       "code": "RK11",
       "name": "商机推进超期，影响签单",
-      "description": "三个阶段P0/P1/P2已结束的有效正周期逐笔与各阶段固定基线比较，展示超期与严重超期两档；P0仍未结束的在途严重超期另作根因输入，不混入已结束平均、分档或合计。",
-      "indicators": "R13、R15、R17判定成立；R12、R14、R16展示超期；P0-09及P0-01/P0-02作P0原因取数",
+      "description": "按商机获取、技术交流、方案推动三个阶段的固定基线对已结束商机分档，卡片仅展示严重超期。仍处于商机获取阶段的商机单列为根因证据。",
+      "indicators": "R13、R15、R17判定成立；R12、R14、R16保留普通超期查询；P0-09及P0-01/P0-02作P0原因取数",
       "rule": "BR-A11",
-      "condition": "R13、R15、R17任一已结束严重超期商机数>0即成立。普通超期并列展示，第三版仅删除“列为关注”措辞，未新增普通超期独立成立门槛。P0-09在途数据仅作原因取数，不单独新增风险门槛。已结束样本须阶段结束落业务期间且早于观察日次日、起止完整且周期>0；开始可早于期初。静态基线P0=32.6、P1=21.8、P2=7.2、P3=57.2、P4=15.3天，同一阶段统一使用上述固定基线。",
+      "condition": "R13、R15、R17任一已结束严重超期商机数>0即成立。普通超期保留供查询，卡片只列严重超期。P0-09在途数据仅作原因取数，不单独新增风险门槛。已结束样本须阶段结束落业务期间且早于观察日次日、起止完整且周期>0；开始可早于期初。静态基线P0=32.6、P1=21.8、P2=7.2、P3=57.2、P4=15.3天，同一阶段统一使用上述固定基线。",
       "levelRule": "沿用已结束严重超期分级：命中覆盖至少2个阶段为高；不足2个阶段时，仅用跨阶段按商机ID去重且金额输入完整的影响预测金额分档，≥10亿元为高、<10亿元为中；金额缺失或仅部分合计、无法完成分档时等级待核实。P0在途量不混入上述已结束合计或金额分级。",
       "impact": "客户、商机",
       "candidateCauses": [
@@ -3938,8 +3938,8 @@
         "RK01"
       ],
       "method": "AI",
-      "aiFocus": "AI 对 C01 商机下钻需求输入完成标志（new_demandinput）、客户需求提交 / 审批时间与项目进展文本，归纳未落实环节（需求未输入 / 未审批 / 被驳回）及客户侧原因；输出受影响商机清单与预测量 与其他风险共享保留；不再作为已删除签单风险的独立根因，不替代RC12的商机储备分析。",
-      "output": "原因摘要默认展开；引用的指标和明细证据先放在根因后，后续再按页面安排去除证据入口；内部取数及来源保留用于核实。"
+      "aiFocus": "AI 对 C01 商机下钻需求输入完成标志（new_demandinput）、客户需求提交 / 审批时间与项目进展文本，归纳未落实环节（需求未输入 / 未审批 / 被驳回）及客户侧原因；输出受影响商机清单与预测量 与其他风险共享保留；不再作为已删除签单风险的独立根因，不替代RC12的商机储备分析。 若仅有阶段或缺预测事实，不能据此判断需求确认滞后；须核验同一商机的需求标志或活动记录。",
+      "output": "根因默认展开，标注“AI 分析 · 待核实”。证据内部保留。仅输出独立且有同范围事实支持的解释，重复或证据不足时按BR-L01处理。"
     },
     "RC07": {
       "code": "RC07",
@@ -3953,7 +3953,7 @@
       ],
       "method": "AI",
       "aiFocus": "AI 对其余未签单商机按需求输入标志与进展文本分组，列出需优先确认的商机",
-      "output": "原因摘要默认展开；引用的指标和明细证据先放在根因后，后续再按页面安排去除证据入口；内部取数及来源保留用于核实。"
+      "output": "根因默认展开，标注“AI 分析 · 待核实”。证据内部保留。仅输出独立且有同范围事实支持的解释，重复或证据不足时按BR-L01处理。"
     },
     "RC08": {
       "code": "RC08",
@@ -3967,8 +3967,8 @@
         "RK11"
       ],
       "method": "AI",
-      "aiFocus": "AI 依据可得事件（保密协议起止、客户需求提交 / 审批、销售预测完成）与进展文本定位卡点环节 阶段定位须同时输出实际周期、对应静态基线、超出基线天数与比例；无法从事件或文本核实的卡点不作确定原因。 在RK11下仅作小环节待核实定位；不重复RC13的P0已结束/在途总数，也不再次生成“P0大量超期”的同义根因。无事件证据时保留待核实说明，不仅凭超期统计认定系统性效率或具体业务卡点。",
-      "output": "原因摘要默认展开；引用的指标和明细证据先放在根因后，后续再按页面安排去除证据入口；内部取数及来源保留用于核实。"
+      "aiFocus": "AI 依据可得事件（保密协议起止、客户需求提交 / 审批、销售预测完成）与进展文本定位卡点环节 阶段定位须同时输出实际周期、对应静态基线、超出基线天数与比例；无法从事件或文本核实的卡点不作确定原因。 在RK11下仅作小环节待核实定位；不重复RC13的P0已结束/在途总数，也不再次生成“P0大量超期”的同义根因。无事件证据时保留待核实说明，不仅凭超期统计认定系统性效率或具体业务卡点。 RK01核对实际活动记录时排除P0-09汇总。",
+      "output": "根因默认展开，标注“AI 分析 · 待核实”。证据内部保留。仅输出独立且有同范围事实支持的解释，重复或证据不足时按BR-L01处理。"
     },
     "RC09": {
       "code": "RC09",
@@ -3982,7 +3982,7 @@
       ],
       "method": "AI",
       "aiFocus": "说明截至日仍无商机的战略客户数量，并逐户列目标与缺失情况，定位目标缺少商机承接的部分。R09名单数与RK06缺口客户数为不同集合，不能直接相等或相加；不把示例79写死。客户开发、响应或需求未识别须有线索/拜访/需求记录支持，缺证据只作待核实。",
-      "output": "原因摘要默认展开；引用的指标和明细证据先放在根因后，后续再按页面安排去除证据入口；内部取数及来源保留用于核实。"
+      "output": "根因默认展开，标注“AI 分析 · 待核实”。证据内部保留。仅输出独立且有同范围事实支持的解释，重复或证据不足时按BR-L01处理。"
     },
     "RC10": {
       "code": "RC10",
@@ -3996,7 +3996,7 @@
       ],
       "method": "AI",
       "aiFocus": "AI 依据客户准入、立项评估、送样测试、报价申请等事件时间与项目进展文本，定位 R15 清单商机卡在哪个环节，并给出各环节滞留天数分布；缺环节完成事件时只作文本判断 阶段定位须同时输出实际周期、对应静态基线、超出基线天数与比例；无法从事件或文本核实的卡点不作确定原因。 在RK11下仅作小环节待核实定位；不重复RC13的P0已结束/在途总数，也不再次生成“P0大量超期”的同义根因。无事件证据时保留待核实说明，不仅凭超期统计认定系统性效率或具体业务卡点。",
-      "output": "原因摘要默认展开；引用的指标和明细证据先放在根因后，后续再按页面安排去除证据入口；内部取数及来源保留用于核实。"
+      "output": "根因默认展开，标注“AI 分析 · 待核实”。证据内部保留。仅输出独立且有同范围事实支持的解释，重复或证据不足时按BR-L01处理。"
     },
     "RC11": {
       "code": "RC11",
@@ -4010,7 +4010,7 @@
       ],
       "method": "AI",
       "aiFocus": "阶段固定基线为7.2天，实际平均周期从P2-01总体主值独立读取，不把7.2当成数据库实测均值。根因先说明已结束阶段超期和影响预测，再结合技术协议/规格书、质保或资信审批事件核实具体卡点；没有事件支撑不宣称审批已构成原因。",
-      "output": "原因摘要默认展开；引用的指标和明细证据先放在根因后，后续再按页面安排去除证据入口；内部取数及来源保留用于核实。"
+      "output": "根因默认展开，标注“AI 分析 · 待核实”。证据内部保留。仅输出独立且有同范围事实支持的解释，重复或证据不足时按BR-L01处理。"
     },
     "RC12": {
       "code": "RC12",
@@ -4023,8 +4023,8 @@
         "RK06"
       ],
       "method": "AI",
-      "aiFocus": "按第三版将本根因聚焦商机储备，不强行拼接推进缓慢：说明同范围战略重点客户在覆盖集合内的已签商机预测、未签商机剩余预测、总覆盖预测、未签商机数量及占同范围客户总覆盖预测比例。C10覆盖集合内已签包括当前及未来月份的已签记录，不等同R08只取已历月份的进度，更不是实际订单金额。未签存量数与有覆盖预测未签数分开引用。比例只作结构定位，结合R08目标正缺口说明承接情况；缺分母或输入时标无法核实，不写固定54、0、8.42%等示例。当前阶段停留如需下钻可查看原R04明细，但不作为本根因强制描述，也不把一般客户套成战略重点客户。",
-      "output": "原因摘要默认展开；引用的指标和明细证据先放在根因后，后续再按页面安排去除证据入口；内部取数及来源保留用于核实。"
+      "aiFocus": "按第三版将本根因聚焦商机储备，不强行拼接推进缓慢：说明同范围战略重点客户在覆盖集合内的已签商机预测、未签商机剩余预测、总覆盖预测、未签商机数量及占同范围客户总覆盖预测比例。C10覆盖集合内已签包括当前及未来月份的已签记录，不等同R08只取已历月份的进度，更不是实际订单金额。未签存量数与有覆盖预测未签数分开引用。比例只作结构定位，结合R08目标正缺口说明承接情况；缺分母或输入时标无法核实，不写固定54、0、8.42%等示例。当前阶段停留如需下钻可查看原R04明细，但不作为本根因强制描述，也不把一般客户套成战略重点客户。 该结构证据仅在RK06解释一次，面向用户称“存在缺口的客户”。 输出必须写明战略及重点客户、对应缺口客户集合及指标口径。禁止泛化到全部客户或全部商机。",
+      "output": "根因默认展开，标注“AI 分析 · 待核实”。证据内部保留。仅输出独立且有同范围事实支持的解释，重复或证据不足时按BR-L01处理。"
     },
     "RC13": {
       "code": "RC13",
@@ -4037,8 +4037,8 @@
         "RK11"
       ],
       "method": "AI",
-      "aiFocus": "以同一个P0原因段同时说明“已结束P0严重超期”及“当前P0在途严重超期”两组数量、可用预测金额/电量、超过32.6天基线的天数和比例。基线与实际平均值明确分开；不得把已结束记录说成当前仍在P0，也不得将两组数量当成平均样本数。在途需日期链一致，前序缺失/逆序等异常只列无法核实，不得形成长时间滞留结论。数量是否居各阶段首位须由返回值核对；具体卡点待客户响应、需求确认等事件支持。",
-      "output": "原因摘要默认展开；引用的指标和明细证据先放在根因后，后续再按页面安排去除证据入口；内部取数及来源保留用于核实。"
+      "aiFocus": "分别核对R13已结束样本和P0-09截至观察日仍处于商机获取阶段的样本。核对日期链、实际时长、固定基线及样本范围，异常日期仅记待核实。P0-09对外限RK11下的客观阶段事实，按BR-V12选字段并以固定句式展示；期间预测缺失户数或商机数只供内部核对。",
+      "output": "根因默认展开，标注“AI 分析 · 待核实”。证据内部保留。仅输出独立且有同范围事实支持的解释，重复或证据不足时按BR-L01处理。"
     }
   },
   "advice": {
@@ -4613,7 +4613,7 @@
     },
     "causeAnalysis": {
       "mode": "ai",
-      "minPerRisk": 1,
+      "minPerRisk": 0,
       "maxPerRisk": 2,
       "source": "BR-L01 / 根因.判定方式",
       "description": "对本轮全部已成立风险做一次大模型全局分析：输入只含各风险的判定结果与其指标取值，模型为每条风险给出最可能的根因；分析维度由模型依据数据自行确定，不从根因库匹配或套用已有根因 最终输入仅读取BR-V12约定的总体、客户、商机与阶段事实。"

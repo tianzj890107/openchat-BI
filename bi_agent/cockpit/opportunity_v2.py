@@ -40,7 +40,7 @@ from . import periods
 
 CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v3-rules-14"
+RULES_VERSION = "opportunity-v3-rules-15"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
@@ -695,6 +695,8 @@ def _stage_band_rows(rows):
             count=int(count) if count is not None else None,
             amount=_number(row.get("金额_亿元")), energy=_number(row.get("电量_GWh")),
             status=_text(row.get("计算说明状态")), means=means,
+            missingAmount=_number(detail.get("命中商机金额不可计算数")),
+            missingEnergy=_number(detail.get("命中商机电量不可计算数")),
             meanKnown=any((item["days"] or 0) > 0 for item in means),
             opportunities=opportunities[:40])
     return bands
@@ -1695,6 +1697,20 @@ def _gap(target, coverage):
     return target - coverage if target is not None and coverage is not None else None
 
 
+def _volume_phrase(label, value, unit, count=None, missing=None):
+    """BR-V09 wording by completeness: 涉及 / 已记录 / 待核实.
+
+    ``missing`` is how many of the ``count`` opportunities have no usable
+    forecast; a sum over only some of them is “已记录”, none at all is
+    “待核实”.
+    """
+    if value is None or (count and missing is not None and missing >= count):
+        return f"预测{label}待核实"
+    if missing:
+        return f"已记录预测{label} {value:.2f} {unit}"
+    return f"涉及预测{label} {value:.2f} {unit}"
+
+
 def _month_span(first, last):
     """“1—9月” / “10—12月” / “10月”; empty when the span is empty."""
     if first > last:
@@ -2597,9 +2613,15 @@ def evaluate(data, config=None, measured=None):
         count = item.get("count")
         if count == 0 and not item.get("meanKnown"):
             count = None
+        known = count is not None
         band_details.append(dict(
-            code=code, stage=stage, band=("严重超期（超基线 50% 及以上）" if severe else "超期（超基线未满 50%）")
+            # BR-V08 (1117 1119): the card names the band without its threshold.
+            code=code, stage=stage, band=("严重超期" if severe else "超期")
             if static_baseline else ("超均值 50% 及以上" if severe else "超均值未满 50%"),
+            amountText=_volume_phrase("金额", item.get("amount"), "亿元", count, item.get("missingAmount"))
+            if known and count else "",
+            energyText=_volume_phrase("电量", item.get("energy"), "GWh", count, item.get("missingEnergy"))
+            if known and count else "",
             status=("unknown" if count is None else "clear" if not count else
                     "triggered" if severe else "watch"),
             count=count, amount=item.get("amount") if count is not None else None,
@@ -2629,14 +2651,20 @@ def evaluate(data, config=None, measured=None):
     ) for opp in values[:limit] if opp.get("id")]
 
     def gap_sentence(label, unit, target_value, parts, gap, rate, months=True):
-        """目标、进度＋预测 → 缺口: the shared wording of every gap risk."""
+        """RK01 template (1117 1119): 目标，已历月份已签单，剩余月份剩余预测，全年缺口.
+
+        January has no elapsed months, so the 已签单 clause is left out.
+        """
         progress = parts[f"progress_{'amount' if unit == '亿元' else 'energy'}"]
         forecast = parts[f"forecast_{'amount' if unit == '亿元' else 'energy'}"]
-        progress_note = f"（{progress_months}）" if months and progress_months else ""
-        forecast_note = f"（{forecast_months}）" if months and forecast_months else ""
-        return (f"{label}目标 {target_value:.2f} {unit}，已签单 {progress:.2f} {unit}{progress_note}"
-                f"＋预测 {forecast:.2f} {unit}{forecast_note}，缺口 {gap:.2f} {unit}"
-                + (f"，缺口率 {rate * 100:.1f}%" if rate is not None else "") + "。")
+        clauses = [f"{label}目标 {target_value:.2f} {unit}"]
+        if progress_months:
+            clauses.append(f"{progress_months}已签单 {progress:.2f} {unit}")
+        clauses.append(f"{forecast_months}剩余预测 {forecast:.2f} {unit}")
+        clauses.append(f"全年缺口 {gap:.2f} {unit}")
+        if rate is not None:
+            clauses.append(f"缺口率 {rate * 100:.1f}%")
+        return "，".join(clauses) + "。"
 
     # RK01: 缺口 ＝ 目标 −（进度 ＋ 预测）> 0, amount and energy separately.
     if (gap_amount is not None and gap_amount > 0) or (gap_energy is not None and gap_energy > 0):
@@ -2648,7 +2676,7 @@ def evaluate(data, config=None, measured=None):
         if gap_amount is not None and gap_amount > 0:
             parts.append(gap_sentence("金额", "亿元", target_amount, cover, gap_amount, gap_rate_amount))
         if gap_energy is not None and gap_energy > 0:
-            parts.append(gap_sentence("电量", "GWh", target_energy, cover, gap_energy, gap_rate_energy, months=False))
+            parts.append(gap_sentence("电量", "GWh", target_energy, cover, gap_energy, gap_rate_energy))
         evidence = [f_b01_a, f_b01_e, f_r01_progress_a, f_r01_progress_e, f_r01_forecast_a, f_r01_forecast_e,
                     f_r01_a, f_r01_e, f_gap_rate_a, f_gap_rate_e]
         name = _risk_name(config, "RK01", "商机预测覆盖不足")
@@ -2775,14 +2803,16 @@ def evaluate(data, config=None, measured=None):
             unknown_level = ((_number(amount_side.get("客户等级未知数")) or 0)
                              + (_number(energy_side.get("客户等级未知数")) or 0))
             level = "高" if strategic else ("" if unknown_level else "中")
-            parts = [f"{int(gap_count)}家客户的已签单＋剩余预测低于客户目标"]
+            # RK06 template (1117 1119): 共 n 家客户存在缺口。金额口径涉及 a 家，… 电量口径涉及 e 家，…
+            parts = [f"共 {int(gap_count)} 家客户存在缺口。"]
             for basis, side, unit, key in (("金额", amount_side, "亿元", "金额"), ("电量", energy_side, "GWh", "电量")):
                 count = _number(side.get("缺口客户数"))
                 if not count:
                     continue
                 value = lambda name: _number(side.get(f"{name}{key}_{unit}"))
-                text = f"{basis}口径 {int(count)} 家，目标 {value('目标') or 0:.2f} {unit}，已签单 {value('进度') or 0:.2f} {unit}＋剩余预测 {value('剩余预测') or 0:.2f} {unit}，缺口合计 {value('缺口') or 0:.2f} {unit}"
-                parts.append(text)
+                parts.append(f"{basis}口径涉及 {int(count)} 家，目标 {value('目标') or 0:.2f} {unit}，"
+                             f"已签单 {value('进度') or 0:.2f} {unit}，剩余预测 {value('剩余预测') or 0:.2f} {unit}，"
+                             f"缺口合计 {value('缺口') or 0:.2f} {unit}。")
             evidence = [f_r08] + side_facts
             rows = [item for item in (r08.get("detail") or []) if isinstance(item, dict) and item.get("account_id")]
             rows.sort(key=lambda item: -(_number(item.get("gap_amount")) or 0))
@@ -2792,7 +2822,7 @@ def evaluate(data, config=None, measured=None):
                                        unit="亿元/GWh", value=item["account_id"], name=item.get("account_name")))
             name = _risk_name(config, "RK06", "客户预测不足")
             risks.append(_risk("RK06", name, level, f"RK06 {name}",
-                               parts[0] + ("：" + "；".join(parts[1:]) if parts[1:] else "") + "。",
+                               "".join(parts),
                                ["RK06", "R08", "C10", "R09"], evidence,
                                dict(amount=_number(amount_side.get("缺口金额_亿元")),
                                     energy=_number(energy_side.get("缺口电量_GWh")), count=int(gap_count)), []))
@@ -2914,11 +2944,15 @@ def evaluate(data, config=None, measured=None):
             hit_amount, hit_energy = severe_total.get("amount"), severe_total.get("energy")
             hit_stages = severe_total.get("stages") or len(severe_hits)
             amount_complete = not severe_total.get("missingAmount")
+            missing_amount, missing_energy = severe_total.get("missingAmount"), severe_total.get("missingEnergy")
         else:
             hit_count = sum(stage_bands[code]["count"] for code in severe_hits)
             hit_amount = _sum(stage_bands[code].get("amount") for code in severe_hits)
             hit_energy = _sum(stage_bands[code].get("energy") for code in severe_hits)
             hit_stages, amount_complete = len(severe_hits), True
+            missing_amount = _sum(stage_bands[code].get("missingAmount") for code in severe_hits)
+            missing_energy = _sum(stage_bands[code].get("missingEnergy") for code in severe_hits)
+            amount_complete = not missing_amount
         stages_high = thresholds.get("stageBandStagesHigh")
         amount_high = thresholds.get("stageBandAmountHigh")
         if stages_high is not None and hit_stages >= stages_high:
@@ -2927,14 +2961,11 @@ def evaluate(data, config=None, measured=None):
             level = ""  # 金额缺失或仅部分合计：等级待核实
         else:
             level = "高" if amount_high is not None and hit_amount >= amount_high else "中"
-        # Card wording: the severe count and the final, de-duplicated forecast
-        # total; the per-stage lines list only the severe band.
-        reference = "基线" if static_baseline else "均值"
-        description = (f"{hit_count}条商机的阶段周期超{reference}50%及以上（严重超期）"
-                       + (f"，涉及预测金额合计 {hit_amount:.2f} 亿元" if hit_amount is not None else "")
-                       + (f"、电量 {hit_energy:.2f} GWh" if hit_energy is not None else "")
-                       + ("（跨阶段按商机去重）" if severe_total else "")
-                       + ("，部分商机预测金额缺失，为部分合计" if not amount_complete else "") + "。")
+        # RK11 template (1117 1119, BR-V09): the de-duplicated severe count and
+        # the final forecast, worded by completeness; no algorithm or tail notes.
+        description = (f"{hit_count} 条商机在已结束阶段出现严重超期，"
+                       f"{_volume_phrase('金额', hit_amount, '亿元', hit_count, missing_amount)}，"
+                       f"{_volume_phrase('电量', hit_energy, 'GWh', hit_count, missing_energy)}。")
         evidence = [fid for code in STAGE_BAND_CODES for fid in band_facts[code]]
         objects = []
         for code in severe_hits:
@@ -2952,8 +2983,19 @@ def evaluate(data, config=None, measured=None):
         name = _risk_name(config, "RK11", "商机推进阶段周期超均值较多，拖慢签单")
         risk = _risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],
                      evidence, dict(count=hit_count, amount=hit_amount, energy=hit_energy), objects[:40])
+        # BR-V12: P0-09 (still in 商机获取, severe) is shown only under RK11,
+        # in a fixed sentence built from these fields.
+        inflight = ((ontology_results.get("P0-09") or {}).get("detail") or {})
+        inflight = inflight.get("严重超期汇总") if isinstance(inflight, dict) else None
+        extra = {}
+        if isinstance(inflight, dict) and _number(inflight.get("商机数")):
+            extra["inflightSevere"] = dict(
+                count=int(_number(inflight.get("商机数"))),
+                amount=_number(inflight.get("预测金额_亿元")), energy=_number(inflight.get("预测电量_GWh")),
+                missingAmount=_number(inflight.get("金额不可计算商机数")),
+                missingEnergy=_number(inflight.get("电量不可计算商机数")))
         risks.append(dict(risk, metricDetails=[item for item in band_details
-                                               if item["code"] in SEVERE_BAND_CODES]))
+                                               if item["code"] in SEVERE_BAND_CODES], **extra))
 
     # Facts the AI cause analysis reads for RK06 / RK11 (C10, R09, P0-09):
     # the query's headline values and the scalar parts of its detail.
@@ -3435,12 +3477,12 @@ def evaluate(data, config=None, measured=None):
     summary_parts = []
     if gap_amount is not None:
         summary_parts.append(
-            f"年度目标 {target_amount:.2f} 亿元，已签单 {cover['progress_amount']:.2f} 亿元＋预测 "
-            f"{cover['forecast_amount']:.2f} 亿元，缺口 {gap_amount:.2f} 亿元")
+            f"年度目标 {target_amount:.2f} 亿元，已签单 {cover['progress_amount']:.2f} 亿元，剩余预测 "
+            f"{cover['forecast_amount']:.2f} 亿元，全年缺口 {gap_amount:.2f} 亿元")
     elif gap_energy is not None:
         summary_parts.append(
-            f"年度电量目标 {target_energy:.2f} GWh，已签单 {cover['progress_energy']:.2f} GWh＋预测 "
-            f"{cover['forecast_energy']:.2f} GWh，缺口 {gap_energy:.2f} GWh")
+            f"年度电量目标 {target_energy:.2f} GWh，已签单 {cover['progress_energy']:.2f} GWh，剩余预测 "
+            f"{cover['forecast_energy']:.2f} GWh，全年缺口 {gap_energy:.2f} GWh")
     for risk in displayed[:2]:
         description = re.sub(r"\bRK\d+\b\s*", "", risk.get("description") or "").strip("。； ")
         if any(token in description for token in ("口径", "证据", "字段", "取数", "排查")):

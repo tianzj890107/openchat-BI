@@ -94,28 +94,37 @@ INFER_PROMPT = (
 
 GLOBAL_CAUSE_PROMPT = (
     "商机获取环节根因全局分析。输入 risks 是本卡片本轮已经成立的全部风险，每条给出风险编码、名称、等级、"
-    "判定结果（judgement）、本体定义与判定规则，以及该风险涉及指标的本体口径与本轮取值（metrics、observed）。"
+    "判定结果（judgement）、本体定义与判定规则，以及该风险自己的指标口径与本轮取值（metrics、observed）。"
     "每条风险的 ontologyCauses 是本体「根因」页中与该风险关联的根因定义（名称、描述、判定方式与 AI 分析要点），"
     "是本次分析的上下文：以本轮指标结果为依据，参考这些本体根因的分析方向与口径推理；数据支持时可以在其基础上"
     "补充本体未列出的原因，但不得写出数据不支持的本体根因。"
-    "请把这些风险放在一起做一次全局分析：结合各风险的指标结果和风险之间的关联，为每一条风险推理最可能导致它的根因。"
+    "请把这些风险放在一起做一次全局分析，为每一条风险推理最可能导致它的根因。"
     + ONTOLOGY_RULES.replace("{", "{{").replace("}", "}}") +
-    "每条风险给出 {low}～{high} 条根因，条数由数据决定，按可能性从高到低排列；每条根因的 description 是一段完整的话，"
-    "不要在文字中编号（不要写“根因1”“根因2”“其一”“①”之类）；不同风险可以指向同一方向，"
-    "但说明必须落到该风险自己的指标数据上。"
-    "description 写清推理依据并引用输入中的具体数值，不得引入输入中没有的数字；需要补充核实的数据写在 dataGaps。"
-    "数据一致：根因中出现与风险 judgement 相同的指标（目标、已签单、预测、缺口、缺口率、客户数、商机条数、金额等）时，"
-    "数值、单位与口径必须和 judgement 完全一致，不得给出与风险结论相反或矛盾的判断。"
-    "强制规则：根因显示在对应风险下面，不得重复该风险已有的内容——不得复述风险的 judgement（缺口、目标、已签单、"
-    "预测、超期条数与金额等风险本身已写出的事实与数字），也不得以风险名称作为根因名称；根因只写导致该风险的"
-    "原因及支撑它的其他指标事实（例如客户、阶段、商机结构或在途情况）。"
+    "条数：每条风险给出 {low}～{high} 条有独立证据的根因，且不超过该风险的 causeLimit；没有独立证据时宁可不给。"
+    "按可能性从高到低排列；每条根因的 description 是一段完整的话，不要编号（不要写“根因1”“其一”“①”之类）。"
+    "证据归属：每条根因只能使用该风险自己 metrics / observed 中的指标与数值，evidence 填所用的指标编码；"
+    "不得借用其他风险的指标。数字校验（BR-D02）：每个业务数量、金额、电量和比例（包括 12 以内的数量）都必须"
+    "能在该风险的输入中找到同指标、同字段、同期间、同对象集合的原值；月份与序号除外。"
+    "数据一致：根因中出现与风险 judgement 相同的指标（目标、已签单、剩余预测、缺口、缺口率、客户数、商机条数、"
+    "金额等）时，数值、单位与口径必须和 judgement 完全一致，不得给出与风险结论相反或矛盾的判断。"
+    "不重复：根因不得复述该风险 judgement 已写出的句子与数字，不得以风险名称作根因名称，也不得仅复述阶段行；"
+    "跨风险按证据和结论去重，同一证据和结论只在一条风险下出现；战略及重点客户的商机储备及占比（C10）只归"
+    "客户预测不足，不在商机预测覆盖不足下解释。"
+    "禁止结论：本卡所有风险都不得给出总体层面的“商机储备严重不足”及同义结论（如整体商机池不足、全局商机"
+    "储备偏少）；客户预测不足只可在存在缺口的客户范围内说明战略及重点客户的储备结构或逐户无商机事实，"
+    "必须写明客户范围。不得描述“仍处于商机获取阶段”或在途商机（该事实由程序按固定句式单独展示）。"
+    "需求确认滞后、协议签署延误等具体活动原因，必须有同一商机的状态、活动时间或进展记录支持；"
+    "只有金额完整且范围可比时才比较三个阶段的影响金额。"
+    "用语：直接陈述证据，不用“反映”等引导词；写“商机获取阶段”“技术交流阶段”“方案推动阶段”“三个阶段”"
+    "“存在缺口的客户”，不写 P0、P1、P2 或“正缺口客户”。"
     '只返回 JSON：{{"risks": [{{"code": "风险编码", "causes": [{{"title": "不超过20字的根因名称", '
-    '"description": "一段话，不超过240字，引用输入中的具体数值", '
+    '"description": "一段话，不超过240字，引用该风险输入中的具体数值", '
+    '"evidence": ["所用指标编码"], '
     '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，'
     '不要输出其他内容。'
 )
 GLOBAL_CAUSE_RULE = dict(code="BR-L01", name="AI 全局根因分析", levelRule="",
-                         condition="大模型依据本轮已成立风险及其指标结果全局分析，以本体根因页为上下文，每条风险 1～3 条根因")
+                         condition="大模型依据本轮已成立风险及其指标结果全局分析，以本体根因页为上下文，每条风险 0～2 条有独立证据的根因，发布前按风险校验证据归属与禁止结论")
 
 
 SEMANTIC_PROMPT = (
@@ -403,25 +412,58 @@ def _infer(judge, request, progress, position):
                 model=_text(answer.get("_model")), elapsedSeconds=answer.get("_elapsed"))
 
 
-def _untraceable_numbers(text, allowed):
-    """Numbers in ``text`` that the input does not carry (BR-D02).
+# Month spans, ordinals, years, quarters and ontology codes are labels, not
+# business figures (BR-D02 checks every other number, small ones included).
+_NUMBER_LABELS = re.compile(
+    r"\d{1,2}\s*[—–\-~～至到]\s*\d{1,2}\s*月|\d{1,2}\s*月份?|第\s*\d+|\d{4}\s*年|\d\s*季度"
+    r"|[A-Za-z]+\d+(?:-\d+)?")
 
-    Small integers up to 12 (months, quarters, item counts in prose) are
-    wording, not facts.
-    """
+
+def _untraceable_numbers(text, allowed):
+    """Numbers in ``text`` that the risk's own input does not carry (BR-D02)."""
     from .opportunity_v2 import _model_numbers
 
     bad = []
-    for token in _model_numbers(text):
+    for token in _model_numbers(_NUMBER_LABELS.sub(" ", text)):
         try:
             value = float(token)
         except ValueError:
             continue
-        if value.is_integer() and 0 <= value <= 12:
-            continue
         if token not in allowed and f"{value:g}" not in allowed:
             bad.append(token)
     return sorted(bad)
+
+
+# BR-L01 / BR-V12 (1117 1119): conclusions no risk on this card may publish.
+_OVERALL_RESERVE = re.compile(r"(商机储备|商机池|商机储量|储备)[^，。；]{0,6}(不足|偏少|短缺|匮乏|薄弱)")
+_KEY_ACCOUNTS = re.compile(r"战略|重点客户")
+_INFLIGHT = re.compile(r"P0-09|仍处于商机获取阶段|仍在商机获取阶段|在途")
+
+
+def _forbidden(code, cause):
+    """Why a cause may not be published under risk ``code``, or ""."""
+    text = f"{cause['title']} {cause['description']}"
+    if _INFLIGHT.search(text):
+        return "使用了仍处于商机获取阶段的在途商机事实（只由程序按固定句式在商机推进超期下展示）"
+    if code == "RK01" and _KEY_ACCOUNTS.search(text) and "储备" in text:
+        return "战略及重点客户的商机储备归客户预测不足解释，不在商机预测覆盖不足下重复"
+    if _OVERALL_RESERVE.search(text):
+        scoped = code == "RK06" and _KEY_ACCOUNTS.search(text) and "缺口" in text and "客户" in text
+        if not scoped:
+            return "给出了总体层面的“商机储备不足”结论，本卡停用该根因"
+    return ""
+
+
+_TERMS = (("P0阶段", "商机获取阶段"), ("P1阶段", "技术交流阶段"), ("P2阶段", "方案推动阶段"),
+          ("正缺口客户", "存在缺口的客户"))
+
+
+def _tidy(value):
+    """Front-end wording (BR-V11): no “反映” lead-ins, business stage names."""
+    value = re.sub(r"(?:这|此|该数据|数据|以上)?反映(?:出|了)?", "", value)
+    for old, new in _TERMS:
+        value = value.replace(old, new)
+    return re.sub(r"([，。；])\1+", r"\1", value).strip("，； ")
 
 
 def _repeats_risk(cause, risk):
@@ -463,9 +505,13 @@ def _global_causes(judge, request, progress, *, low, high):
     """One model pass over every established risk; never raises.
 
     Returns {risk code: [cause, …]} plus a note, a model name, the number of
-    calls and, when nothing usable came back, an error.  An answer that
-    misses a risk or quotes a number not in the input is asked once more
-    with the reasons; what still fails afterwards is dropped.
+    calls and, when nothing usable came back, an error.  Before anything is
+    published each cause is checked against its own risk (BR-L01, BR-D02,
+    BR-V11, BR-V12, 1117 1119): its numbers must come from that risk's input,
+    its evidence must be that risk's metrics, it must not contradict or
+    restate the risk, repeat another risk's cause or give a forbidden
+    conclusion.  Failures are sent back once; what still fails is dropped, and
+    a risk may end with no cause (“暂无可验证根因”).
     """
     from .opportunity_v2 import _allowed_model_numbers
 
@@ -475,12 +521,14 @@ def _global_causes(judge, request, progress, *, low, high):
         progress("judging", message=f"模型全局分析 {len(codes)} 条风险的根因")
     if judge is None:
         return dict(causes={}, calls=0, error="未启用模型判断，已跳过")
-    allowed = _allowed_model_numbers(request)
+    # Evidence ownership: each risk may only quote its own input.
+    allowed = {code: _allowed_model_numbers(dict(risk, period=request.get("period")))
+               for code, risk in risks_by_code.items()}
+    owned = {code: {code, *(_text(item.get("code")) for item in risk.get("metrics") or [])}
+             for code, risk in risks_by_code.items()}
+    limit = {code: min(high, int(risk.get("causeLimit", high))) for code, risk in risks_by_code.items()}
     feedback = None
     best, calls, note, model, error = {}, 0, "", "", ""
-    # Causes whose numbers check out but that still restate their risk after
-    # the retry: used only so a risk is never left without any cause.
-    repeating = {}
     for _ in range(2):
         ask = dict(request, validationFeedback=feedback) if feedback else request
         calls += 1
@@ -498,35 +546,54 @@ def _global_causes(judge, request, progress, *, low, high):
         note = _text(answer.get("note"))[:300] or note
         problems = []
         found = {}
-        for item in answer["risks"]:
-            if not isinstance(item, dict) or _text(item.get("code")) not in codes:
-                continue
+        answered = {_text(item.get("code")): item for item in answer["risks"]
+                    if isinstance(item, dict) and _text(item.get("code")) in codes}
+        seen_titles, seen_numbers = {}, []
+        for code in codes:  # risk order: an earlier risk keeps a shared cause
             kept = []
-            for cause in item.get("causes") or []:
+            for cause in (answered.get(code) or {}).get("causes") or []:
                 if not isinstance(cause, dict) or not _text(cause.get("title")):
                     continue
-                cause = dict(title=_text(cause.get("title"))[:40],
-                             description=_text(cause.get("description"))[:500],
-                             dataGaps=_text(cause.get("dataGaps"))[:200])
-                bad = _untraceable_numbers(f"{cause['title']} {cause['description']}", allowed)
+                evidence = cause.get("evidence") if isinstance(cause.get("evidence"), list) else []
+                cause = dict(title=_tidy(_text(cause.get("title")))[:40],
+                             description=_tidy(_text(cause.get("description")))[:500],
+                             dataGaps=_text(cause.get("dataGaps"))[:200],
+                             evidence=[_text(item) for item in evidence if _text(item)][:6])
+                label = f"{code}「{cause['title']}」"
+                reason = _forbidden(code, cause)
+                if reason:
+                    problems.append(f"{label}{reason}，已丢弃")
+                    continue
+                if not cause["evidence"]:
+                    problems.append(f"{label}没有给出 evidence（所用指标编码）")
+                    continue
+                foreign = [item for item in cause["evidence"] if item not in owned[code]]
+                if foreign:
+                    problems.append(f"{label}引用了不属于该风险的指标 {'、'.join(foreign)}")
+                    continue
+                bad = _untraceable_numbers(f"{cause['title']} {cause['description']}", allowed[code])
                 if bad:
-                    problems.append(f"{item['code']}「{cause['title']}」引用了输入中没有的数字 {'、'.join(bad)}")
+                    problems.append(f"{label}引用了该风险输入中没有的数字 {'、'.join(bad)}")
                     continue
-                # A cause must not contradict its risk's own figures; such a
-                # cause is never shown, not even as the last resort below.
-                conflict = _conflicts_risk(cause, risks_by_code[_text(item["code"])])
+                conflict = _conflicts_risk(cause, risks_by_code[code])
                 if conflict:
-                    problems.append(f"{item['code']}「{cause['title']}」{conflict}，根因数据不得与风险冲突")
+                    problems.append(f"{label}{conflict}，根因数据不得与风险冲突")
                     continue
-                # Strong rule: a cause sits under its risk and must not repeat it.
-                repeated = _repeats_risk(cause, risks_by_code[_text(item["code"])])
+                repeated = _repeats_risk(cause, risks_by_code[code])
                 if repeated:
-                    problems.append(f"{item['code']}「{cause['title']}」{repeated}，根因不得重复风险已有内容")
-                    repeating.setdefault(_text(item["code"]), []).append(cause)
+                    problems.append(f"{label}{repeated}，根因不得重复风险已有内容")
+                    continue
+                numbers = {value for value in _numbers(cause["description"]) if abs(value) > 1}
+                duplicate = seen_titles.get(cause["title"]) or next(
+                    (other for other, values in seen_numbers if len(numbers & values) >= 2), "")
+                if duplicate and duplicate != code:
+                    problems.append(f"{label}与{duplicate}下的根因证据和结论重复，跨风险只保留一处")
                     continue
                 kept.append(cause)
+                seen_titles.setdefault(cause["title"], code)
+                seen_numbers.append((code, numbers))
             if kept:
-                found[_text(item["code"])] = kept[:high]
+                found[code] = kept[:limit[code]]
         for code, causes in found.items():
             if len(causes) >= len(best.get(code) or []):
                 best[code] = causes
@@ -536,14 +603,21 @@ def _global_causes(judge, request, progress, *, low, high):
         if not problems:
             break
         feedback = problems
-    for code in codes:
-        # The no-repeat rule must not leave a risk with no cause at all: keep
-        # the model's own causes (their numbers are traceable) for that risk.
-        if not best.get(code) and repeating.get(code):
-            best[code] = repeating[code][-high:]
-    if not best and not error:
+    if not best and not error and low:
         error = "模型没有给出可用的根因"
     return dict(causes=best, calls=calls, note=note, model=model, error=error)
+
+
+def _inflight_sentence(fixed):
+    """BR-V12 fixed sentence for P0-09; no free text is added to it."""
+    from .opportunity_v2 import _volume_phrase
+
+    parts = [f"截至观察日，仍处于商机获取阶段且严重超期的商机有 {fixed['count']} 个"]
+    for label, key, unit, missing in (("金额", "amount", "亿元", "missingAmount"),
+                                      ("电量", "energy", "GWh", "missingEnergy")):
+        if fixed.get(key) is not None:
+            parts.append(_volume_phrase(label, fixed[key], unit, fixed["count"], fixed.get(missing)))
+    return "，".join(parts) + "。"
 
 
 def _status_label(entry):
@@ -769,8 +843,13 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                                       missingEvidence=[item["dataGaps"]] if item["dataGaps"] else [],
                                       model=answer.get("model")))
     if ai_causes and risk_order:
-        # 1～3 causes per risk, as many as the data supports (2026-11-17).
-        low, high = 1, 3
+        # 1117 1119 BR-L01: 0～2 causes per risk with independent evidence.
+        low = max(0, int(cause_analysis["minPerRisk"] if cause_analysis.get("minPerRisk") is not None else 1))
+        high = max(low, 1, int(cause_analysis.get("maxPerRisk") or 2))
+        # BR-V12: P0-09 (still in 商机获取) is never given to the model; RK11
+        # shows it in a fixed sentence, which takes one of its cause slots.
+        inflight = {risk["code"]: (triggered.get(risk["code"]) or {}).get("inflightSevere")
+                    for risk in risk_order}
         request = dict(
             kind="global_causes", code="BR-L01", period=period,
             causesPerRisk=dict(min=low, max=high),
@@ -783,7 +862,9 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                             code=code, name=_text(cause_specs[code].get("name")) or code))
                             for code in (links.get(risk["code"]) or {}).get("causes") or []
                             if code in cause_specs],
-                        metrics=_metric_context(config, indicator_codes(risk_specs.get(risk["code"])), facts))
+                        causeLimit=high - 1 if inflight.get(risk["code"]) else high,
+                        metrics=_metric_context(config, [code for code in indicator_codes(risk_specs.get(risk["code"]))
+                                                         if code != "P0-09"], facts))
                    for risk in risk_order])
         answer = _global_causes(judge, request, progress, low=low, high=high)
         inference_calls += answer["calls"]
@@ -791,6 +872,15 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                     aiAnalysis=True, observed=[])
         for risk in risk_order:
             found = answer["causes"].get(risk["code"]) or []
+            fixed = inflight.get(risk["code"])
+            if fixed:
+                cause_entries.append(dict(
+                    base, code=f"{risk['code']}-P0", name="仍处于商机获取阶段的严重超期",
+                    linkedRisks=[risk["code"]], evidenceIds=list(risk["evidenceIds"])[:3],
+                    decidedBy="rule", established=True, missingEvidence=[],
+                    reason=_inflight_sentence(fixed)))
+            if not found and fixed:
+                continue
             if not found:
                 cause_entries.append(dict(
                     base, code=f"{risk['code']}-AI", name=f"{risk['name']}·AI 根因分析",
@@ -802,7 +892,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                 continue
             for index, item in enumerate(found, 1):
                 cause_entries.append(dict(
-                    base, code=f"{risk['code']}-AI{index}", name=item["title"],
+                    base, code=f"{risk['code']}-AI{index}", name=item["title"], evidenceMetrics=item["evidence"],
                     linkedRisks=[risk["code"]], evidenceIds=list(risk["evidenceIds"])[:3],
                     decidedBy="model", established=True,
                     reason=item["description"] or item["title"],
@@ -879,10 +969,11 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
         for finding in findings:
             if finding["id"] in explained_ids:
                 continue
-            notes = [entry.get("error") or entry.get("reason") for entry in cause_entries
-                     if finding["riskCode"] in (entry.get("linkedRisks") or [])
-                     and (entry.get("error") or entry.get("reason"))]
-            finding["causeNote"] = _text(notes[0] if notes else "本轮未得到该风险的根因")[:200]
+            # 1117 1119 BR-L01: no qualified cause → “暂无可验证根因”; a model
+            # failure keeps its reason in brackets.
+            errors = [entry.get("error") for entry in cause_entries
+                      if finding["riskCode"] in (entry.get("linkedRisks") or []) and entry.get("error")]
+            finding["causeNote"] = ("暂无可验证根因" + (f"（{_text(errors[0])}）" if errors else ""))[:200]
     cause_by_code = {item["causeCode"]: item for item in causes}
     recommendations = []
     for entry in advice_entries:

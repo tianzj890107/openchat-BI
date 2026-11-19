@@ -401,14 +401,15 @@ def _opportunity_issues(values, params, data, measured, records):
                  else "中" if rate >= p.get("gapRateMedium", 0.05) else "低")
         parts = []
         for label, unit, key, gap, target, side_rate in hit:
-            months = key == "amount"
-            parts.append(
-                f"{label}目标 {target or 0:.2f} {unit}，已签单 {num(cov.get(f'progress_{key}')) or 0:.2f} {unit}"
-                + (f"（{progress_months}）" if months and progress_months else "")
-                + f"＋预测 {num(cov.get(f'forecast_{key}')) or 0:.2f} {unit}"
-                + (f"（{forecast_months}）" if months and forecast_months else "")
-                + f"，缺口 {gap:.2f} {unit}"
-                + (f"，缺口率 {side_rate * 100:.1f}%" if side_rate is not None else "") + "。")
+            # Same template as the 商机获取 card (1117 1119).
+            clauses = [f"{label}目标 {target or 0:.2f} {unit}"]
+            if progress_months:
+                clauses.append(f"{progress_months}已签单 {num(cov.get(f'progress_{key}')) or 0:.2f} {unit}")
+            clauses.append(f"{forecast_months}剩余预测 {num(cov.get(f'forecast_{key}')) or 0:.2f} {unit}")
+            clauses.append(f"全年缺口 {gap:.2f} {unit}")
+            if side_rate is not None:
+                clauses.append(f"缺口率 {side_rate * 100:.1f}%")
+            parts.append("，".join(clauses) + "。")
         out["IS11"] = dict(status="triggered", level=level, description="".join(parts), codes=["OR01"])
     elif not cov or all(side[3] is None for side in sides):
         out["IS11"] = dict(status="insufficient", missing=["OR01"])
@@ -433,16 +434,16 @@ def _opportunity_issues(values, params, data, measured, records):
 
             def value(name, side=side, label=label, unit=unit):
                 return num(side.get(f"{name}{label}_{unit}")) or 0
-            parts.append(f"{label}口径 {int(side_count)} 家，目标 {value('目标'):.2f} {unit}，已签单 {value('进度'):.2f} {unit}"
-                         f"＋剩余预测 {value('剩余预测'):.2f} {unit}，缺口合计 {value('缺口'):.2f} {unit}")
+            parts.append(f"{label}口径涉及 {int(side_count)} 家，目标 {value('目标'):.2f} {unit}，"
+                         f"已签单 {value('进度'):.2f} {unit}，剩余预测 {value('剩余预测'):.2f} {unit}，"
+                         f"缺口合计 {value('缺口'):.2f} {unit}。")
         customers = sorted(entry.get("customers") or [], key=lambda row: -(num(row.get("gap_amount")) or 0))
         for item in [row for row in customers if (num(row.get("gap_amount")) or 0) > 0][:8]:
             records.append(dict(id=f"ss:customer-gap:{item['account_id']}",
                                 label=f"客户预测缺口 {v2._text(item.get('account_name')) or item['account_id']}",
                                 value=num(item.get("gap_amount")), unit="亿元"))
         out["IS12"] = dict(status="triggered", level="高" if strategic else ("" if unknown else "中"),
-                           description=f"{int(count)}家客户的已签单＋剩余预测低于客户目标"
-                                       + ("：" + "；".join(parts) if parts else "") + "。", codes=["OR08"])
+                           description=f"共 {int(count)} 家客户存在缺口。" + "".join(parts), codes=["OR08"])
     else:
         out["IS12"] = dict(status="not_triggered")
 
@@ -461,11 +462,14 @@ def _opportunity_issues(values, params, data, measured, records):
     if total:
         count, amount, energy = total.get("count") or 0, total.get("amount"), total.get("energy")
         stages, complete = total.get("stages") or len(hits), not total.get("missingAmount")
+        missing_amount, missing_energy = total.get("missingAmount"), total.get("missingEnergy")
     else:
         count = sum(bands[code]["value"] for code in hits)
         amount = v2._sum(bands[code].get("amount") for code in hits)
         energy = v2._sum(bands[code].get("energy") for code in hits)
-        stages, complete = len(hits), True
+        missing_amount = v2._sum(bands[code]["band"].get("missingAmount") for code in hits)
+        missing_energy = v2._sum(bands[code]["band"].get("missingEnergy") for code in hits)
+        stages, complete = len(hits), not missing_amount
     if stages >= p.get("stagesHigh", 2):
         level = "高"
     elif amount is None or not complete:
@@ -477,11 +481,9 @@ def _opportunity_issues(values, params, data, measured, records):
         records.append(dict(id=f"ss:stage-band:{code}", label=f"{band.get('stage') or code}阶段严重超期",
                             value=band.get("count"), unit="条", amount=band.get("amount"), quantity=band.get("energy")))
     out["IS13"] = dict(status="triggered", level=level, codes=list(SEVERE_CODES), description=(
-        f"{count}条商机的阶段周期超基线50%及以上（严重超期）"
-        + (f"，涉及预测金额合计 {amount:.2f} 亿元" if amount is not None else "")
-        + (f"、电量 {energy:.2f} GWh" if energy is not None else "")
-        + ("（跨阶段按商机去重）" if total else "")
-        + ("，部分商机预测金额缺失，为部分合计" if not complete else "") + "。"))
+        f"{count} 条商机在已结束阶段出现严重超期，"
+        f"{v2._volume_phrase('金额', amount, '亿元', count, missing_amount)}，"
+        f"{v2._volume_phrase('电量', energy, 'GWh', count, missing_energy)}。"))
     return out
 
 

@@ -657,10 +657,10 @@ export function createStageRiskComponent(options = {}) {
               <div class="stage-risk-analysis__cause-text"><b><template v-if="finding.issueType">【{{ plain(finding.issueType) }}】</template>{{ plain(finding.title) }}</b><small v-if="finding.decidedBy" class="stage-risk-analysis__decided">（{{ finding.decidedBy === 'rule' ? '规则判定' : '模型判定' }}<template v-if="finding.riskLevel"> · {{ finding.riskLevel }}</template>）</small><template v-if="finding.description">——<number-text :text="finding.description" /></template>
                 <ul v-if="finding.metricDetails?.length" class="stage-risk-analysis__metric-details" aria-label="阶段周期分档指标明细">
                   <li v-for="metric in finding.metricDetails" :key="metric.code">
-                    <b>{{ metric.stage }}阶段</b> · {{ metric.band }} · {{ metricStatus[metric.status] }}
+                    <b>{{ metric.stage }}阶段</b> · {{ metric.band }}
                     <template v-if="metric.count != null"> · <number-text :text="metric.count + ' 条'" /></template>
-                    · 预测金额 <number-text :text="metric.amount == null ? '—' : Number(metric.amount).toFixed(2) + ' 亿元'" />
-                    · 预测电量 <number-text :text="metric.energy == null ? '—' : Number(metric.energy).toFixed(2) + ' GWh'" />
+                    · <number-text :text="metric.amountText || (metric.amount == null ? '预测金额待核实' : '涉及预测金额 ' + Number(metric.amount).toFixed(2) + ' 亿元')" />
+                    · <number-text :text="metric.energyText || (metric.energy == null ? '预测电量待核实' : '涉及预测电量 ' + Number(metric.energy).toFixed(2) + ' GWh')" />
                   </li>
                 </ul>
                 <trace-details v-if="showEvidence" :trace="traces[finding.id]" :count="distinctEvidenceCount(finding)" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />

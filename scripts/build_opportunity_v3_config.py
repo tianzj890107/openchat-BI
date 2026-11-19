@@ -770,7 +770,7 @@ def build_config(workbook):
             raise SystemExit(f"本体 {code} 未找到唯一的关联指标分类：{sorted(categories)}")
         risk["category"] = categories.pop()
     config = dict(
-        version="opportunity-v3-rules-14",
+        version="opportunity-v3-rules-15",
         ontology="商机获取节点 V3 本体文件_1117（第三版执行口径）",
         source=dict(path=SOURCE.relative_to(ROOT).as_posix(), sha256=digest(SOURCE)),
         dictionary=dict(path=DICTIONARY.relative_to(ROOT).as_posix(), sha256=digest(DICTIONARY)),

@@ -368,21 +368,21 @@ def test_opportunity_problems_are_judged_on_the_1117_sql_like_the_opportunity_ca
     # IS11 (BR-A01): 120 − (20 + 40) = 60, rate 50% ≥ 10% → 高; energy covered, not listed.
     coverage = findings["IS11"]
     assert coverage["decidedBy"] == "rule" and coverage["riskLevel"] == "高"
-    assert coverage["description"] == ("金额目标 120.00 亿元，已签单 20.00 亿元（1—9月）＋预测 40.00 亿元（10—12月），"
-                                       "缺口 60.00 亿元，缺口率 50.0%。")
+    # Same template as the 商机获取 card (1117 1119).
+    assert coverage["description"] == ("金额目标 120.00 亿元，1—9月已签单 20.00 亿元，10—12月剩余预测 40.00 亿元，"
+                                       "全年缺口 60.00 亿元，缺口率 50.0%。")
     # IS12 (BR-A06): R08's 风险专用正缺口汇总 only; a strategic customer → 高.
     customers = findings["IS12"]
     assert customers["riskLevel"] == "高"
-    assert customers["description"] == ("3家客户的已签单＋剩余预测低于客户目标：金额口径 3 家，目标 30.00 亿元，已签单 5.00 亿元"
-                                        "＋剩余预测 10.00 亿元，缺口合计 15.00 亿元。")
+    assert customers["description"] == ("共 3 家客户存在缺口。金额口径涉及 3 家，目标 30.00 亿元，已签单 5.00 亿元，"
+                                        "剩余预测 10.00 亿元，缺口合计 15.00 亿元。")
     records = {r["id"]: r for r in card["evidence"]["records"]}
     assert "ss:customer-gap:A1" in records and "ss:customer-gap:A2" not in records
     # IS13 (BR-A11): severe overruns only, the de-duplicated total (BR-V09);
     # one stage and 8.5 亿元 < 10 → 中.
     overrun = findings["IS13"]
     assert overrun["riskLevel"] == "中"
-    assert overrun["description"] == ("300条商机的阶段周期超基线50%及以上（严重超期），涉及预测金额合计 8.50 亿元、"
-                                      "电量 4.20 GWh（跨阶段按商机去重）。")
+    assert overrun["description"] == "300 条商机在已结束阶段出现严重超期，涉及预测金额 8.50 亿元，涉及预测电量 4.20 GWh。"
     assert records["ss:stage-band:OR13"]["value"] == 300 and "ss:stage-band:OR15" not in records
     # Rule-decided: none of them goes to the model; no upstream gap is noted.
     assert not any(r.get("code") in {"IS11", "IS12", "IS13"} for r in requests)
@@ -413,7 +413,7 @@ def test_opportunity_problems_levels_and_gaps_follow_1117():
     bands[0] = _band("R12", "商机获取", "超期", 1, 0.1, 0.1, partial)
     bands[3] = _band("R15", "技术交流", "严重超期", 0, 0, 0)
     finding = next(f for f in _card(opportunity=dict(BANDS=bands))["result"]["findings"] if f["riskCode"] == "IS13")
-    assert finding["riskLevel"] == "" and finding["description"].endswith("，部分商机预测金额缺失，为部分合计。")
+    assert finding["riskLevel"] == "" and "已记录预测金额 8.50 亿元" in finding["description"]
     # A failed 1117 query leaves the problem undecided (and limits the card).
     failed = _card(fail={"OR01"})
     judged = {r["code"]: r for r in failed["result"]["ontologyJudgement"]["risks"]}
