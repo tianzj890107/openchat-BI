@@ -98,7 +98,7 @@ INFER_PROMPT = (
 # ontology's 业务规则 page is not read.  The program only adds the output
 # contract below and checks the answer before publishing.
 CAUSE_RULES_PATH = Path(__file__).parent / "assets/opportunity-v3/根因规则.md"
-CAUSES_PER_RISK = (0, 2)
+CAUSES_PER_RISK = (1, 2)  # 根因规则.md 规则 11 (2026-11-20)
 _CAUSE_RULES_CACHE = {}
 
 CAUSE_CONTRACT = (
@@ -107,7 +107,7 @@ CAUSE_CONTRACT = (
     "卡片补充取数的结果。请按上面的风险分析思维链与规则，依据这些指标结果为每条风险判断根因，根因挂载到对应风险"
     "的 code 下：思维链中“商机储备不足（总盘子）”对应风险“商机预测覆盖不足”，“客户预测覆盖不足”对应风险"
     "“客户预测不足”，“商机推进超期，影响签单”对应同名风险。"
-    "每条风险给出 {low}～{high} 条根因，没有数据支撑时不给；每条根因的 description 是一段话。"
+    "每条风险给出 {low}～{high} 条根因，每条已成立的风险都要给出根因；每条根因的 description 是一段话。"
     "样例信息只示意写法，其中的数字不得引用；根因中的数字必须来自输入的指标结果；与所属风险描述相同的指标，"
     "数值必须与风险描述一致；不要复述风险描述的原句。"
     '只返回 JSON：{{"risks": [{{"code": "风险编码", "causes": [{{"title": "不超过20字的根因名称", '
@@ -144,7 +144,7 @@ def global_cause_prompt(low, high):
 
 
 GLOBAL_CAUSE_RULE = dict(code="BR-L01", name="AI 全局根因分析", levelRule="",
-                         condition="大模型依据本轮全部指标结果，按根因规则.md 的系统提示词与规则判断，每条风险 0～2 条根因")
+                         condition="大模型依据本轮全部指标结果，按根因规则.md 的系统提示词与规则判断，每条风险 1～2 条根因")
 
 
 SEMANTIC_PROMPT = (
@@ -462,6 +462,10 @@ _RULE_WORDING = (
     (r"正缺口", "缺口"),
     (r"已记录|涉及(?=预测|金额|电量)", ""),
     (r"进度\s*[＋+]\s*预测", "已签单＋剩余预测"),
+    # 规则 9～10 (2026-11-20): “正预测” → “预测”; there is no “已结束” stage.
+    (r"正预测", "预测"),
+    (r"在已结束(?:的)?阶段", ""),
+    (r"已结束(?:的)?(?=[^，。；]{0,8}阶段)", ""),
     (r"进度[（(]\s*([0-9—–\-]+月)\s*已签单\s*[）)]", r"\1已签单"),
     (r"(?<!剩余)预测[（(]\s*([0-9—–\-]+月)\s*[）)]", r"\1剩余预测"),
 )
@@ -492,6 +496,9 @@ def _repeats_risk(cause, risk):
     return ""
 
 
+# Labels that name the risk's own totals (目标、缺口、缺口率); “预测金额” and
+# the like also describe a stage or a customer, so they are not compared.
+_RISK_TOTAL_LABEL = re.compile(r"目标$|缺口|缺口率")
 _FIGURE = re.compile(r"(?:^|[，。；：、\s（(])([\u4e00-\u9fa5]{2,6})\s*(-?\d+(?:\.\d+)?)")
 
 
@@ -499,7 +506,8 @@ def _conflicts_risk(cause, risk):
     """A figure the cause gives for one of the risk's own labelled figures, but different, or \"\"."""
     own = {}
     for label, number in _FIGURE.findall(_text(risk.get("judgement"))):
-        own.setdefault(label, set()).add(float(number))
+        if _RISK_TOTAL_LABEL.search(label):
+            own.setdefault(label, set()).add(float(number))
     for label, number in _FIGURE.findall(f"{cause['title']} {cause['description']}"):
         values = own.get(label)
         if values and not any(abs(float(number) - value) < 0.005 for value in values):
@@ -592,8 +600,6 @@ def _global_causes(judge, request, progress, *, low, high):
         if not problems:
             break
         feedback = problems
-    if not best and not error and low:
-        error = "模型没有给出可用的根因"
     return dict(causes=best, calls=calls, note=note, model=model, error=error)
 
 

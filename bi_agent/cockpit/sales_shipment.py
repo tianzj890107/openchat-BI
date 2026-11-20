@@ -481,7 +481,7 @@ def _opportunity_issues(values, params, data, measured, records):
         records.append(dict(id=f"ss:stage-band:{code}", label=f"{band.get('stage') or code}阶段严重超期",
                             value=band.get("count"), unit="条", amount=band.get("amount"), quantity=band.get("energy")))
     out["IS13"] = dict(status="triggered", level=level, codes=list(SEVERE_CODES), description=(
-        f"{count} 条商机在已结束阶段出现严重超期，"
+        f"{count} 条商机出现严重超期，"
         f"{v2._volume_phrase('金额', amount, '亿元', count, missing_amount)}，"
         f"{v2._volume_phrase('电量', energy, 'GWh', count, missing_energy)}。"))
     return out

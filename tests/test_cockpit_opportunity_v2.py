@@ -1906,9 +1906,9 @@ def test_ai_root_causes_come_from_one_global_analysis_of_the_established_risks()
     calls = [item for item in seen if item['kind'] == 'global_causes']
     # One call covering every established risk with its own metric results.
     assert len(calls) == 1 and [risk['code'] for risk in first['risks']] == established
-    # 根因规则.md: 0～2 causes per risk from every metric result of the round;
+    # 根因规则.md: 1～2 causes per risk (规则 11) from every metric result of the round;
     # neither the ontology's rule page nor its cause page is sent.
-    assert first['causesPerRisk'] == dict(min=0, max=2)
+    assert first['causesPerRisk'] == dict(min=1, max=2)
     assert all('judgement' in risk and risk['relatedMetrics'] for risk in first['risks'])
     assert not any(key in risk for risk in first['risks'] for key in ('rule', 'ontology', 'ontologyCauses'))
     assert len(first['metrics']) > len(first['risks'])
@@ -1993,7 +1993,7 @@ def test_rk11_lists_only_severe_overruns_and_states_the_deduplicated_total():
                              stageBandStatus='ok')
     rk11 = next(risk for risk in value['risks'] if risk['code'] == 'RK11')
     # BR-V09: counted once per opportunity across stages, forecast summed once.
-    assert rk11['description'] == '300 条商机在已结束阶段出现严重超期，预测金额 123.46 亿元，预测电量 45.60 GWh。'
+    assert rk11['description'] == '300 条商机出现严重超期，预测金额 123.46 亿元，预测电量 45.60 GWh。'
     assert rk11['level'] == '高'  # three stages hit
     # Only the severe band is listed, one line per stage; the < 50% band is not shown.
     assert [(item['code'], item['stage'], item['count']) for item in rk11['metricDetails']] == [
@@ -2087,8 +2087,10 @@ def test_root_causes_are_driven_by_the_cause_rules_file():
     system, rules = cause_rules()
     assert system.startswith('风险分析思维链') and '客户需求确认滞后' in system and '严重超期情况的占比和影响' in system
     assert rules.startswith('1、严重超期') and '无预测记录、金额为空、金额为0也需要分开' in rules
-    prompt = global_cause_prompt(0, 2)
-    assert system in prompt and rules in prompt and '0～2 条根因' in prompt
+    prompt = global_cause_prompt(1, 2)
+    assert system in prompt and rules in prompt and '1～2 条根因' in prompt
+    # 2026-11-20 批注: 商机推进超期 samples and rules 9～11.
+    assert '方案推动阶段超期严重' in system and '9、正预测调整为预测' in rules and '已结束' in rules
     assert '业务规则' not in prompt and 'BR-' not in prompt
     # 规则 1～7 on the published text, months as written by the model.
     assert _tidy('P0阶段严重超期（超基线 50% 及以上）的商机涉及预测金额 3 亿元，已记录预测电量 1 GWh') == (
@@ -2102,6 +2104,15 @@ def test_root_causes_are_driven_by_the_cause_rules_file():
     assert _volume_phrase('金额', 5.0, '亿元', 4, 0) == '预测金额 5.00 亿元'
     assert _volume_phrase('金额', 5.0, '亿元', 4, 1) == '预测金额 5.00 亿元'
     assert _volume_phrase('金额', None, '亿元', 4, 4) == '预测金额待核实'
+    # 批注 20261120: a stage's own amount is not the risk total (the 商机推进超期
+    # causes were all rejected for it); only 目标、缺口、缺口率 are compared.
+    from bi_agent.cockpit.opportunity_judgement import _conflicts_risk
+    rk11 = dict(judgement='102 条商机出现严重超期，预测金额 0.48 亿元，预测电量 0.13 GWh。')
+    stage = dict(title='方案推动阶段超期严重', description='方案推动阶段严重超期商机49个，预测金额0.3257亿元')
+    assert _conflicts_risk(stage, rk11) == ''
+    rk01 = dict(judgement='金额目标 251.15 亿元，全年缺口 248.85 亿元，缺口率 99.1%。')
+    assert _conflicts_risk(dict(title='x', description='，全年缺口 200 亿元'), rk01)
+    assert _tidy('仅59个有正预测，102 条商机在已结束阶段出现严重超期') == '仅59个有预测，102 条商机出现严重超期'
 
 
 def test_root_causes_read_every_metric_result_and_the_pipeline_split():

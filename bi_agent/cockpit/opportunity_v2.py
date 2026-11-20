@@ -3050,7 +3050,8 @@ def evaluate(data, config=None, measured=None):
             level = "高" if amount_high is not None and hit_amount >= amount_high else "中"
         # RK11 template (1117 1119, BR-V09): the de-duplicated severe count and
         # the final forecast, worded by completeness; no algorithm or tail notes.
-        description = (f"{hit_count} 条商机在已结束阶段出现严重超期，"
+        # 2026-11-20 批注: the system has no “已结束” stage, so it is not written.
+        description = (f"{hit_count} 条商机出现严重超期，"
                        f"{_volume_phrase('金额', hit_amount, '亿元', hit_count, missing_amount)}，"
                        f"{_volume_phrase('电量', hit_energy, 'GWh', hit_count, missing_energy)}。")
         evidence = [fid for code in STAGE_BAND_CODES for fid in band_facts[code]]
