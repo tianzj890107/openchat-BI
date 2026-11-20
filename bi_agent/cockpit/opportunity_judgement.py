@@ -29,6 +29,7 @@ card's ontology judgement so the page shows what matched and what did not.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import os
 import re
 import time
@@ -92,39 +93,58 @@ INFER_PROMPT = (
 )
 
 
-GLOBAL_CAUSE_PROMPT = (
-    "商机获取环节根因全局分析。输入 risks 是本卡片本轮已经成立的全部风险，每条给出风险编码、名称、等级、"
-    "判定结果（judgement）、本体定义与判定规则，以及该风险自己的指标口径与本轮取值（metrics、observed）。"
-    "每条风险的 ontologyCauses 是本体「根因」页中与该风险关联的根因定义（名称、描述、判定方式与 AI 分析要点），"
-    "是本次分析的上下文：以本轮指标结果为依据，参考这些本体根因的分析方向与口径推理；数据支持时可以在其基础上"
-    "补充本体未列出的原因，但不得写出数据不支持的本体根因。"
-    "请把这些风险放在一起做一次全局分析，为每一条风险推理最可能导致它的根因。"
-    + ONTOLOGY_RULES.replace("{", "{{").replace("}", "}}") +
-    "条数：每条风险给出 {low}～{high} 条有独立证据的根因，且不超过该风险的 causeLimit；没有独立证据时宁可不给。"
-    "按可能性从高到低排列；每条根因的 description 是一段完整的话，不要编号（不要写“根因1”“其一”“①”之类）。"
-    "证据归属：每条根因只能使用该风险自己 metrics / observed 中的指标与数值，evidence 填所用的指标编码；"
-    "不得借用其他风险的指标。数字校验（BR-D02）：每个业务数量、金额、电量和比例（包括 12 以内的数量）都必须"
-    "能在该风险的输入中找到同指标、同字段、同期间、同对象集合的原值；月份与序号除外。"
-    "数据一致：根因中出现与风险 judgement 相同的指标（目标、已签单、剩余预测、缺口、缺口率、客户数、商机条数、"
-    "金额等）时，数值、单位与口径必须和 judgement 完全一致，不得给出与风险结论相反或矛盾的判断。"
-    "不重复：根因不得复述该风险 judgement 已写出的句子与数字，不得以风险名称作根因名称，也不得仅复述阶段行；"
-    "跨风险按证据和结论去重，同一证据和结论只在一条风险下出现；战略及重点客户的商机储备及占比（C10）只归"
-    "客户预测不足，不在商机预测覆盖不足下解释。"
-    "禁止结论：本卡所有风险都不得给出总体层面的“商机储备严重不足”及同义结论（如整体商机池不足、全局商机"
-    "储备偏少）；客户预测不足只可在存在缺口的客户范围内说明战略及重点客户的储备结构或逐户无商机事实，"
-    "必须写明客户范围。不得描述“仍处于商机获取阶段”或在途商机（该事实由程序按固定句式单独展示）。"
-    "需求确认滞后、协议签署延误等具体活动原因，必须有同一商机的状态、活动时间或进展记录支持；"
-    "只有金额完整且范围可比时才比较三个阶段的影响金额。"
-    "用语：直接陈述证据，不用“反映”等引导词；写“商机获取阶段”“技术交流阶段”“方案推动阶段”“三个阶段”"
-    "“存在缺口的客户”，不写 P0、P1、P2 或“正缺口客户”。"
+# 2026-11-19: the global cause analysis is driven by 根因规则.md (its 系统提示词
+# and 规则 sections, sent as written) and every metric result of the round; the
+# ontology's 业务规则 page is not read.  The program only adds the output
+# contract below and checks the answer before publishing.
+CAUSE_RULES_PATH = Path(__file__).parent / "assets/opportunity-v3/根因规则.md"
+CAUSES_PER_RISK = (0, 2)
+_CAUSE_RULES_CACHE = {}
+
+CAUSE_CONTRACT = (
+    "输入：risks 是本卡片本轮已经成立的全部风险（code、name、level、judgement 为风险描述、relatedMetrics 为该风险"
+    "的本体关联指标编码）；metrics 是本轮取到的全部指标结果（编码、名称、口径与本轮取值 values），otherFacts 是"
+    "卡片补充取数的结果。请按上面的风险分析思维链与规则，依据这些指标结果为每条风险判断根因，根因挂载到对应风险"
+    "的 code 下：思维链中“商机储备不足（总盘子）”对应风险“商机预测覆盖不足”，“客户预测覆盖不足”对应风险"
+    "“客户预测不足”，“商机推进超期，影响签单”对应同名风险。"
+    "每条风险给出 {low}～{high} 条根因，没有数据支撑时不给；每条根因的 description 是一段话。"
+    "样例信息只示意写法，其中的数字不得引用；根因中的数字必须来自输入的指标结果；与所属风险描述相同的指标，"
+    "数值必须与风险描述一致；不要复述风险描述的原句。"
     '只返回 JSON：{{"risks": [{{"code": "风险编码", "causes": [{{"title": "不超过20字的根因名称", '
-    '"description": "一段话，不超过240字，引用该风险输入中的具体数值", '
-    '"evidence": ["所用指标编码"], '
-    '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，'
-    '不要输出其他内容。'
+    '"description": "一段话，不超过240字，引用输入中的具体数值", '
+    '"dataGaps": "需要补充核实的数据，没有则为空字符串"}}]}}], "note": ""}}，不要输出其他内容。'
 )
+
+
+def cause_rules():
+    """(系统提示词, 规则) from 根因规则.md, re-read when the file changes."""
+    try:
+        stamp = CAUSE_RULES_PATH.stat().st_mtime_ns
+    except OSError:
+        return "", ""
+    cached = _CAUSE_RULES_CACHE.get("rules")
+    if cached and cached[0] == stamp:
+        return cached[1]
+    sections, current = {}, None
+    for line in CAUSE_RULES_PATH.read_text(encoding="utf-8").splitlines():
+        heading = re.match(r"^##\s+(.+?)\s*$", line)
+        if heading:
+            current = heading.group(1)
+            sections[current] = []
+        elif current:
+            sections[current].append(line)
+    value = ("\n".join(sections.get("系统提示词") or []).strip(), "\n".join(sections.get("规则") or []).strip())
+    _CAUSE_RULES_CACHE["rules"] = (stamp, value)
+    return value
+
+
+def global_cause_prompt(low, high):
+    system, rules = cause_rules()
+    return f"{system}\n\n规则：\n{rules}\n\n" + CAUSE_CONTRACT.format(low=low, high=high)
+
+
 GLOBAL_CAUSE_RULE = dict(code="BR-L01", name="AI 全局根因分析", levelRule="",
-                         condition="大模型依据本轮已成立风险及其指标结果全局分析，以本体根因页为上下文，每条风险 0～2 条有独立证据的根因，发布前按风险校验证据归属与禁止结论")
+                         condition="大模型依据本轮全部指标结果，按根因规则.md 的系统提示词与规则判断，每条风险 0～2 条根因")
 
 
 SEMANTIC_PROMPT = (
@@ -329,7 +349,7 @@ def _item_judge(request, role, infer_prompt):
     inference = request.get("kind") == "inference"
     if request.get("kind") == "global_causes":
         limits = request.get("causesPerRisk") or {}
-        task = GLOBAL_CAUSE_PROMPT.format(low=limits.get("min", 1), high=limits.get("max", 2))
+        task = global_cause_prompt(limits.get("min", 0), limits.get("max", 2))
         prompt = compose_system_prompt(role(), task)
         max_tokens = min(4000, 600 + 450 * len(request.get("risks") or []))
         step = "AI 全局根因分析"
@@ -434,35 +454,22 @@ def _untraceable_numbers(text, allowed):
     return sorted(bad)
 
 
-# BR-L01 / BR-V12 (1117 1119): conclusions no risk on this card may publish.
-_OVERALL_RESERVE = re.compile(r"(商机储备|商机池|商机储量|储备)[^，。；]{0,6}(不足|偏少|短缺|匮乏|薄弱)")
-_KEY_ACCOUNTS = re.compile(r"战略|重点客户")
-_INFLIGHT = re.compile(r"P0-09|仍处于商机获取阶段|仍在商机获取阶段|在途")
-
-
-def _forbidden(code, cause):
-    """Why a cause may not be published under risk ``code``, or ""."""
-    text = f"{cause['title']} {cause['description']}"
-    if _INFLIGHT.search(text):
-        return "使用了仍处于商机获取阶段的在途商机事实（只由程序按固定句式在商机推进超期下展示）"
-    if code == "RK01" and _KEY_ACCOUNTS.search(text) and "储备" in text:
-        return "战略及重点客户的商机储备归客户预测不足解释，不在商机预测覆盖不足下重复"
-    if _OVERALL_RESERVE.search(text):
-        scoped = code == "RK06" and _KEY_ACCOUNTS.search(text) and "缺口" in text and "客户" in text
-        if not scoped:
-            return "给出了总体层面的“商机储备不足”结论，本卡停用该根因"
-    return ""
-
-
-_TERMS = (("P0阶段", "商机获取阶段"), ("P1阶段", "技术交流阶段"), ("P2阶段", "方案推动阶段"),
-          ("正缺口客户", "存在缺口的客户"))
+# 根因规则.md 规则 1～7, applied to the published cause text.
+_RULE_WORDING = (
+    (r"严重超期[（(]超基线[^）)]*[）)]", "严重超期"),
+    (r"(?<!严重)超期[（(]超基线[^）)]*[）)]", "超期"),
+    (r"P0\s*阶段", "商机获取阶段"), (r"P1\s*阶段", "技术交流阶段"), (r"P2\s*阶段", "方案推动阶段"),
+    (r"正缺口", "缺口"),
+    (r"已记录|涉及(?=预测|金额|电量)", ""),
+    (r"进度\s*[＋+]\s*预测", "已签单＋剩余预测"),
+    (r"进度[（(]\s*([0-9—–\-]+月)\s*已签单\s*[）)]", r"\1已签单"),
+    (r"(?<!剩余)预测[（(]\s*([0-9—–\-]+月)\s*[）)]", r"\1剩余预测"),
+)
 
 
 def _tidy(value):
-    """Front-end wording (BR-V11): no “反映” lead-ins, business stage names."""
-    value = re.sub(r"(?:这|此|该数据|数据|以上)?反映(?:出|了)?", "", value)
-    for old, new in _TERMS:
-        value = value.replace(old, new)
+    for pattern, replacement in _RULE_WORDING:
+        value = re.sub(pattern, replacement, value)
     return re.sub(r"([，。；])\1+", r"\1", value).strip("，； ")
 
 
@@ -506,12 +513,10 @@ def _global_causes(judge, request, progress, *, low, high):
 
     Returns {risk code: [cause, …]} plus a note, a model name, the number of
     calls and, when nothing usable came back, an error.  Before anything is
-    published each cause is checked against its own risk (BR-L01, BR-D02,
-    BR-V11, BR-V12, 1117 1119): its numbers must come from that risk's input,
-    its evidence must be that risk's metrics, it must not contradict or
-    restate the risk, repeat another risk's cause or give a forbidden
-    conclusion.  Failures are sent back once; what still fails is dropped, and
-    a risk may end with no cause (“暂无可验证根因”).
+    published each cause is checked: its numbers must come from the input,
+    it must not contradict or restate its risk, nor repeat another risk's
+    cause.  Failures are sent back once; what still fails is dropped, and a
+    risk may end with no cause (“暂无可验证根因”).
     """
     from .opportunity_v2 import _allowed_model_numbers
 
@@ -521,12 +526,9 @@ def _global_causes(judge, request, progress, *, low, high):
         progress("judging", message=f"模型全局分析 {len(codes)} 条风险的根因")
     if judge is None:
         return dict(causes={}, calls=0, error="未启用模型判断，已跳过")
-    # Evidence ownership: each risk may only quote its own input.
-    allowed = {code: _allowed_model_numbers(dict(risk, period=request.get("period")))
-               for code, risk in risks_by_code.items()}
-    owned = {code: {code, *(_text(item.get("code")) for item in risk.get("metrics") or [])}
-             for code, risk in risks_by_code.items()}
-    limit = {code: min(high, int(risk.get("causeLimit", high))) for code, risk in risks_by_code.items()}
+    if not all(cause_rules()):
+        return dict(causes={}, calls=0, error="根因规则.md 缺失或缺少“系统提示词”“规则”章节，已跳过")
+    allowed = _allowed_model_numbers(request)
     feedback = None
     best, calls, note, model, error = {}, 0, "", "", ""
     for _ in range(2):
@@ -554,26 +556,13 @@ def _global_causes(judge, request, progress, *, low, high):
             for cause in (answered.get(code) or {}).get("causes") or []:
                 if not isinstance(cause, dict) or not _text(cause.get("title")):
                     continue
-                evidence = cause.get("evidence") if isinstance(cause.get("evidence"), list) else []
                 cause = dict(title=_tidy(_text(cause.get("title")))[:40],
                              description=_tidy(_text(cause.get("description")))[:500],
-                             dataGaps=_text(cause.get("dataGaps"))[:200],
-                             evidence=[_text(item) for item in evidence if _text(item)][:6])
+                             dataGaps=_text(cause.get("dataGaps"))[:200])
                 label = f"{code}「{cause['title']}」"
-                reason = _forbidden(code, cause)
-                if reason:
-                    problems.append(f"{label}{reason}，已丢弃")
-                    continue
-                if not cause["evidence"]:
-                    problems.append(f"{label}没有给出 evidence（所用指标编码）")
-                    continue
-                foreign = [item for item in cause["evidence"] if item not in owned[code]]
-                if foreign:
-                    problems.append(f"{label}引用了不属于该风险的指标 {'、'.join(foreign)}")
-                    continue
-                bad = _untraceable_numbers(f"{cause['title']} {cause['description']}", allowed[code])
+                bad = _untraceable_numbers(f"{cause['title']} {cause['description']}", allowed)
                 if bad:
-                    problems.append(f"{label}引用了该风险输入中没有的数字 {'、'.join(bad)}")
+                    problems.append(f"{label}引用了输入中没有的数字 {'、'.join(bad)}")
                     continue
                 conflict = _conflicts_risk(cause, risks_by_code[code])
                 if conflict:
@@ -585,15 +574,15 @@ def _global_causes(judge, request, progress, *, low, high):
                     continue
                 numbers = {value for value in _numbers(cause["description"]) if abs(value) > 1}
                 duplicate = seen_titles.get(cause["title"]) or next(
-                    (other for other, values in seen_numbers if len(numbers & values) >= 2), "")
+                    (other for other, values in seen_numbers if len(numbers & values) >= 3), "")
                 if duplicate and duplicate != code:
-                    problems.append(f"{label}与{duplicate}下的根因证据和结论重复，跨风险只保留一处")
+                    problems.append(f"{label}与{duplicate}下的根因重复，跨风险只保留一处")
                     continue
                 kept.append(cause)
                 seen_titles.setdefault(cause["title"], code)
                 seen_numbers.append((code, numbers))
             if kept:
-                found[code] = kept[:limit[code]]
+                found[code] = kept[:high]
         for code, causes in found.items():
             if len(causes) >= len(best.get(code) or []):
                 best[code] = causes
@@ -606,18 +595,6 @@ def _global_causes(judge, request, progress, *, low, high):
     if not best and not error and low:
         error = "模型没有给出可用的根因"
     return dict(causes=best, calls=calls, note=note, model=model, error=error)
-
-
-def _inflight_sentence(fixed):
-    """BR-V12 fixed sentence for P0-09; no free text is added to it."""
-    from .opportunity_v2 import _volume_phrase
-
-    parts = [f"截至观察日，仍处于商机获取阶段且严重超期的商机有 {fixed['count']} 个"]
-    for label, key, unit, missing in (("金额", "amount", "亿元", "missingAmount"),
-                                      ("电量", "energy", "GWh", "missingEnergy")):
-        if fixed.get(key) is not None:
-            parts.append(_volume_phrase(label, fixed[key], unit, fixed["count"], fixed.get(missing)))
-    return "，".join(parts) + "。"
 
 
 def _status_label(entry):
@@ -843,44 +820,31 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                                       missingEvidence=[item["dataGaps"]] if item["dataGaps"] else [],
                                       model=answer.get("model")))
     if ai_causes and risk_order:
-        # 1117 1119 BR-L01: 0～2 causes per risk with independent evidence.
-        low = max(0, int(cause_analysis["minPerRisk"] if cause_analysis.get("minPerRisk") is not None else 1))
-        high = max(low, 1, int(cause_analysis.get("maxPerRisk") or 2))
-        # BR-V12: P0-09 (still in 商机获取) is never given to the model; RK11
-        # shows it in a fixed sentence, which takes one of its cause slots.
-        inflight = {risk["code"]: (triggered.get(risk["code"]) or {}).get("inflightSevere")
-                    for risk in risk_order}
+        # 根因规则.md (2026-11-19): every metric result of the round goes in;
+        # the ontology's rule page and cause page do not.
+        low, high = CAUSES_PER_RISK
+        all_codes = list(config.get("metrics") or {})
+        measured_codes = list(dict.fromkeys(
+            code for code in (_metric_code_of(fact.get("id"), all_codes) for fact in facts) if code))
+        other_facts = [{key: fact.get(key) for key in ("label", "value", "unit", "definition")
+                        if fact.get(key) not in (None, "")}
+                       for fact in facts
+                       if not _metric_code_of(fact.get("id"), all_codes) and fact.get("value") is not None]
         request = dict(
             kind="global_causes", code="BR-L01", period=period,
             causesPerRisk=dict(min=low, max=high),
-            analysisRule=_text(cause_analysis.get("description")),
             risks=[dict(code=risk["code"], name=risk["name"], level=risk.get("level") or "",
-                        judgement=risk.get("reason") or "", rule=risk["rule"],
-                        ontology=element(risk_specs.get(risk["code"]) or {}, risk),
-                        observed=risk["observed"],
-                        ontologyCauses=[element(cause_specs[code], dict(
-                            code=code, name=_text(cause_specs[code].get("name")) or code))
-                            for code in (links.get(risk["code"]) or {}).get("causes") or []
-                            if code in cause_specs],
-                        causeLimit=high - 1 if inflight.get(risk["code"]) else high,
-                        metrics=_metric_context(config, [code for code in indicator_codes(risk_specs.get(risk["code"]))
-                                                         if code != "P0-09"], facts))
-                   for risk in risk_order])
+                        judgement=risk.get("reason") or "",
+                        relatedMetrics=indicator_codes(risk_specs.get(risk["code"])))
+                   for risk in risk_order],
+            metrics=_metric_context(config, measured_codes, facts),
+            otherFacts=other_facts)
         answer = _global_causes(judge, request, progress, low=low, high=high)
         inference_calls += answer["calls"]
         base = dict(kind="cause", rule=dict(GLOBAL_CAUSE_RULE), ruleStatus="inferred", inferred=True,
                     aiAnalysis=True, observed=[])
         for risk in risk_order:
             found = answer["causes"].get(risk["code"]) or []
-            fixed = inflight.get(risk["code"])
-            if fixed:
-                cause_entries.append(dict(
-                    base, code=f"{risk['code']}-P0", name="仍处于商机获取阶段的严重超期",
-                    linkedRisks=[risk["code"]], evidenceIds=list(risk["evidenceIds"])[:3],
-                    decidedBy="rule", established=True, missingEvidence=[],
-                    reason=_inflight_sentence(fixed)))
-            if not found and fixed:
-                continue
             if not found:
                 cause_entries.append(dict(
                     base, code=f"{risk['code']}-AI", name=f"{risk['name']}·AI 根因分析",
@@ -892,7 +856,7 @@ def judge_card(evaluated, config, *, judge=None, progress=None, primary="risk", 
                 continue
             for index, item in enumerate(found, 1):
                 cause_entries.append(dict(
-                    base, code=f"{risk['code']}-AI{index}", name=item["title"], evidenceMetrics=item["evidence"],
+                    base, code=f"{risk['code']}-AI{index}", name=item["title"],
                     linkedRisks=[risk["code"]], evidenceIds=list(risk["evidenceIds"])[:3],
                     decidedBy="model", established=True,
                     reason=item["description"] or item["title"],

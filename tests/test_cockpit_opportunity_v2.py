@@ -315,9 +315,9 @@ def test_build_card_reports_internal_steps_in_execution_order():
     assert phases.index('rules') < phases.index('analysing') and phases[-1] == 'publishing'
     assert set(phases[phases.index('analysing') + 1:-1]) <= {'judging'}
     fetch = [detail for phase, detail in events if phase == 'fetching']
-    assert fetch[-1]['completed'] == fetch[-1]['total'] == 14
+    assert fetch[-1]['completed'] == fetch[-1]['total'] == 15  # + 商机获取阶段在途需求与预测 (根因规则.md)
     labels = [item['label'] for item in card['result']['queryCatalog']]
-    assert len(labels) == 14 and '投标' not in labels
+    assert len(labels) == 15 and '投标' not in labels
     # BR-V12: the product-team query no longer feeds a risk or cause.
     assert '产品部销售缺口' not in labels and '全年覆盖预测' not in labels
     assert {'商机预测缺口', '客户预测缺口', '阶段周期分档', 'P0在途超期', '战略重点商机储备', '无商机战略客户'} <= set(labels)
@@ -946,7 +946,7 @@ def test_collect_uses_three_snapshot_readers_and_reports_query_progress():
                    progress=lambda phase, **detail: events.append((phase, detail)))
     assert max_active >= 2
     fetch = [detail for phase, detail in events if phase == 'fetching']
-    assert fetch and fetch[-1]['completed'] == fetch[-1]['total'] == 14
+    assert fetch and fetch[-1]['completed'] == fetch[-1]['total'] == 15
     assert all('query' in detail and 'queryDurationSeconds' in detail for detail in fetch)
     assert data['queryStatus']['商机预测'] == 'ok'
 
@@ -970,7 +970,7 @@ def test_query_catalog_keeps_execution_record_and_result_snapshot():
     card = build_card('2026', database=Database(), measurement_date='2026-11-11',
                       judge=_judge_no)
     catalog = card['result']['queryCatalog']
-    assert len(catalog) == 14
+    assert len(catalog) == 15
     for item in catalog:
         assert item['executionId'] and len(item['executionId']) == 32
         assert item['startedAt'] and item['finishedAt']
@@ -1892,8 +1892,7 @@ def test_ai_root_causes_come_from_one_global_analysis_of_the_established_risks()
     def answer(request):
         first.update(request)
         return dict(risks=[dict(code=risk['code'], causes=[
-            dict(title=f"{risk['code']} 根因{name}", description=text, dataGaps=gaps,
-                 evidence=[risk['metrics'][0]['code']])
+            dict(title=f"{risk['code']} 根因{name}", description=text, dataGaps=gaps)
             for name, text, gaps in (('甲', '依据输入数据推理', '需补客户拜访记录'), ('乙', '结合风险关联推理', ''),
                                      ('丙', '超出上限', ''))]) for risk in request['risks']])
 
@@ -1907,12 +1906,12 @@ def test_ai_root_causes_come_from_one_global_analysis_of_the_established_risks()
     calls = [item for item in seen if item['kind'] == 'global_causes']
     # One call covering every established risk with its own metric results.
     assert len(calls) == 1 and [risk['code'] for risk in first['risks']] == established
-    # 0～2 causes per risk; the ontology 根因 page is the context of each risk.
+    # 根因规则.md: 0～2 causes per risk from every metric result of the round;
+    # neither the ontology's rule page nor its cause page is sent.
     assert first['causesPerRisk'] == dict(min=0, max=2)
-    assert all(risk['metrics'] and 'judgement' in risk for risk in first['risks'])
-    assert all(risk['ontologyCauses'] for risk in first['risks'])
-    assert all(item['code'].startswith('RC') and item['name'] for risk in first['risks']
-               for item in risk['ontologyCauses'])
+    assert all('judgement' in risk and risk['relatedMetrics'] for risk in first['risks'])
+    assert not any(key in risk for risk in first['risks'] for key in ('rule', 'ontology', 'ontologyCauses'))
+    assert len(first['metrics']) > len(first['risks'])
     assert not [item for item in seen if item['kind'] in ('cause', 'inference')]
     # Each cause stays its own item under its risk; the third is over the limit.
     causes = judged['causes']
@@ -1994,13 +1993,13 @@ def test_rk11_lists_only_severe_overruns_and_states_the_deduplicated_total():
                              stageBandStatus='ok')
     rk11 = next(risk for risk in value['risks'] if risk['code'] == 'RK11')
     # BR-V09: counted once per opportunity across stages, forecast summed once.
-    assert rk11['description'] == '300 条商机在已结束阶段出现严重超期，涉及预测金额 123.46 亿元，涉及预测电量 45.60 GWh。'
+    assert rk11['description'] == '300 条商机在已结束阶段出现严重超期，预测金额 123.46 亿元，预测电量 45.60 GWh。'
     assert rk11['level'] == '高'  # three stages hit
     # Only the severe band is listed, one line per stage; the < 50% band is not shown.
     assert [(item['code'], item['stage'], item['count']) for item in rk11['metricDetails']] == [
         ('R13', '商机获取', 200), ('R15', '技术交流', 100), ('R17', '方案推动', 58)]
     assert all(item['band'] == '严重超期' for item in rk11['metricDetails'])
-    assert rk11['metricDetails'][0]['amountText'] == '涉及预测金额 100.00 亿元'
+    assert rk11['metricDetails'][0]['amountText'] == '预测金额 100.00 亿元'
     # One stage, amount below 10 亿元 → 中; an incomplete amount leaves the level open.
     one = _strategic_value(stageBands=_severe_bands(dict(opportunity_count=4, amount_yi=6.0, energy_gwh=1.0,
                                                          hit_stage_count=1), R13=4), stageBandStatus='ok')
@@ -2009,7 +2008,7 @@ def test_rk11_lists_only_severe_overruns_and_states_the_deduplicated_total():
                                                              missing_amount_opportunities=1), R13=4),
                                stageBandStatus='ok')
     rk11 = next(r for r in partial['risks'] if r['code'] == 'RK11')
-    assert rk11['level'] == '' and '已记录预测金额 6.00 亿元' in rk11['description']
+    assert rk11['level'] == '' and '，预测金额 6.00 亿元' in rk11['description']
     assert '预测电量待核实' in rk11['description']
 
 
@@ -2039,7 +2038,7 @@ def test_rk06_is_judged_on_the_r08_positive_gap_summary():
     value = evaluate(_data(ontologyResults=dict(R08=r08)), measured=date(2025, 10, 31))
     rk06 = next(risk for risk in value['risks'] if risk['code'] == 'RK06')
     assert rk06['name'] == '客户预测不足'
-    assert rk06['description'] == ('共 5 家客户存在缺口。金额口径涉及 4 家，目标 50.00 亿元，'
+    assert rk06['description'] == ('共 5 家客户存在缺口。金额口径 4 家，目标 50.00 亿元，'
                                    '已签单 10.00 亿元，剩余预测 15.00 亿元，缺口合计 25.00 亿元。')
     assert rk06['level'] == '中'  # no strategic customer among the gaps
     assert value['metrics']['R08']['count'] == 5
@@ -2066,8 +2065,8 @@ def test_ai_root_causes_must_not_repeat_their_risk():
     judged = _judged(value, _ai_judge([restate, restate], seen))
     calls = [item for item in seen if item['kind'] == 'global_causes']
     assert len(calls) == 2 and '根因不得重复风险已有内容' in '；'.join(calls[1]['validationFeedback'])
-    from bi_agent.cockpit.opportunity_judgement import GLOBAL_CAUSE_PROMPT
-    assert '根因不得复述该风险 judgement' in GLOBAL_CAUSE_PROMPT
+    from bi_agent.cockpit.opportunity_judgement import CAUSE_CONTRACT
+    assert '不要复述风险描述的原句' in CAUSE_CONTRACT
     # 1117 1119 BR-L01: what still repeats after the retry is dropped and the
     # risk shows “暂无可验证根因”.
     assert not judged['causes']
@@ -2078,58 +2077,72 @@ def test_ai_root_causes_must_not_repeat_their_risk():
     assert all(finding['causeNote'] for finding in empty['findings'])
 
 
-def test_ai_root_causes_follow_the_1119_publishing_rules():
+def test_root_causes_are_driven_by_the_cause_rules_file():
     from bi_agent.cockpit.opportunity_judgement import (
-        _forbidden, _inflight_sentence, _tidy, _untraceable_numbers)
+        CAUSE_RULES_PATH, _tidy, _untraceable_numbers, cause_rules, global_cause_prompt)
     from bi_agent.cockpit.opportunity_v2 import _volume_phrase
 
-    def cause(text, title='原因'):
-        return dict(title=title, description=text)
-    # No overall “商机储备不足” on any risk; RK06 may describe its own gap customers.
-    assert _forbidden('RK01', cause('商机储备严重不足，后续签单承接乏力'))
-    assert _forbidden('RK11', cause('整体商机池不足'))
-    assert _forbidden('RK06', cause('全局商机储备偏少'))
-    assert _forbidden('RK06', cause('存在缺口的客户中战略及重点客户的商机储备不足，占比 8.4%')) == ''
-    # C10 strategic reserve belongs to RK06 only.
-    assert _forbidden('RK01', cause('战略及重点客户的商机储备占比 8.4%'))
-    # P0-09 never comes from the model, on any risk.
-    assert _forbidden('RK11', cause('截至观察日仍处于商机获取阶段的商机有 9 个'))
-    assert _forbidden('RK01', cause('在途商机拖累需求确认'))
-    # BR-D02: small business counts are checked too; month spans and codes are labels.
+    # 根因规则.md: its 系统提示词 and 规则 sections are sent as written.
+    assert CAUSE_RULES_PATH.name == '根因规则.md'
+    system, rules = cause_rules()
+    assert system.startswith('风险分析思维链') and '客户需求确认滞后' in system and '严重超期情况的占比和影响' in system
+    assert rules.startswith('1、严重超期') and '无预测记录、金额为空、金额为0也需要分开' in rules
+    prompt = global_cause_prompt(0, 2)
+    assert system in prompt and rules in prompt and '0～2 条根因' in prompt
+    assert '业务规则' not in prompt and 'BR-' not in prompt
+    # 规则 1～7 on the published text, months as written by the model.
+    assert _tidy('P0阶段严重超期（超基线 50% 及以上）的商机涉及预测金额 3 亿元，已记录预测电量 1 GWh') == (
+        '商机获取阶段严重超期的商机预测金额 3 亿元，预测电量 1 GWh')
+    assert _tidy('正缺口客户的进度＋预测不足') == '缺口客户的已签单＋剩余预测不足'
+    assert _tidy('进度（1—9月已签单）与预测（10—12月）') == '1—9月已签单与10—12月剩余预测'
+    # Numbers must come from the input; month spans and codes are labels.
     assert _untraceable_numbers('有 3 家客户', {'5'}) == ['3']
     assert _untraceable_numbers('1—9月已签单，P0-09 与 R13 对比', set()) == []
-    # Wording: no “反映”, business stage names.
-    assert _tidy('数据反映出P0阶段停留较长，正缺口客户集中') == '商机获取阶段停留较长，存在缺口的客户集中'
-    # Completeness wording (BR-V09) and the fixed P0-09 sentence (BR-V12).
-    assert _volume_phrase('金额', 5.0, '亿元', 4, 0) == '涉及预测金额 5.00 亿元'
-    assert _volume_phrase('金额', 5.0, '亿元', 4, 1) == '已记录预测金额 5.00 亿元'
+    # Risk wording: no 涉及 / 已记录; nothing at all is 待核实.
+    assert _volume_phrase('金额', 5.0, '亿元', 4, 0) == '预测金额 5.00 亿元'
+    assert _volume_phrase('金额', 5.0, '亿元', 4, 1) == '预测金额 5.00 亿元'
     assert _volume_phrase('金额', None, '亿元', 4, 4) == '预测金额待核实'
-    assert _inflight_sentence(dict(count=9, amount=2.5, energy=None, missingAmount=0)) == (
-        '截至观察日，仍处于商机获取阶段且严重超期的商机有 9 个，涉及预测金额 2.50 亿元。')
 
 
-def test_ai_root_causes_use_only_their_own_risk_evidence():
-    value = _strategic_value()
-    established = [item['riskCode'] for item in _judged(value, _judge_no)['findings']]
-    assert 'RK01' in established
+def test_root_causes_read_every_metric_result_and_the_pipeline_split():
+    from bi_agent.cockpit.opportunity_v2 import PIPELINE_QUERY
+
+    pipeline = dict(queryStatus='ok', count=1900, amount=0.5, detail={
+        '在途商机数': 1900,
+        '预测情况': {'无预测记录商机数': 1200, '有预测记录但金额全部为空商机数': 300, '预测金额为0商机数': 327,
+                 '预测金额大于0商机数': 73},
+        '保密协议签署': {'已签署': 100, '未签署': 1500, '无需签署': 50, '未填写': 250},
+        '客户需求输入': {'已输入': 80, '未输入': 1700, '未填写': 120}})
+    value = _strategic_value(ontologyResults={PIPELINE_QUERY[1]: pipeline})
+    facts = {item['label']: item['value'] for item in value['evidence']['facts']}
+    # No record / amount empty / amount 0 are three separate facts (规则 8).
+    assert facts['截至观察日仍处于商机获取阶段的商机·预测情况·无预测记录商机数'] == 1200
+    assert facts['截至观察日仍处于商机获取阶段的商机·预测情况·有预测记录但金额全部为空商机数'] == 300
+    assert facts['截至观察日仍处于商机获取阶段的商机·预测情况·预测金额为0商机数'] == 327
+    assert facts['截至观察日仍处于商机获取阶段的商机·保密协议签署·未签署'] == 1500
     seen = []
-    # RK01 citing RK06's C10 is evidence from another risk: dropped after the retry.
-    borrowed = dict(risks=[dict(code='RK01', causes=[dict(title='客户结构集中', description='依据输入数据',
-                                                          dataGaps='', evidence=['C10'])])])
-    judged = _judged(value, _ai_judge([borrowed, borrowed], seen))
-    feedback = '；'.join(seen[-1]['validationFeedback'])
-    assert '不属于该风险的指标 C10' in feedback
-    assert 'RK01' not in {code for item in judged['causes'] for code in item['riskCodes']}
-    # The model never receives P0-09.
+    _judged(value, _ai_judge([dict(risks=[])], seen))
     request = next(item for item in seen if item['kind'] == 'global_causes')
-    assert all(metric['code'] != 'P0-09' for risk in request['risks'] for metric in risk['metrics'])
+    labels = [item['label'] for item in request['otherFacts']]
+    assert '截至观察日仍处于商机获取阶段的商机·预测情况·无预测记录商机数' in labels
+
+
+def test_the_pipeline_query_splits_the_p0_population():
+    from bi_agent.cockpit.opportunity_v2 import _pipeline_sql
+
+    sql = _pipeline_sql(load_config(), 2025, date(2025, 10, 31))
+    assert sql.count('%s') == 3 and 'p0_inflight_facts' in sql and "WHERE code = 'P0-09'" not in sql
+    for key in ("'无预测记录商机数'", "'有预测记录但金额全部为空商机数'", "'预测金额为0商机数'",
+                "'保密协议签署'", "'客户需求输入'", "'客户需求审核状态'"):
+        assert key in sql
 
 
 def test_the_ontology_queries_bind_period_and_observation_day():
     from bi_agent.cockpit.opportunity_v2 import _ontology_specs
 
     specs = _ontology_specs(load_config(), 2025, date(2025, 10, 31))
-    assert [label for label, _, _ in specs] == ['商机预测缺口', '客户预测缺口', 'P0在途超期', '战略重点商机储备', '无商机战略客户']
+    assert [label for label, _, _ in specs] == ['商机预测缺口', '客户预测缺口', 'P0在途超期', '战略重点商机储备', '无商机战略客户',
+                                                '商机获取阶段在途需求与预测']
     assert all(params == [date(2025, 1, 1), date(2026, 1, 1), date(2025, 10, 31)] for _, _, params in specs)
     assert all(sql.count('%s') == 3 for _, sql, _ in specs)
 

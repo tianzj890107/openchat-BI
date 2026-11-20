@@ -695,6 +695,7 @@ def _stage_band_rows(rows):
             count=int(count) if count is not None else None,
             amount=_number(row.get("金额_亿元")), energy=_number(row.get("电量_GWh")),
             status=_text(row.get("计算说明状态")), means=means,
+            stageRecords=_number(detail.get("期间阶段记录数")),
             missingAmount=_number(detail.get("命中商机金额不可计算数")),
             missingEnergy=_number(detail.get("命中商机电量不可计算数")),
             meanKnown=any((item["days"] or 0) > 0 for item in means),
@@ -801,6 +802,86 @@ _ONTOLOGY_QUERIES = (
 )
 
 
+# 根因规则.md (2026-11-19): 商机预测覆盖不足's 客户需求确认滞后 cause reads the
+# opportunities still in 商机获取 with their forecast split three ways (no
+# record / amount empty / amount 0) and their NDA and demand-input status.
+PIPELINE_QUERY = ("商机获取阶段在途需求与预测", "P0-PIPE")
+PIPELINE_NAME = "截至观察日仍处于商机获取阶段的商机"
+
+_PIPELINE_TAIL = """p0_pipeline AS MATERIALIZED (
+SELECT f.opportunity_id, f.band_code, f.forecast_rows, f.amount_yi, f.missing_amount_rows,
+    NULLIF(TRIM(o.new_isneedcda), '') AS cda_status,
+    NULLIF(TRIM(o.demand_status), '') AS demand_status,
+    NULLIF(TRIM(o.new_approvalstatus_acneed), '') AS demand_approval,
+    CASE WHEN f.forecast_rows IS NULL THEN 'none'
+         WHEN f.amount_yi IS NULL THEN 'empty'
+         WHEN f.amount_yi = 0 THEN 'zero'
+         ELSE 'positive' END AS forecast_state
+  FROM p0_inflight_facts AS f
+  LEFT JOIN opportunity_rows AS o
+    ON o.opportunity_id = f.opportunity_id AND o.rn = 1
+)
+SELECT
+  'P0-PIPE' AS "指标序号",
+  '截至观察日仍处于商机获取阶段的商机需求与预测情况' AS "指标名称",
+  CAST(SUM(amount_yi) AS DECIMAL) AS "金额_亿元",
+  CAST(COUNT(*) AS BIGINT) AS "数量",
+  JSONB_BUILD_OBJECT(
+    '在途商机数', COUNT(*),
+    '预测情况', JSONB_BUILD_OBJECT(
+      '无预测记录商机数', COUNT(*) FILTER (WHERE forecast_state = 'none'),
+      '有预测记录但金额全部为空商机数', COUNT(*) FILTER (WHERE forecast_state = 'empty'),
+      '预测金额为0商机数', COUNT(*) FILTER (WHERE forecast_state = 'zero'),
+      '预测金额大于0商机数', COUNT(*) FILTER (WHERE forecast_state = 'positive'),
+      '部分预测记录金额为空商机数', COUNT(*) FILTER (WHERE amount_yi IS NOT NULL AND missing_amount_rows > 0),
+      '预测金额合计_亿元', SUM(amount_yi)),
+    '保密协议签署', JSONB_BUILD_OBJECT(
+      '已签署', COUNT(*) FILTER (WHERE cda_status = '1'),
+      '未签署', COUNT(*) FILTER (WHERE cda_status = '2'),
+      '无需签署', COUNT(*) FILTER (WHERE cda_status = '3'),
+      '未填写', COUNT(*) FILTER (WHERE cda_status IS NULL),
+      '其他取值', COUNT(*) FILTER (WHERE cda_status NOT IN ('1', '2', '3'))),
+    '客户需求输入', JSONB_BUILD_OBJECT(
+      '已输入', COUNT(*) FILTER (WHERE demand_status = '1'),
+      '未输入', COUNT(*) FILTER (WHERE demand_status = '0'),
+      '未填写', COUNT(*) FILTER (WHERE demand_status IS NULL),
+      '其他取值', COUNT(*) FILTER (WHERE demand_status NOT IN ('0', '1'))),
+    '客户需求审核状态', JSONB_BUILD_OBJECT(
+      '未申请', COUNT(*) FILTER (WHERE demand_approval = '1'),
+      '审核中', COUNT(*) FILTER (WHERE demand_approval = '2'),
+      '审核通过', COUNT(*) FILTER (WHERE demand_approval = '3'),
+      '已驳回', COUNT(*) FILTER (WHERE demand_approval = '4'),
+      '废弃', COUNT(*) FILTER (WHERE demand_approval = '5'),
+      '未填写', COUNT(*) FILTER (WHERE demand_approval IS NULL)),
+    '无预测记录商机', JSONB_BUILD_OBJECT(
+      '商机数', COUNT(*) FILTER (WHERE forecast_state = 'none'),
+      '保密协议未签署', COUNT(*) FILTER (WHERE forecast_state = 'none' AND cda_status = '2'),
+      '客户需求未输入', COUNT(*) FILTER (WHERE forecast_state = 'none' AND demand_status = '0'),
+      '保密协议未签署且客户需求未输入',
+      COUNT(*) FILTER (WHERE forecast_state = 'none' AND cda_status = '2' AND demand_status = '0')),
+    '其中严重超期', JSONB_BUILD_OBJECT(
+      '商机数', COUNT(*) FILTER (WHERE band_code = 'GE50'),
+      '无预测记录商机数', COUNT(*) FILTER (WHERE band_code = 'GE50' AND forecast_state = 'none'),
+      '有预测记录但金额全部为空商机数', COUNT(*) FILTER (WHERE band_code = 'GE50' AND forecast_state = 'empty'),
+      '预测金额为0商机数', COUNT(*) FILTER (WHERE band_code = 'GE50' AND forecast_state = 'zero'),
+      '预测金额大于0商机数', COUNT(*) FILTER (WHERE band_code = 'GE50' AND forecast_state = 'positive'))
+  ) AS "分组明细及缺口"
+FROM p0_pipeline"""
+
+
+def _pipeline_sql(config, year, measured, schema="ded_public"):
+    """P0-09's own population (still in 商机获取 at the observation day) with
+    the card's split; "" when the ontology has no parameterised P0-09."""
+    sql = _ontology_metric_sql(config, "P0-09", year, measured, schema)
+    marker = "metric_results AS MATERIALIZED ("
+    if not sql or not _PARAM_STYLE.search(sql) or marker not in sql or "p0_inflight_facts" not in sql:
+        return ""
+    tail = _PIPELINE_TAIL
+    if schema and schema != "ded_public":
+        tail = tail.replace("ded_public.", f"{schema}.")
+    return sql[:sql.index(marker)] + tail
+
+
 def _ontology_specs(config, year, measured, schema="ded_public"):
     """(label, sql, params) for the parameterised ontology queries the card reads."""
     specs = []
@@ -808,6 +889,9 @@ def _ontology_specs(config, year, measured, schema="ded_public"):
         sql = _ontology_metric_sql(config, code, year, measured, schema)
         if sql and _PARAM_STYLE.search(sql):
             specs.append((label, sql, _ontology_params(sql, year, measured)))
+    pipeline = _pipeline_sql(config, year, measured, schema)
+    if pipeline:
+        specs.append((PIPELINE_QUERY[0], pipeline, _ontology_params(pipeline, year, measured)))
     return specs
 
 
@@ -1639,7 +1723,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
                             status=query_status.get("全年覆盖预测", "unavailable" if not coverage_sql else "")),
         ontologyResults={code: dict(_ontology_result(results.get(label, [])),
                                     queryStatus=query_status.get(label, ""))
-                         for label, code in _ONTOLOGY_QUERIES if label in query_status},
+                         for label, code in (*_ONTOLOGY_QUERIES, PIPELINE_QUERY) if label in query_status},
         targets=targets,
         productTypes=product_types,
         targetEnergyDivisor=target_energy_divisor,
@@ -1698,17 +1782,15 @@ def _gap(target, coverage):
 
 
 def _volume_phrase(label, value, unit, count=None, missing=None):
-    """BR-V09 wording by completeness: 涉及 / 已记录 / 待核实.
+    """Forecast wording: the value, or “待核实” when no opportunity has one.
 
     ``missing`` is how many of the ``count`` opportunities have no usable
-    forecast; a sum over only some of them is “已记录”, none at all is
-    “待核实”.
+    forecast.
     """
+    # 2026-11-19: “涉及”“已记录” are no longer written.
     if value is None or (count and missing is not None and missing >= count):
         return f"预测{label}待核实"
-    if missing:
-        return f"已记录预测{label} {value:.2f} {unit}"
-    return f"涉及预测{label} {value:.2f} {unit}"
+    return f"预测{label} {value:.2f} {unit}"
 
 
 def _month_span(first, last):
@@ -2492,13 +2574,15 @@ def evaluate(data, config=None, measured=None):
     progress_definition = (f"进度：{progress_months or '观察月以前'}已签单商机预测（观察月以前各月，已关联订单）"
                            if progress_months else "进度：观察月为 1 月，没有已历月份")
     forecast_definition = f"预测：{forecast_months}全部商机预测（含已签、未签），截至观察日可用的最新版本"
-    f_r01_progress_a = fact("R01-PROGRESS-AMOUNT", "进度：已历月份已签单商机预测（金额）",
+    signed_label = f"{progress_months}已签单" if progress_months else "已签单"
+    remaining_label = f"{forecast_months}剩余预测"
+    f_r01_progress_a = fact("R01-PROGRESS-AMOUNT", f"{signed_label}（金额）",
                             cover["progress_amount"], "亿元", progress_definition, source=coverage_source)
-    f_r01_progress_e = fact("R01-PROGRESS-ENERGY", "进度：已历月份已签单商机预测（电量）",
+    f_r01_progress_e = fact("R01-PROGRESS-ENERGY", f"{signed_label}（电量）",
                             cover["progress_energy"], "GWh", progress_definition, source=coverage_source)
-    f_r01_forecast_a = fact("R01-FORECAST-AMOUNT", "预测：观察月至年底商机预测（金额）",
+    f_r01_forecast_a = fact("R01-FORECAST-AMOUNT", f"{remaining_label}（金额）",
                             cover["forecast_amount"], "亿元", forecast_definition, source=coverage_source)
-    f_r01_forecast_e = fact("R01-FORECAST-ENERGY", "预测：观察月至年底商机预测（电量）",
+    f_r01_forecast_e = fact("R01-FORECAST-ENERGY", f"{remaining_label}（电量）",
                             cover["forecast_energy"], "GWh", forecast_definition, source=coverage_source)
     f_r01_a = fact("R01-AMOUNT", "商机预测缺口（金额）", gap_amount, "亿元",
                    "B01 年度目标 −（进度 ＋ 预测），金额单独计算", source=gap_source)
@@ -2636,6 +2720,8 @@ def evaluate(data, config=None, measured=None):
                      "实际周期 > 同期间同阶段同产品真实动态平均周期且 < × 1.5")
         band_facts[code] = [
             fact(code, metric_name, count, "个", f"{stage}阶段已结束商机，{basis}；只计已结束"),
+            fact(f"{code}-STAGE-RECORDS", f"{stage}阶段期间已结束记录数", item.get("stageRecords"), "条",
+                 "该阶段本期间结束的全部记录，用于计算超期、严重超期占比"),
             fact(f"{code}-AMOUNT", f"{stage}阶段{('严重超期' if severe else '超期') if static_baseline else ('超均值≥50%' if severe else '超均值<50%')}商机预测（金额）",
                  item.get("amount"), "亿元", "命中商机的期间预测金额合计；预测缺失不剔除商机"),
             fact(f"{code}-ENERGY", f"{stage}阶段{('严重超期' if severe else '超期') if static_baseline else ('超均值≥50%' if severe else '超均值<50%')}商机预测（电量）",
@@ -2796,21 +2882,22 @@ def evaluate(data, config=None, measured=None):
             for key, value in side.items():
                 number = _number(value)
                 if number is not None:
-                    side_facts.append(fact(f"R08-{basis}-{key}", f"客户预测缺口·{basis}口径·{key}", number,
+                    shown = key.replace("进度", "已签单").replace("正缺口", "缺口")
+                    side_facts.append(fact(f"R08-{basis}-{key}", f"客户预测缺口·{basis}口径·{shown}", number,
                                            "家" if key.endswith("数") else unit))
         if gap_count:
             strategic = (_number(amount_side.get("战略客户数")) or 0) + (_number(energy_side.get("战略客户数")) or 0)
             unknown_level = ((_number(amount_side.get("客户等级未知数")) or 0)
                              + (_number(energy_side.get("客户等级未知数")) or 0))
             level = "高" if strategic else ("" if unknown_level else "中")
-            # RK06 template (1117 1119): 共 n 家客户存在缺口。金额口径涉及 a 家，… 电量口径涉及 e 家，…
+            # RK06 template (1117 1119, 2026-11-19 without 涉及): 共 n 家客户存在缺口。金额口径 a 家，…
             parts = [f"共 {int(gap_count)} 家客户存在缺口。"]
             for basis, side, unit, key in (("金额", amount_side, "亿元", "金额"), ("电量", energy_side, "GWh", "电量")):
                 count = _number(side.get("缺口客户数"))
                 if not count:
                     continue
                 value = lambda name: _number(side.get(f"{name}{key}_{unit}"))
-                parts.append(f"{basis}口径涉及 {int(count)} 家，目标 {value('目标') or 0:.2f} {unit}，"
+                parts.append(f"{basis}口径 {int(count)} 家，目标 {value('目标') or 0:.2f} {unit}，"
                              f"已签单 {value('进度') or 0:.2f} {unit}，剩余预测 {value('剩余预测') or 0:.2f} {unit}，"
                              f"缺口合计 {value('缺口') or 0:.2f} {unit}。")
             evidence = [f_r08] + side_facts
@@ -2983,27 +3070,17 @@ def evaluate(data, config=None, measured=None):
         name = _risk_name(config, "RK11", "商机推进阶段周期超均值较多，拖慢签单")
         risk = _risk("RK11", name, level, f"RK11 {name}", description, ["RK11", *STAGE_BAND_CODES],
                      evidence, dict(count=hit_count, amount=hit_amount, energy=hit_energy), objects[:40])
-        # BR-V12: P0-09 (still in 商机获取, severe) is shown only under RK11,
-        # in a fixed sentence built from these fields.
-        inflight = ((ontology_results.get("P0-09") or {}).get("detail") or {})
-        inflight = inflight.get("严重超期汇总") if isinstance(inflight, dict) else None
-        extra = {}
-        if isinstance(inflight, dict) and _number(inflight.get("商机数")):
-            extra["inflightSevere"] = dict(
-                count=int(_number(inflight.get("商机数"))),
-                amount=_number(inflight.get("预测金额_亿元")), energy=_number(inflight.get("预测电量_GWh")),
-                missingAmount=_number(inflight.get("金额不可计算商机数")),
-                missingEnergy=_number(inflight.get("电量不可计算商机数")))
         risks.append(dict(risk, metricDetails=[item for item in band_details
-                                               if item["code"] in SEVERE_BAND_CODES], **extra))
+                                               if item["code"] in SEVERE_BAND_CODES]))
 
     # Facts the AI cause analysis reads for RK06 / RK11 (C10, R09, P0-09):
     # the query's headline values and the scalar parts of its detail.
-    for code, unit in (("C10", "亿元"), ("R09", "家"), ("P0-09", "亿元")):
+    for code, unit in (("C10", "亿元"), ("R09", "家"), ("P0-09", "亿元"), (PIPELINE_QUERY[1], "个")):
         item = ontology_results.get(code) or {}
         if not item:
             continue
-        name = _text(((config.get("metrics") or {}).get(code) or {}).get("name")) or code
+        name = (PIPELINE_NAME if code == PIPELINE_QUERY[1]
+                else _text(((config.get("metrics") or {}).get(code) or {}).get("name")) or code)
         for key, label, value, value_unit in (("AMOUNT", "金额", item.get("amount"), "亿元"),
                                               ("ENERGY", "电量", item.get("energy"), "GWh"),
                                               ("COUNT", "数量", item.get("count"), "个"),

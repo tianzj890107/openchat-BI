@@ -434,7 +434,7 @@ def _opportunity_issues(values, params, data, measured, records):
 
             def value(name, side=side, label=label, unit=unit):
                 return num(side.get(f"{name}{label}_{unit}")) or 0
-            parts.append(f"{label}口径涉及 {int(side_count)} 家，目标 {value('目标'):.2f} {unit}，"
+            parts.append(f"{label}口径 {int(side_count)} 家，目标 {value('目标'):.2f} {unit}，"
                          f"已签单 {value('进度'):.2f} {unit}，剩余预测 {value('剩余预测'):.2f} {unit}，"
                          f"缺口合计 {value('缺口'):.2f} {unit}。")
         customers = sorted(entry.get("customers") or [], key=lambda row: -(num(row.get("gap_amount")) or 0))

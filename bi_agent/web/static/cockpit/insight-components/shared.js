@@ -659,8 +659,8 @@ export function createStageRiskComponent(options = {}) {
                   <li v-for="metric in finding.metricDetails" :key="metric.code">
                     <b>{{ metric.stage }}阶段</b> · {{ metric.band }}
                     <template v-if="metric.count != null"> · <number-text :text="metric.count + ' 条'" /></template>
-                    · <number-text :text="metric.amountText || (metric.amount == null ? '预测金额待核实' : '涉及预测金额 ' + Number(metric.amount).toFixed(2) + ' 亿元')" />
-                    · <number-text :text="metric.energyText || (metric.energy == null ? '预测电量待核实' : '涉及预测电量 ' + Number(metric.energy).toFixed(2) + ' GWh')" />
+                    · <number-text :text="metric.amountText || (metric.amount == null ? '预测金额待核实' : '预测金额 ' + Number(metric.amount).toFixed(2) + ' 亿元')" />
+                    · <number-text :text="metric.energyText || (metric.energy == null ? '预测电量待核实' : '预测电量 ' + Number(metric.energy).toFixed(2) + ' GWh')" />
                   </li>
                 </ul>
                 <trace-details v-if="showEvidence" :trace="traces[finding.id]" :count="distinctEvidenceCount(finding)" :duration-text="durationText" :query-columns="queryColumns" :cell-text="cellText" />
