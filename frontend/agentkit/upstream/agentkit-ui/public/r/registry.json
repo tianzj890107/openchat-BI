@@ -1,0 +1,351 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "agentkit",
+  "homepage": "https://github.com/spzn-agentkit/agentkit-ui",
+  "items": [
+    {
+      "name": "confirm-dialog",
+      "type": "registry:component",
+      "title": "Confirm Dialog",
+      "description": "破坏性操作的确认对话框，封装 AlertDialog + Button。",
+      "registryDependencies": ["alert-dialog", "button"],
+      "files": [
+        {
+          "path": "src/components/confirm-dialog.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "password-input",
+      "type": "registry:component",
+      "title": "Password Input",
+      "description": "带显隐切换的密码输入框。",
+      "registryDependencies": ["button"],
+      "dependencies": ["lucide-react"],
+      "files": [
+        {
+          "path": "src/components/password-input.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "data-table",
+      "type": "registry:component",
+      "title": "Data Table",
+      "description": "TanStack Table 工具栏、分页、列筛选与批量操作原语。",
+      "registryDependencies": [
+        "table",
+        "button",
+        "input",
+        "select",
+        "dropdown-menu",
+        "popover",
+        "checkbox",
+        "badge",
+        "separator",
+        "command"
+      ],
+      "dependencies": ["@tanstack/react-table", "@radix-ui/react-icons"],
+      "files": [
+        {
+          "path": "src/components/data-table/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-table/toolbar.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-table/pagination.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-table/column-header.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-table/faceted-filter.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-table/view-options.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-table/bulk-actions.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "list-page",
+      "type": "registry:block",
+      "title": "List Page",
+      "description": "类型 A 密集清单：ListPageShell、ResourceListView、URL 筛选与弹窗编排。ListPageShell 依赖本仓 AppChromeHeader 布局，跨项目安装时请改用 ResourceListView 或自行提供顶栏。",
+      "registryDependencies": [
+        "@agentkit/data-table",
+        "table",
+        "button",
+        "tooltip",
+        "skeleton",
+        "card"
+      ],
+      "dependencies": [
+        "@tanstack/react-table",
+        "@tanstack/react-router",
+        "date-fns",
+        "lucide-react",
+        "zod"
+      ],
+      "files": [
+        {
+          "path": "src/components/list-page/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/list-page/types.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/list-page/list-page-shell.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/list-page/resource-list-view.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/list-page/use-resource-list-table.ts",
+          "type": "registry:hook"
+        },
+        {
+          "path": "src/components/list-page/list-relative-time.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/list-page/list-page-view-toggle.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/list-page/resource-card-grid.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/list-page/use-list-view-mode.ts",
+          "type": "registry:hook"
+        },
+        {
+          "path": "src/components/list-page/search-schema.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "src/components/list-page/use-list-page-dialog.ts",
+          "type": "registry:hook"
+        }
+      ]
+    },
+    {
+      "name": "workbench-page",
+      "type": "registry:block",
+      "title": "Workbench Page",
+      "description": "类型 B 多 Tab 工作台：WorkbenchPageShell 与「Tab 入 URL」的 search schema，用于资源详情/配置页。WorkbenchPageShell 依赖本仓 AppChromeHeader 布局，跨项目安装时请自行提供顶栏。",
+      "registryDependencies": [
+        "tabs",
+        "button",
+        "badge",
+        "alert"
+      ],
+      "dependencies": [
+        "@tanstack/react-router",
+        "lucide-react",
+        "zod"
+      ],
+      "files": [
+        {
+          "path": "src/components/workbench-page/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/workbench-page/workbench-page-shell.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/workbench-page/search-schema.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
+      "name": "data-viz",
+      "type": "registry:block",
+      "title": "Data Viz",
+      "description": "控制台统一数据可视化：MetricCard / ChartCard / TimeSeriesChart / RankingBarList / UsageMeter / SegmentedBar / OpsFilterBar，配套 @/lib/format 格式化与 chart-tokens 主题色。规则见 docs/data-visualization.md。",
+      "registryDependencies": [
+        "chart",
+        "progress",
+        "card",
+        "badge",
+        "button",
+        "select",
+        "skeleton",
+        "alert",
+        "spinner",
+        "empty"
+      ],
+      "dependencies": ["recharts", "@tanstack/react-router", "lucide-react"],
+      "files": [
+        {
+          "path": "src/lib/format/index.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "src/components/app-empty.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/overtrue/bar-list.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/overtrue/distribution-bar.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/index.ts",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/chart-tokens.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "src/components/data-viz/chart-card.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/data-section.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/metric-card.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/ops-filter-bar.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/ranking-bar-list.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/segmented-bar.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/time-series-chart.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/data-viz/usage-meter.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "aui-thread",
+      "type": "registry:block",
+      "title": "Assistant UI Thread",
+      "description": "assistant-ui 完整聊天面（Thread + 传递依赖）。来源 https://r.assistant-ui.com/thread ；需 AssistantRuntimeProvider。",
+      "registryDependencies": [
+        "button",
+        "skeleton",
+        "dialog",
+        "tooltip",
+        "avatar",
+        "collapsible",
+        "textarea"
+      ],
+      "dependencies": [
+        "@assistant-ui/react",
+        "@assistant-ui/react-markdown",
+        "lucide-react",
+        "remark-gfm",
+        "tw-shimmer",
+        "zustand",
+        "class-variance-authority",
+        "radix-ui"
+      ],
+      "files": [
+        {
+          "path": "src/components/assistant-ui/elements/thread.aui.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/attachment.aui.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/file.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/follow-up-suggestions.aui.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/image.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/markdown-text.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/reasoning.aui.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/reasoning.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/tool-fallback.aui.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/tool-group.aui.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/components/assistant-ui/elements/tooltip-icon-button.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/hooks/use-attachment-src.ts",
+          "type": "registry:hook"
+        },
+        {
+          "path": "src/hooks/use-copy-to-clipboard.ts",
+          "type": "registry:hook"
+        }
+      ]
+    },
+    {
+      "name": "aui-thread-list",
+      "type": "registry:block",
+      "title": "Assistant UI Thread List",
+      "description": "assistant-ui 会话列表侧栏。来源 https://r.assistant-ui.com/thread-list ；需 AssistantRuntimeProvider。",
+      "registryDependencies": ["button", "input", "skeleton"],
+      "dependencies": ["@assistant-ui/react", "lucide-react"],
+      "files": [
+        {
+          "path": "src/components/assistant-ui/elements/thread-list.aui.tsx",
+          "type": "registry:component"
+        }
+      ]
+    }
+  ]
+}

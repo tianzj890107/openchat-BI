@@ -9,3 +9,14 @@
 - 明确由分析仓交付 `/workbench-agentkit`，按固定提交从 GitLab 提取 AgentKit UI 组件并持有依赖锁，分析对话继续接本仓执行与会话接口。
 - 规定独立展示与 V6.1 风险卡接入共用对话、看板、证据和本体子图，以 PACK 商机覆盖作为首期验收场景。
 - 本次交付为设计规格，入口、接口和浏览器验收列入实施阶段。主要文件为 [本体消费展示工作台规格](../docs/specs/workbench-agentkit-ontology-consumption.md)。
+
+### 2026-11-24 实施：AgentKit 工作台首期骨架（红测驱动）
+
+- 新入口 `GET /workbench-agentkit`：沿用 `APP_ROOT_PATH`（如 `/api/ontology-agentic-analytics/workbench-agentkit`），无前缀与配置前缀都能打开；返回 `Cache-Control: no-store`，静态资源按文件 mtime 注入 `?v=`，不再使用写死版本号。`/` 与 `/workbench` 继续返回原 Pro UI 页面，与新入口互不影响。
+- 页面壳由 `bi_agent/web/static/agentkit/index.html` 提供首屏骨架（顶部交接区、左会话列表、中对话、右结果看板、窄屏切换按钮），React 挂载后接管；产物为 `bi_agent/web/static/vendor/agentkit/workbench-agentkit.{js,css}`（约 162 KB / 10 KB），与 Pro UI 的 `vendor/antd` 完全分开。
+- 前端源码在 `frontend/agentkit/`：`state.js` 把 `/api/chat`、`/api/choice` 的 SSE 投影成单一会话状态（正文增量合并、工具事件合并到原调用、澄清暂停、迟到/旧轮次事件丢弃、`done` 终态幂等、停止保留已得结论）；`api.js` 负责带 `APP_ROOT_PATH` 的请求与 SSE 解析；组件 `SessionList/Thread/Composer/Board/HandoffBanner` 覆盖会话新建与切换、工具过程、澄清选项、停止与重试、结果表/图/指标。
+- V6.1 交接：从 `source/anchor/period/filters/evidence/handoff` 查询参数读取卡片上下文并显示「按此范围继续」横幅；缺锚点时显示不可用反馈并提供「返回来源卡」「重新发起分析」两个出口，不再静默丢弃。
+- AgentKit 上游按固定提交 `b8df86dfa3c30de6676cd1d768cda504bf3c3338` 按文件导入：新增 `scripts/import_agentkit_upstream.py`（`git archive --remote` + `get-tar-commit-id` 校验，`--check` 只校验；`dev` 前进即报错），导入 `aui-thread.json`、`aui-thread-list.json`、`confirm-dialog.json`、`registry.json` 与 `thread.aui.tsx`、`thread-list.aui.tsx`、`tool-group.aui.tsx`、`tool-call.tsx`、`markdown-text.tsx` 到 `frontend/agentkit/upstream/`，来源与本地落点记在 `frontend/agentkit/UPSTREAM.md`。
+- 构建：新增 `frontend/vite.agentkit.config.js`（独立 IIFE + 独立样式表，`publicDir: false`，不把 Vue/Pro UI 公共库带进产物），日常构建只读本仓文件。
+- 测试：先写红测再实现——`tests/test_workbench_agentkit_route.py`（4 项，路由未实现时为 404，现全部通过）、`tests/workbench_agentkit_state.test.mjs`（10 项状态投影）、`tests/workbench_agentkit_shell.test.mjs`（5 项页面壳/主题作用域/构建配置/上游记录）。当前 Node 全套 133 项通过；`test_direct_root_workbench_entry.py`、`test_application_base_path.py`（10 项）与 `test_anonymous_read_surface_red.py`、`test_cockpit_main_service.py`（40 项）通过。
+- 未完成（不在本次范围）：assistant-ui 运行时与上游 TSX 的逐项适配、图表/证据/本体子图接入右栏、真实 PACK 数据链路与 V6.1 宿主联调、浏览器实点验收。主要文件：`bi_agent/web/app.py`、`bi_agent/web/static/agentkit/index.html`、`bi_agent/web/static/vendor/agentkit/`、`frontend/agentkit/`、`frontend/vite.agentkit.config.js`、`scripts/import_agentkit_upstream.py`。

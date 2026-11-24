@@ -1335,6 +1335,59 @@ def workbench() -> HTMLResponse:
     return _workbench_response()
 
 
+_NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+def _asset_version(directory: Path, name: str) -> str:
+    """Cache-bust one built asset by its mtime (never a frozen ?v= constant)."""
+    try:
+        return str(int((directory / name).stat().st_mtime))
+    except OSError:
+        return "1"
+
+
+def _render_workbench_agentkit_index() -> str:
+    """Render the AgentKit workbench shell.
+
+    Same templating contract as the Pro UI workbench: one @@APP_ROOT_PATH@@
+    token for every browser-facing URL, plus mtime-versioned asset URLs so a
+    deployment invalidates exactly the files that changed (spec §2, §2.1).
+    """
+    template = (STATIC_DIR / "agentkit" / "index.html").read_text(encoding="utf-8")
+    html = template.replace(_APP_ROOT_PATH_TOKEN, APP_ROOT_PATH)
+    assets = STATIC_DIR / "vendor" / "agentkit"
+    html = html.replace(
+        "@@AGENTKIT_JS_VERSION@@", _asset_version(assets, "workbench-agentkit.js"),
+    )
+    html = html.replace(
+        "@@AGENTKIT_CSS_VERSION@@", _asset_version(assets, "workbench-agentkit.css"),
+    )
+    runtime_config = (
+        '<script id="app-root-path-config">'
+        "window.APP_ROOT_PATH = "
+        + json.dumps(APP_ROOT_PATH)
+        + ";</script>"
+    )
+    return html.replace("</head>", runtime_config + "</head>", 1)
+
+
+@app.get("/workbench-agentkit")
+def workbench_agentkit() -> HTMLResponse:
+    """Independent AgentKit workbench entry (also used by V6.1 host embeds).
+
+    The legacy ``/`` and ``/workbench`` entries keep serving the Pro UI page:
+    this route never rewrites or redirects them.
+    """
+    return HTMLResponse(
+        content=_render_workbench_agentkit_index(),
+        headers=dict(_NO_STORE_HEADERS),
+    )
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
