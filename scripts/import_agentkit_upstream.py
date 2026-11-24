@@ -47,6 +47,7 @@ FILES = (
     "agentkit-ui/src/components/assistant-ui/elements/tool-group.aui.tsx",
     "agentkit-ui/src/components/assistant-ui/elements/tool-call.tsx",
     "agentkit-ui/src/components/assistant-ui/elements/markdown-text.tsx",
+    "agentkit-ui/src/components/assistant-ui/utils/tool-display-label.ts",
 )
 
 
@@ -135,9 +136,11 @@ def _write_record(commit: str, files: dict[str, bytes]) -> None:
         "| `agentkit-ui/public/r/aui-thread-list.json` | `frontend/agentkit/components/SessionList.jsx` | "
         "会话列表的视觉与新建/切换行为，接本仓 `/api/conversations` |\n"
         "| `agentkit-ui/src/components/assistant-ui/elements/thread.aui.tsx` | "
-        "`frontend/agentkit/state.js` | SSE → 单一会话状态的投影（同轮合并、迟到丢弃、终态幂等）|\n"
+        "`frontend/agentkit/state.js` + `frontend/agentkit/runtime.js` | SSE → 单一会话状态，再由 `useExternalStoreRuntime` 投影成 assistant-ui 消息 |\n"
         "| `agentkit-ui/src/components/assistant-ui/elements/tool-group.aui.tsx` | "
-        "`frontend/agentkit/components/Thread.jsx` | 工具调用折叠组与运行状态 |\n"
+        "`frontend/agentkit/adapters/ToolGroup.jsx` | 工具折叠组：保留上游 Root/Trigger/Content 与 data-slot 结构，Tailwind 类换成本页 `ak-tools` 样式 |\n"
+        "| `agentkit-ui/src/components/assistant-ui/utils/tool-display-label.ts` | "
+        "`frontend/agentkit/adapters/ToolGroup.jsx` | 工具分组计数文案（`N 次工具调用`）直接复用上游实现 |\n"
         "| `agentkit-ui/public/r/confirm-dialog.json` | `frontend/agentkit/components/HandoffBanner.jsx` | "
         "交接校验失败时的确认与返回入口 |\n\n"
         "上游源码原样保存在 `frontend/agentkit/upstream/`，不做本仓改写；\n"

@@ -111,6 +111,8 @@ test('the transcript driver is the assistant-ui external store runtime', async (
   const runtime = await read('frontend/agentkit/runtime.js');
   assert.match(runtime, /useExternalStoreRuntime/);
   assert.match(runtime, /@assistant-ui\/react/);
+  // A pending clarification blocks sending, not typing.
+  assert.match(runtime, /isSendDisabled/);
 
   const composer = await read('frontend/agentkit/components/Composer.jsx');
   assert.match(composer, /ComposerPrimitive/);
@@ -121,4 +123,21 @@ test('the transcript driver is the assistant-ui external store runtime', async (
 
   const js = await read('bi_agent/web/static/vendor/agentkit/workbench-agentkit.js');
   assert.match(js, /agentkit-runtime:assistant-ui/);
+});
+
+test('the tool group is adapted from the pinned AgentKit component', async () => {
+  const thread = await read('frontend/agentkit/components/Thread.jsx');
+  assert.match(thread, /adapters\/ToolGroup\.jsx/);
+
+  const adapter = await read('frontend/agentkit/adapters/ToolGroup.jsx');
+  assert.match(adapter, /@radix-ui\/react-collapsible/);
+  assert.match(adapter, /lucide-react/);
+  assert.match(adapter, /tool-group\.aui\.tsx/);
+  assert.match(adapter, /data-slot="tool-group-root"/);
+  assert.match(adapter, /toolGroupCountLabel/);
+  // The count label itself comes from the vendored upstream util.
+  const util = await read(
+    'frontend/agentkit/upstream/agentkit-ui/src/components/assistant-ui/utils/tool-display-label.ts',
+  );
+  assert.match(util, /export function toolGroupCountLabel/);
 });

@@ -1,27 +1,6 @@
 import React, {useState} from "react";
 
-function ToolGroup({tools}) {
-  if (!tools.length) return null;
-  return (
-    <details className="ak-tools" open={tools.some((tool) => tool.status === "running")}>
-      <summary>
-        <span className={`ak-dot ak-dot--${tools.some((tool) => tool.status === "running") ? "live" : "done"}`} />
-        工具过程 · {tools.length} 步
-      </summary>
-      <ol className="ak-tool-list">
-        {tools.map((tool) => (
-          <li key={tool.id} className="ak-tool" data-status={tool.status}>
-            <span className="ak-tool-name">{tool.name}</span>
-            <span className="ak-tool-state">
-              {tool.status === "running" ? "执行中…" : tool.output ? "已完成" : "已调用"}
-            </span>
-            {tool.input ? <code className="ak-tool-input">{tool.input}</code> : null}
-          </li>
-        ))}
-      </ol>
-    </details>
-  );
-}
+import ToolGroup from "../adapters/ToolGroup.jsx";
 
 function Clarification({choice, onChoose}) {
   const [selected, setSelected] = useState([]);
@@ -99,7 +78,7 @@ export default function Thread({turns, status, error, pendingChoice, onChoose, o
                 {turn.status === "streaming" ? "正在取证…" : "本轮没有文字结论"}
               </div>
             )}
-            <ToolGroup tools={turn.assistant.tools} />
+            {turn.assistant.tools.length ? <ToolGroup tools={turn.assistant.tools} /> : null}
             {turn.status === "error" ? (
               <div className="ak-inline-error" role="alert">
                 <span>{error || "本轮分析失败"}</span>
