@@ -59,19 +59,35 @@ test('chart spec maps ECharts options to categories and series', () => {
   assert.deepEqual(pie.slices, [{name: 'PACK', value: 62}, {name: '储能', value: 38}]);
 });
 
-test('multi_chart becomes one board item per chart', () => {
+test('multi_chart drill-down keeps every dimension on one card', () => {
   let state = startTurn(createWorkbenchState(), {text: '对比', sessionId: 's-1'});
-  state = applyEvent(state, {type: 'tool_start', turn_id: 't-1', id: 'tool-9', name: 'ChartGenerate'});
+  state = applyEvent(state, {type: 'tool_start', turn_id: 't-1', id: 'tool-9', name: 'ChartGenerateMultiDim'});
   state = applyEvent(state, {
-    type: 'tool_result', turn_id: 't-1', id: 'tool-9', name: 'ChartGenerate',
-    multi_chart: [
-      {title: '客户', chart_type: 'bar', option: {xAxis: {data: ['A']}, series: [{name: 'S', data: [1]}]}},
-      {title: '产品部', chart_type: 'bar', option: {xAxis: {data: ['B']}, series: [{name: 'S', data: [2]}]}},
-    ],
+    type: 'tool_result', turn_id: 't-1', id: 'tool-9', name: 'ChartGenerateMultiDim',
+    // Real payload: one object with a dimensions list, not a list of specs.
+    multi_chart: {
+      title: 'PACK 缺口按维度',
+      default_dim: 'product_dept',
+      summary: '按产品部看缺口',
+      dimensions: [
+        {
+          key: 'customer', label: '客户', chart_type: 'bar',
+          option: {xAxis: {data: ['宁德时代']}, series: [{name: '缺口', data: [3]}]},
+        },
+        {
+          key: 'product_dept', label: '产品部', chart_type: 'bar',
+          option: {xAxis: {data: ['PACK']}, series: [{name: '缺口', data: [5]}]},
+        },
+      ],
+    },
   });
   const items = boardItems(state);
-  assert.equal(items.length, 2);
-  assert.deepEqual(items.map((item) => item.title), ['客户', '产品部']);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].chartType, 'multi');
+  assert.deepEqual(items[0].dimensions.map((dim) => dim.key), ['customer', 'product_dept']);
+  assert.equal(items[0].defaultKey, 'product_dept');
+  assert.deepEqual(items[0].dimensions[1].chart.categories, ['PACK']);
+  assert.deepEqual(items[0].dimensions[1].chart.series[0].values, [5]);
 });
 
 test('board items read the event-level table, not only output', () => {

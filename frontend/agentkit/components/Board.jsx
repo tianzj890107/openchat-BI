@@ -98,14 +98,46 @@ function PieChart({item}) {
   );
 }
 
+function MultiDimCard({item}) {
+  const [activeKey, setActiveKey] = useState(item.defaultKey);
+  const dimension = item.dimensions.find((dim) => dim.key === activeKey) || item.dimensions[0];
+  return (
+    <section className="ak-card" data-kind="chart">
+      <h3 className="ak-card-title">{item.title}</h3>
+      <div className="ak-dims" role="tablist" aria-label="维度切换">
+        {item.dimensions.map((dim) => (
+          <button
+            key={dim.key}
+            type="button"
+            role="tab"
+            aria-selected={dim.key === dimension.key}
+            className="ak-dim"
+            data-active={dim.key === dimension.key ? "1" : undefined}
+            onClick={() => setActiveKey(dim.key)}
+          >
+            {dim.label}
+          </button>
+        ))}
+      </div>
+      <p className="ak-card-note">{dimension.summary || item.summary}</p>
+      <ChartBody item={dimension.chart} />
+    </section>
+  );
+}
+
+function ChartBody({item}) {
+  if (item.chartType === "pie") return <PieChart item={item} />;
+  if (item.chartType === "line") return <LineChart item={item} />;
+  return <BarChart item={item} />;
+}
+
 function ResultCard({item}) {
+  if (item.chartType === "multi") return <MultiDimCard item={item} />;
   return (
     <section className="ak-card" data-kind={item.kind}>
       <h3 className="ak-card-title">{item.title}</h3>
       {item.kind === "table" ? <TableCard item={item} /> : null}
-      {item.kind === "chart" && item.chartType === "pie" ? <PieChart item={item} /> : null}
-      {item.kind === "chart" && item.chartType === "line" ? <LineChart item={item} /> : null}
-      {item.kind === "chart" && !["pie", "line"].includes(item.chartType) ? <BarChart item={item} /> : null}
+      {item.kind === "chart" ? <ChartBody item={item} /> : null}
     </section>
   );
 }

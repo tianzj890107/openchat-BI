@@ -64,6 +64,31 @@ export function chartModel(spec) {
   };
 }
 
+/**
+ * Multi-dimensional drill-down (ChartGenerateMultiDim): one card keeps every
+ * dimension, each with its own ECharts option, plus the default dimension.
+ */
+export function multiDimModel(spec) {
+  if (!spec || !Array.isArray(spec.dimensions)) return null;
+  const dimensions = spec.dimensions
+    .map((dim) => {
+      const chart = chartModel({title: dim.label || dim.key, chart_type: dim.chart_type, option: dim.option});
+      if (!chart) return null;
+      return {key: dim.key, label: dim.label || dim.key, summary: dim.summary || "", chart};
+    })
+    .filter(Boolean);
+  if (!dimensions.length) return null;
+  const preferred = dimensions.find((dim) => dim.key === spec.default_dim);
+  return {
+    kind: "chart",
+    chartType: "multi",
+    title: spec.title || "维度洞察",
+    summary: spec.summary || "",
+    dimensions,
+    defaultKey: (preferred || dimensions[0]).key,
+  };
+}
+
 /** One tool call may return a table, a chart, or several charts. */
 export function toolBoardItems(tool) {
   const items = [];
@@ -71,12 +96,8 @@ export function toolBoardItems(tool) {
   if (table) items.push({...table, id: `${tool.id}:table`, toolId: tool.id});
   const chart = chartModel(tool?.chart);
   if (chart) items.push({...chart, id: `${tool.id}:chart`, toolId: tool.id});
-  if (Array.isArray(tool?.multiChart)) {
-    tool.multiChart.forEach((spec, index) => {
-      const model = chartModel(spec);
-      if (model) items.push({...model, id: `${tool.id}:multi:${index}`, toolId: tool.id});
-    });
-  }
+  const multi = multiDimModel(tool?.multiChart);
+  if (multi) items.push({...multi, id: `${tool.id}:multi`, toolId: tool.id});
   // Legacy shape kept for streams that nest results inside `output`.
   const nested = tool?.output || {};
   if (!table && nested.table) {

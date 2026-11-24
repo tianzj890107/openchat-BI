@@ -1008,3 +1008,25 @@
   margin: 0;
   word-break: break-all;
 }
+
+/* dimension drill-down tabs */
+
+.ak-dims {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ak-dim {
+  padding: 3px 10px !important;
+  border-radius: 999px !important;
+  font-size: 12px;
+  background: var(--ak-panel-muted) !important;
+}
+
+.ak-dim[data-active="1"] {
+  color: #fff !important;
+  background: var(--ak-accent) !important;
+  border-color: var(--ak-accent) !important;
+}

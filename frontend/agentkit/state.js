@@ -250,7 +250,7 @@ export function applyEvent(state, event) {
           entities: Array.isArray(event.ontology_entities) ? event.ontology_entities : existing?.entities ?? [],
           table: event.table ?? existing?.table ?? null,
           chart: event.chart ?? existing?.chart ?? null,
-          multiChart: Array.isArray(event.multi_chart) ? event.multi_chart : existing?.multiChart ?? null,
+          multiChart: event.multi_chart ?? existing?.multiChart ?? null,
           durationMs: Number(event.duration_ms) || existing?.durationMs || 0,
           errorCode: event.error_code || existing?.errorCode || '',
         };
