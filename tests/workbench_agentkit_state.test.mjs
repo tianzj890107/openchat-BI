@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {
   applyEvent,
   boardItems,
+  buildHandoffUrl,
   createWorkbenchState,
   parseHandoff,
   startTurn,
@@ -143,4 +144,28 @@ test('errors keep prior results visible and expose a retry handle', () => {
   assert.equal(state.status, 'error');
   assert.match(state.error, /取数失败/);
   assert.equal(boardItems(state).length, 1);
+});
+
+test('buildHandoffUrl round-trips the card context through parseHandoff', () => {
+  const url = buildHandoffUrl(
+    {
+      source: 'v61-cockpit',
+      anchor: 'PACK_OPP_COVERAGE',
+      period: '2026Q3',
+      filters: {customer: '宁德时代', region: '华东'},
+      evidence: ['ev-11', 'ev-12'],
+      handoffId: 'h-7',
+    },
+    '/api/ontology-agentic-analytics',
+  );
+  assert.match(url, /^\/api\/ontology-agentic-analytics\/workbench-agentkit\?/);
+  assert.match(url, /anchor=PACK_OPP_COVERAGE/);
+  const parsed = parseHandoff(url.slice(url.indexOf('?')));
+  assert.equal(parsed.active, true);
+  assert.equal(parsed.invalid, false);
+  assert.equal(parsed.anchor, 'PACK_OPP_COVERAGE');
+  assert.equal(parsed.period, '2026Q3');
+  assert.deepEqual(parsed.filters, {customer: '宁德时代', region: '华东'});
+  assert.deepEqual(parsed.evidence, ['ev-11', 'ev-12']);
+  assert.equal(parsed.handoffId, 'h-7');
 });

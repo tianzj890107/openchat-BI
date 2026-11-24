@@ -118,3 +118,18 @@ export async function chooseOption({sessionId, ids, labels, signal, onEvent}) {
   });
   await readEventStream(response, onEvent);
 }
+
+/** Ontology context/expand subgraph for one hit (read-only). */
+export async function fetchSubgraph(request, signal) {
+  const response = await fetch(withBasePath("api/ontology/subgraph"), {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(request),
+    signal,
+  });
+  const payload = await asJson(response);
+  if (!response.ok) {
+    throw new Error(payload?.detail || payload?.message || `HTTP ${response.status}`);
+  }
+  return payload;
+}

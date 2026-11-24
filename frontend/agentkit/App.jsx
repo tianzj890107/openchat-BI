@@ -235,7 +235,7 @@ export default function App() {
         </section>
 
         <section className="ak-board" data-agentkit-board aria-label="分析结果">
-          <Board items={items} status={workbench.status} />
+          <Board items={items} turns={workbench.turns} sessionId={sessionId} status={workbench.status} />
         </section>
       </div>
     </div>

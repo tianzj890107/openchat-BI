@@ -9,6 +9,8 @@
 // Adapted from AgentKit `thread.aui.tsx` external-store projection.  Pure
 // module: no DOM, no fetch — unit-tested by tests/workbench_agentkit_state.test.mjs.
 
+import {turnsBoardItems} from './results.js';
+
 const TERMINAL_EVENTS = new Set(['done', 'error', 'session_superseded', 'stream_interrupted']);
 
 function emptyState() {
@@ -90,6 +92,34 @@ export function parseHandoff(search) {
   };
 }
 
+
+/**
+ * Build the entry URL a host (V6.1 risk card, another cockpit) links to.
+ * One helper keeps hosts from hand-assembling the handoff contract.
+ */
+export function buildHandoffUrl(card = {}, basePath = "") {
+  const base = String(basePath || "").replace(/\/+$/, "");
+  const params = new URLSearchParams();
+  const put = (key, value) => {
+    const text = String(value ?? "").trim();
+    if (text) params.set(key, text);
+  };
+  put("source", card.source);
+  put("anchor", card.anchor || card.risk);
+  put("period", card.period);
+  const filters = card.filters || {};
+  const filterPairs = Object.entries(filters)
+    .map(([key, value]) => `${key}=${value}`)
+    .filter((pair) => pair.length > 1);
+  if (filterPairs.length) params.set("filters", filterPairs.join(";"));
+  if (Array.isArray(card.evidence) && card.evidence.length) {
+    params.set("evidence", card.evidence.join(","));
+  }
+  put("handoff", card.handoffId || card.handoff);
+  const query = params.toString();
+  return `${base}/workbench-agentkit${query ? `?${query}` : ""}`;
+}
+
 let turnSeq = 0;
 
 /** Begin a turn: user text lands immediately, the assistant bubble streams in. */
@@ -137,46 +167,9 @@ function updateTools(state, mutator) {
   return updateAssistant(state, {tools: mutator(turn.assistant.tools)});
 }
 
-function addBoardItemIfAny(tool) {
-  return boardItemFromTool(tool) ? tool : tool;
-}
-
-/** Extract one renderable result from a tool output, when it carries one. */
-export function boardItemFromTool(tool) {
-  const output = tool && tool.output;
-  if (!output || typeof output !== 'object') return null;
-  const title = tool.title || tool.name || '分析结果';
-  if (output.table && Array.isArray(output.table.rows)) {
-    return {
-      id: tool.id,
-      kind: 'table',
-      title: output.table.title || title,
-      columns: Array.isArray(output.table.columns) ? output.table.columns : [],
-      rows: output.table.rows,
-    };
-  }
-  if (output.chart && Array.isArray(output.chart.series)) {
-    return {id: tool.id, kind: 'chart', title: output.chart.title || title, chart: output.chart};
-  }
-  if (output.metric && typeof output.metric.value !== 'undefined') {
-    return {id: tool.id, kind: 'metric', title: output.metric.title || title, metric: output.metric};
-  }
-  return null;
-}
-
-/** Right-pane results: one item per tool call, later results replace earlier ones. */
+/** Right-pane results: every table/chart a turn produced, with stable ids. */
 export function boardItems(state) {
-  const items = [];
-  const seen = new Set();
-  for (const turn of state.turns || []) {
-    for (const tool of turn.assistant?.tools || []) {
-      const item = boardItemFromTool(tool);
-      if (!item || seen.has(item.id)) continue;
-      seen.add(item.id);
-      items.push(item);
-    }
-  }
-  return items;
+  return turnsBoardItems(state.turns || []);
 }
 
 /**
@@ -255,9 +248,14 @@ export function applyEvent(state, event) {
           input: typeof event.input === 'string' ? event.input : existing?.input ?? '',
           output: event.output ?? existing?.output ?? null,
           entities: Array.isArray(event.ontology_entities) ? event.ontology_entities : existing?.entities ?? [],
+          table: event.table ?? existing?.table ?? null,
+          chart: event.chart ?? existing?.chart ?? null,
+          multiChart: Array.isArray(event.multi_chart) ? event.multi_chart : existing?.multiChart ?? null,
+          durationMs: Number(event.duration_ms) || existing?.durationMs || 0,
+          errorCode: event.error_code || existing?.errorCode || '',
         };
-        const without = tools.filter((tool) => tool.id !== id);
-        return [...without, addBoardItemIfAny(merged)];
+        // A result can arrive without a preceding tool_start: append it once.
+        return [...tools.filter((tool) => tool.id !== id), merged];
       });
       return duplicate ? state : next;
     }

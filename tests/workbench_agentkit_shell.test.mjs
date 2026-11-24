@@ -77,3 +77,32 @@ test('the upstream import keeps the pinned commit and file list on record', asyn
   assert.match(script, /get-tar-commit-id/);
   assert.match(script, /b8df86dfa3c30de6676cd1d768cda504bf3c3338/);
 });
+
+test('the right pane exposes results, evidence and the ontology subgraph', async () => {
+  const board = await read('frontend/agentkit/components/Board.jsx');
+  assert.match(board, /evidenceItems/);
+  assert.match(board, /ontologyHits/);
+  assert.match(board, /OntologyGraph/);
+
+  const graph = await read('frontend/agentkit/components/OntologyGraph.jsx');
+  assert.match(graph, /@boulderaitech\/ontology-graph/);
+  assert.match(graph, /ontologyGraphModel\.js/);
+  assert.match(graph, /\/api\/ontology\/subgraph|ontology\/subgraph/);
+
+  const api = await read('frontend/agentkit/api.js');
+  assert.match(api, /ontology\/subgraph/);
+  // The request body (code/type/strategy/session) is built by the pure adapter.
+  const results = await read('frontend/agentkit/results.js');
+  assert.match(results, /strategy: "context"/);
+
+  // The shipped bundle carries the same contract strings.
+  const js = await read('bi_agent/web/static/vendor/agentkit/workbench-agentkit.js');
+  assert.match(js, /ontology\/subgraph/);
+  assert.match(js, /本体命中/);
+  assert.match(js, /证据/);
+});
+
+test('hosts can build the handoff URL through one helper', async () => {
+  const state = await read('frontend/agentkit/state.js');
+  assert.match(state, /export function buildHandoffUrl/);
+});
