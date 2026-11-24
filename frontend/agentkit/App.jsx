@@ -1,4 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {AssistantRuntimeProvider} from "@assistant-ui/react";
 
 import {chooseOption, listConversations, openConversation, streamChat} from "./api.js";
 import {
@@ -14,6 +15,7 @@ import Composer from "./components/Composer.jsx";
 import HandoffBanner from "./components/HandoffBanner.jsx";
 import SessionList from "./components/SessionList.jsx";
 import Thread from "./components/Thread.jsx";
+import {useAgentkitRuntime} from "./runtime.js";
 
 function newSessionId(handoff) {
   const stamp = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -170,8 +172,15 @@ export default function App() {
   }, [restartWithoutHandoff]);
 
   const items = boardItems(workbench);
+  const runtime = useAgentkitRuntime({
+    turns: workbench.turns,
+    running: workbench.status === "streaming",
+    onNew: send,
+    onCancel: stop,
+  });
 
   return (
+    <AssistantRuntimeProvider runtime={runtime}>
     <div className="ak-shell" data-agentkit-root="1" data-ak-view={view}>
       <header className="ak-topbar">
         <div className="ak-brand">
@@ -231,7 +240,7 @@ export default function App() {
               if (lastUser) send(lastUser.user);
             }}
           />
-          <Composer status={workbench.status} onSend={send} onStop={stop} />
+          <Composer />
         </section>
 
         <section className="ak-board" data-agentkit-board aria-label="分析结果">
@@ -239,5 +248,6 @@ export default function App() {
         </section>
       </div>
     </div>
+    </AssistantRuntimeProvider>
   );
 }

@@ -1,6 +1,6 @@
 # 本体消费展示工作台 AgentKit UI 复用规格
 
-> 2026-11-24 · 首期页面骨架已实现（入口、SSE 状态投影、交接横幅、结果看板）；上游组件逐项适配与浏览器验收待完成 · 面向分析 Agent 独立展示和 V6.1 总裁驾驶舱后续接入
+> 2026-11-24 · 首期实现完成：入口、assistant-ui 运行时、SSE 状态投影、结果/证据/本体子图右栏、交接横幅与 jsdom 端到端冒烟；上游 TSX 逐项移植与真机浏览器验收待后续 · 面向分析 Agent 独立展示和 V6.1 总裁驾驶舱后续接入
 
 ## 1. 目标和交付范围
 
@@ -73,6 +73,25 @@ GitLab SSH 的 `git archive` 使用分支或标签引用，归档头部的提交
 3. 结果从同一展示组件渲染。宿主如需定位原卡或打开结果，只读取已确认的结果标识及视图提示。新增风险卡通过业务映射接入同一流程。
 
 交接的卡片事实作为来源上下文，由分析服务重新核对当前期间和指标口径。无法匹配本体编码时展示候选或待核实。交接不存在、失效或不可访问时显示明确反馈，提供返回来源卡或重新发起分析的入口。用户切换卡片或会话后，迟到结果只归属其原会话和轮次。
+
+### 3.3 宿主接入片段
+
+宿主只需带上下文打开入口，会话建立、校验与降级都由本页负责：
+
+```js
+// 记录在 frontend/agentkit/state.js: buildHandoffUrl(card, basePath)
+const url = buildHandoffUrl({
+  source: 'v61-cockpit',
+  anchor: 'PACK_OPP_COVERAGE',   // 风险或指标锚点，缺省即视为不可用交接
+  period: '2026Q3',
+  filters: {customer: '宁德时代', region: '华东'},
+  evidence: ['ev-11', 'ev-12'],
+  handoffId: 'h-7',
+}, '/api/ontology-agentic-analytics');
+window.open(url, '_blank');
+```
+
+`parseHandoff()` 与 `buildHandoffUrl()` 互为往返，渲染侧不再手拼参数；锚点缺失时页面显示不可用反馈而不是空页。
 
 ## 4. 接口和状态
 

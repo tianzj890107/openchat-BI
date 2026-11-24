@@ -106,3 +106,19 @@ test('hosts can build the handoff URL through one helper', async () => {
   const state = await read('frontend/agentkit/state.js');
   assert.match(state, /export function buildHandoffUrl/);
 });
+
+test('the transcript driver is the assistant-ui external store runtime', async () => {
+  const runtime = await read('frontend/agentkit/runtime.js');
+  assert.match(runtime, /useExternalStoreRuntime/);
+  assert.match(runtime, /@assistant-ui\/react/);
+
+  const composer = await read('frontend/agentkit/components/Composer.jsx');
+  assert.match(composer, /ComposerPrimitive/);
+
+  const app = await read('frontend/agentkit/App.jsx');
+  assert.match(app, /AssistantRuntimeProvider/);
+  assert.match(app, /useAgentkitRuntime/);
+
+  const js = await read('bi_agent/web/static/vendor/agentkit/workbench-agentkit.js');
+  assert.match(js, /agentkit-runtime:assistant-ui/);
+});

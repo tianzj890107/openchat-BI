@@ -169,3 +169,28 @@ test('buildHandoffUrl round-trips the card context through parseHandoff', () => 
   assert.deepEqual(parsed.evidence, ['ev-11', 'ev-12']);
   assert.equal(parsed.handoffId, 'h-7');
 });
+
+test('assistant-ui adapter projects turns into thread messages', async () => {
+  const {toThreadMessages, textFromAppend} = await import('../frontend/agentkit/messageAdapter.js');
+  const turns = [
+    {id: 'turn-1', user: 'PACK 缺口', status: 'done', assistant: {
+      text: '共 2 家客户', thinking: '', tools: [{id: 'tool-1', name: 'TableGenerate', status: 'done'}],
+    }},
+  ];
+  const messages = toThreadMessages(turns);
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].role, 'user');
+  assert.deepEqual(messages[0].content, [{type: 'text', text: 'PACK 缺口'}]);
+  assert.equal(messages[1].role, 'assistant');
+  assert.equal(messages[1].content[0].text, '共 2 家客户');
+  assert.equal(messages[1].metadata.custom.tools[0].name, 'TableGenerate');
+
+  assert.equal(textFromAppend({content: [{type: 'text', text: ' 继续 '}]}), '继续');
+  assert.equal(textFromAppend({content: [{type: 'text', text: '你好'}, {type: 'image'}]}), '你好');
+  assert.equal(textFromAppend({content: []}), '');
+});
+
+test('the runtime module declares its assistant-ui adapter identity', async () => {
+  const {AGENTKIT_RUNTIME} = await import('../frontend/agentkit/messageAdapter.js');
+  assert.match(AGENTKIT_RUNTIME, /assistant-ui/);
+});

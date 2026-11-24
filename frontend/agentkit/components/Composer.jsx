@@ -1,56 +1,28 @@
-import React, {useEffect, useRef, useState} from "react";
+import React from "react";
+import {AuiIf, ComposerPrimitive} from "@assistant-ui/react";
 
 /**
- * Composer: Enter sends, Shift+Enter and IME composition keep editing.
- * While a turn streams the send button is replaced by stop (spec §2, §4.1).
+ * AgentKit composer: assistant-ui's composer primitives own the input state,
+ * Enter/Shift+Enter behaviour, and the send/stop pair driven by thread state.
  */
-export default function Composer({status, onSend, onStop}) {
-  const [text, setText] = useState("");
-  const inputRef = useRef(null);
-  const busy = status === "streaming";
-
-  useEffect(() => {
-    if (!busy) inputRef.current?.focus();
-  }, [busy]);
-
-  const submit = () => {
-    const value = text.trim();
-    if (!value || busy) return;
-    setText("");
-    onSend(value);
-  };
-
-  const handleKeyDown = (event) => {
-    if (event.key !== "Enter" || event.shiftKey) return;
-    if (event.isComposing || event.keyCode === 229) return;
-    event.preventDefault();
-    submit();
-  };
-
+export default function Composer() {
   return (
-    <div className="ak-composer">
-      <textarea
-        ref={inputRef}
+    <ComposerPrimitive.Root className="ak-composer">
+      <ComposerPrimitive.Input
         className="ak-composer-input"
         rows={2}
-        value={text}
         placeholder="描述你的经营问题，例如：PACK 未签单商机主要涉及哪些客户和产品部？"
         aria-label="输入问题"
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={handleKeyDown}
       />
       <div className="ak-composer-actions">
         <span className="ak-composer-hint">Enter 发送 · Shift+Enter 换行</span>
-        {busy ? (
-          <button type="button" className="ak-stop" onClick={onStop}>
-            停止
-          </button>
-        ) : (
-          <button type="button" className="ak-send" onClick={submit} disabled={!text.trim()}>
-            发送
-          </button>
-        )}
+        <AuiIf condition={(state) => state.thread.isRunning}>
+          <ComposerPrimitive.Cancel className="ak-stop">停止</ComposerPrimitive.Cancel>
+        </AuiIf>
+        <AuiIf condition={(state) => !state.thread.isRunning}>
+          <ComposerPrimitive.Send className="ak-send">发送</ComposerPrimitive.Send>
+        </AuiIf>
       </div>
-    </div>
+    </ComposerPrimitive.Root>
   );
 }
