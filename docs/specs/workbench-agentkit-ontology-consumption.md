@@ -14,27 +14,61 @@
 
 | 区域 | 实现与归属 |
 | --- | --- |
-| 入口和页面壳 | 在当前分析仓的 `frontend/` 新增展示入口。首期建议为 `GET /workbench/ontology-consumption`，解析既有 `APP_ROOT_PATH`。同一入口可独立打开，也可由驾驶舱托管。现有应用根路径和 `/workbench` 继续作为兼容入口及回归对照。 |
+| 入口和页面壳 | 在当前分析仓的 `frontend/` 实现新入口 `GET /workbench-agentkit`。沿用 `APP_ROOT_PATH`，例如通过 `/api/ontology-agentic-analytics/workbench-agentkit` 访问。同一入口可独立打开，也可由驾驶舱托管。现有应用根路径和 `/workbench` 继续作为兼容入口及回归对照。 |
 | 左侧会话列表 | 使用 AgentKit 会话列表的视觉和交互，接分析仓的会话列表与恢复。支持新建、切换和打开历史。可用动作以本仓会话接口为准。 |
 | 中间对话区 | 使用 AgentKit 的 Thread、Composer、Markdown、工具分组、状态和澄清卡。用户可发送、停止、补充条件和追问。助手正文与工具过程按事件顺序呈现，发出的建议问题计入当前会话。 |
 | 右侧分析区 | 复用分析仓的图表、表格和证据展示能力，按问题展示结果。点击历史问题或结果引用时定位其看板内容。图表和表格在右栏呈现一次。窄屏允许在对话和结果之间切换。 |
 | 本体内容 | 复用 `@boulderaitech/ontology-graph` 和现有子图交互。命中列表与图节点都能查看定义和关联。图概览展示当前可见结果命中的节点及真实直接关系，详情可从选中节点展开上下文。 |
 | 会话与执行 | 继续使用分析仓的会话、SSE、SOP、本体查询、取数和证据判定。基于 AgentKit 的前端装配运行在分析仓的构建与服务入口。 |
 
-AgentKit 的源基线为 `ai-team/spzn-agentkit` 的 `dev@b8df86df`。可移植控件按 Registry 取用。完整 Thread 还引用 AgentKit 内部的产物、过程偏好和生成式渲染模块，实施时按需取用底层组件和插槽，把平台业务依赖换成本仓回调。新入口采用一套对话依赖和主题。在同一个代码目录里复用既有 API 客户端、状态推导和结果渲染，避免复制 `runtime.js` 的 DOM 拼接与业务逻辑。接入时验证锁定版本、样式边界、键盘操作和网关前缀。
+### 2.1 AgentKit 组件获取和升级
+
+**采用固定提交的源码导入。** AgentKit 上游是 GitLab `ai-team/spzn-agentkit`，首期固定到 `b8df86dfa3c30de6676cd1d768cda504bf3c3338`，目前对应 `dev`。仓库的 `agentkit-ui` 是应用源码，供跨仓使用的入口是 shadcn Registry。实施时按文件取用，导入的组件、适配代码和 npm 锁文件由分析仓维护。日常构建读本仓文件，升级时再从 GitLab 提取明确选定的组件。 [上游 Registry 使用说明](http://gitlab.boulderaitech.com/ai-team/spzn-agentkit/-/blob/b8df86df/agentkit-ui/docs/registry.md)
+
+| 取用对象 | 操作 |
+| --- | --- |
+| 可独立安装的 Registry 组件 | 从 `agentkit-ui/public/r/` 提取选定 JSON，例如 `confirm-dialog.json`。在分析仓 `frontend/` 配好组件别名、TSX、Tailwind 和主题变量后，先用 shadcn `--dry-run` 检查文件落点、npm 依赖和递归 Registry 依赖，再安装确认过的条目。 |
+| 对话和会话列表 | 以 `aui-thread.json`、`aui-thread-list.json` 作文件清单，同时对照固定提交中的 `src/components/assistant-ui/elements/`。选择 Thread、Composer、Markdown、工具分组和列表所需的组件及辅助文件。AgentKit 的产物、工作区、模型设置等内部引用由分析仓的接口适配和组件插槽承接。 |
+| Registry 外的组件 | 按需提取对应 TSX 和它确实使用的辅助文件，例如 `approval-card.tsx` 或选项组件，连同上游来源和许可信息记录在分析仓。 |
+
+在分析仓根目录可按以下方式获取和预览单个条目。预览步骤在分析仓 `frontend/components.json` 及别名配置就绪后执行。
+
+```bash
+(
+  set -e
+  agentkit_source_commit=b8df86dfa3c30de6676cd1d768cda504bf3c3338
+  agentkit_registry_path=agentkit-ui/public/r/confirm-dialog.json
+  agentkit_import_dir="$(mktemp -d "${TMPDIR:-/tmp}/agentkit-registry.XXXXXX")"
+  git archive --remote=git@gitlab.boulderaitech.com:ai-team/spzn-agentkit.git \
+    dev "$agentkit_registry_path" > "$agentkit_import_dir/upstream.tar"
+  actual_commit="$(git get-tar-commit-id < "$agentkit_import_dir/upstream.tar")"
+  if [ "$actual_commit" != "$agentkit_source_commit" ]; then
+    printf 'AgentKit source commit mismatch: %s\n' "$actual_commit" >&2
+    exit 1
+  fi
+  tar -xOf "$agentkit_import_dir/upstream.tar" "$agentkit_registry_path" \
+    > "$agentkit_import_dir/confirm-dialog.json"
+  cd frontend
+  npx --yes shadcn@4.21.0 add "$agentkit_import_dir/confirm-dialog.json" --dry-run
+)
+```
+
+GitLab SSH 的 `git archive` 使用分支或标签引用，归档头部的提交必须等于固定 SHA。若 `dev` 已前进，从 GitLab 的固定提交视图获取同一文件，或使用仍指向该提交的归档引用。预览通过后，去掉 `--dry-run` 导入已审阅的组件，提交导入源码和依赖锁。保留一份简短的上游记录，列出固定提交、取用路径与本地适配。升级时对照新旧上游源码并保留本地适配，再验证分析仓构建、消息流和历史恢复。
+
+新入口采用一套对话依赖与主题，校验 React、assistant-ui、Radix 和 Tailwind 的版本组合及 CSS 作用域。复用既有 API 客户端、状态推导和结果渲染，由新页面的 React 组件读取状态。
 
 ## 3. 两条用户路径
 
 ### 3.1 独立展示
 
-1. 用户打开新工作台，新建会话并发送「PACK 未签单商机主要涉及哪些客户和产品部？缺口怎么算出来的？」
+1. 用户打开 `/workbench-agentkit`，新建会话并发送「PACK 未签单商机主要涉及哪些客户和产品部？缺口怎么算出来的？」
 2. 分析后端基于环境允许的本体和数据范围执行。如果统计期间、客户范围或「未签单」口径不明确，展示澄清卡。用户提交后继续原轮次。
 3. 对话展示结论和证据引用，右栏展示该轮的客户与产品部明细、口径和缺口。用户可点本体标签查看对应指标、实体和关系。
 4. 用户在同一会话追问，前一轮的看板和本体命中仍可回看。用户切换统计期间时，新轮次按新期间重新取证。
 
 ### 3.2 V6.1 风险卡进入
 
-1. V6.1 从「商机覆盖风险」或等价 PACK 风险卡发起分析，传入来源、风险或指标锚点、当前期间及筛选。有已登记的证据时传证据引用。
+1. V6.1 从「商机覆盖风险」或等价 PACK 风险卡打开 `/workbench-agentkit`，传入来源、风险或指标锚点、当前期间及筛选。有已登记的证据时传证据引用。
 2. 分析服务校验交接范围，工作台显示带入的来源、口径和过滤条件。用户可确认或补充。相同交接的页面刷新复用已建立的会话，避免重复执行首轮。
 3. 结果从同一展示组件渲染。宿主如需定位原卡或打开结果，只读取已确认的结果标识及视图提示。新增风险卡通过业务映射接入同一流程。
 
@@ -77,7 +111,7 @@ PACK 对照验收时，两种入口使用同一个已核准的本体库和版本
 
 ## 6. 实施顺序和验收
 
-1. **页面和状态适配。** 接通一个新会话的发送、停止、工具事件和澄清。用回放夹具验证同轮更新、迟到事件、提交失败和中断。通过前端构建和网关前缀检查。
+1. **页面和状态适配。** 验证 AgentKit 导入清单、固定提交、依赖锁和前端构建。无前缀与配置 `APP_ROOT_PATH` 时，`/workbench-agentkit` 都能返回新页面并加载资源。接通一个新会话的发送、停止、工具事件和澄清。用回放夹具验证同轮更新、迟到事件、提交失败和中断。
 2. **PACK 主链路。** 使用受控的真实本体和已登记的查询。能对比客户与产品部，结果展示期间、单位、口径和可追溯证据。本体详情可由命中节点打开，子图只包含真实关系。数据不足或图服务不可用时对应区域正确降级。
 3. **恢复与追问。** 打开该会话历史，按轮恢复答复、看板及命中图，再发一条追问。切换到另一会话后旧流不会覆盖当前界面。抽查旧工作台入口及旧历史仍可查看。
 4. **V6.1 宿主验证。** 从一张 PACK／商机覆盖风险卡带入期间和对象，核对这轮查询范围和右栏定位。验证重复打开或刷新、交接失效、切换风险卡和窄屏使用。先验收这张卡，再推进第二张卡和其他场景。
