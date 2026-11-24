@@ -91,7 +91,7 @@ const url = buildHandoffUrl({
 window.open(url, '_blank');
 ```
 
-`parseHandoff()` 与 `buildHandoffUrl()` 互为往返，渲染侧不再手拼参数；锚点缺失时页面显示不可用反馈而不是空页。
+`parseHandoff()` 与 `buildHandoffUrl()` 互为往返，渲染侧不再手拼参数；锚点缺失时页面显示不可用反馈而不是空页。可运行的宿主示例见 `docs/examples/agentkit-host-handoff.html`（`tests/workbench_agentkit_host.test.mjs` 校验其参数往返）。
 
 ## 4. 接口和状态
 

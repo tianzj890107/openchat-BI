@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>V6.1 宿主卡片 → AgentKit 工作台（交接示例）</title>
+    <style>
+      body { font: 14px/1.6 -apple-system, "PingFang SC", sans-serif; background: #f6f7f9; margin: 0; padding: 40px; }
+      .card { max-width: 520px; background: #fff; border: 1px solid #e4e7ec; border-radius: 10px; padding: 18px 20px; }
+      h1 { font-size: 17px; margin: 0 0 6px; }
+      p { color: #6b7280; margin: 0 0 16px; }
+      button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid #2563eb; background: #2563eb; color: #fff; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <!-- Minimal host example: a V6.1-style risk card that opens the AgentKit
+         workbench with the card context.  The parameter contract matches
+         frontend/agentkit/state.js parseHandoff/buildHandoffUrl. -->
+    <article class="card" data-host-card>
+      <h1>商机覆盖风险</h1>
+      <p>PACK 未签单商机缺口 · 2026Q3 · 宁德时代／华东</p>
+      <button type="button" data-open-workbench>深度分析</button>
+    </article>
+    <script>
+      (function () {
+        var WORKBENCH_BASE = "/api/ontology-agentic-analytics";
+        var params = new URLSearchParams({
+          source: "v61-cockpit",
+          anchor: "PACK_OPP_COVERAGE",
+          period: "2026Q3",
+          filters: "customer=宁德时代;region=华东",
+          evidence: "ev-11,ev-12",
+          handoff: "h-7",
+        });
+        var url = WORKBENCH_BASE + "/workbench-agentkit?" + params.toString();
+        document.querySelector("[data-open-workbench]").addEventListener("click", function () {
+          // Exposed for the host-contract test; production hosts just open it.
+          window.__agentkitHandoffUrl = url;
+          try {
+            window.location.assign(url);
+          } catch (_) {
+            window.open(url, "_blank");
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>
