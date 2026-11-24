@@ -96,3 +96,74 @@ def test_old_route_can_reject_optional_parameters_after_protocol_repair():
     assert len(calls)==3 and kwargs==before
     assert 'extra_body' not in calls[-1] and 'reasoning_effort' not in calls[-1]
     assert 'real evidence 42' in calls[-1]['messages'][0]['content']
+
+
+@pytest.mark.parametrize("recovers", [True, False])
+def test_reasoning_400_has_five_retries_with_or_without_tool_history(monkeypatch, recovers):
+    from bi_agent.llm import deepseek_compat
+
+    delays = []
+    monkeypatch.setattr(deepseek_compat.time, "sleep", delays.append)
+    requests = []
+    error = RuntimeError('400 The `reasoning_content` must be passed back to the API.')
+
+    def create(**request):
+        requests.append(request)
+        if recovers and len(requests) == 6:
+            return iter(["ok"])
+        raise error
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    kwargs = {
+        "messages": history("real trace") if recovers else [{"role": "user", "content": "inspect"}],
+        "extra_body": {"thinking": {"type": "enabled"}},
+    }
+    original = deepcopy(kwargs)
+    if recovers:
+        assert list(create_stream(client, kwargs, deepseek=True)) == ["ok"]
+        assert "real evidence 42" in requests[-1]["messages"][0]["content"]
+    else:
+        with pytest.raises(RuntimeError) as raised:
+            create_stream(client, kwargs, deepseek=True)
+        assert raised.value is error
+    assert len(requests) == 6
+    assert requests[0] == original == kwargs
+    assert requests[1:] == [requests[-1]] * 5
+    assert delays == [0.05, 0.1, 0.2, 0.4, 0.8]
+
+
+def test_reasoning_400_before_first_chunk_is_retried(monkeypatch):
+    from bi_agent.llm import deepseek_compat
+
+    monkeypatch.setattr(deepseek_compat.time, "sleep", lambda _: None)
+    calls = []
+
+    def first_stream():
+        raise RuntimeError("400 reasoning_content missing")
+        yield
+
+    def create(**request):
+        calls.append(request)
+        return first_stream() if len(calls) == 1 else iter(["ok"])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    assert list(create_stream(client, {"messages": history()}, deepseek=True)) == ["ok"]
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(("deepseek", "message"), [
+    (True, "400 invalid max_tokens"),
+    (True, "503 reasoning_content missing"),
+    (False, "400 reasoning_content missing"),
+])
+def test_unrelated_errors_do_not_start_reasoning_retries(deepseek, message):
+    calls = []
+
+    def create(**request):
+        calls.append(request)
+        raise RuntimeError(message)
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with pytest.raises(RuntimeError, match=message):
+        create_stream(client, {"messages": history()}, deepseek=deepseek)
+    assert len(calls) == 1

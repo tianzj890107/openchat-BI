@@ -1,6 +1,15 @@
 """Outgoing-only DeepSeek compatibility. Never invent reasoning or execute tools."""
-from copy import deepcopy
 import json
+import logging
+import re
+import time
+from copy import deepcopy
+from itertools import chain
+
+
+logger = logging.getLogger(__name__)
+_MAX_REASONING_RETRIES = 5
+_END_OF_STREAM = object()
 
 
 def preserve_tool_observations(messages, *, all_tool_turns=False):
@@ -23,30 +32,77 @@ def preserve_tool_observations(messages, *, all_tool_turns=False):
     return out
 
 
+def _close_stream(stream):
+    close = getattr(stream, "close", None)
+    if callable(close):
+        close()
+
+
+def _consume_stream(stream, chunks):
+    try:
+        yield from chunks
+    finally:
+        _close_stream(stream)
+
+
 def create_stream(client, kwargs, *, deepseek=False):
-    """Bounded pre-stream repairs only; never replay a partially emitted stream."""
-    request=kwargs;repaired=set()
+    """Retry DeepSeek protocol rejections before the first response chunk."""
+    create = client.chat.completions.create
+    if not deepseek:
+        return create(**kwargs)
+
+    request = kwargs
+    history_repaired = False
+    parameters_repaired = False
+    reasoning_retries = 0
     while True:
+        stream = None
         try:
-            return client.chat.completions.create(**request)
+            stream = create(**request)
+            chunks = iter(stream)
+            first = next(chunks, _END_OF_STREAM)
         except Exception as exc:
-            message=str(exc).lower()
-            if not deepseek or getattr(exc,'status_code',400)!=400:
+            _close_stream(stream)
+            message = str(exc).lower().replace("_", " ")
+            status = getattr(exc, "status_code", None)
+            if status != 400 and (status is not None or not re.search(r"\b400\b", message)):
                 raise
-            missing=('reasoning' in message and any(x in message for x in ('passed back','not passed','missing','required')))
-            unsupported=(any(x in message for x in ('unsupported','unknown','unrecognized','unexpected','not supported'))
-                         and any(x in message for x in ('thinking','reasoning_effort')))
-            if missing and 'history' not in repaired and any(m.get('tool_calls') for m in request.get('messages',[])):
-                request=deepcopy(request)
-                request['messages']=preserve_tool_observations(request['messages'],all_tool_turns=True)
-                if 'parameters' not in repaired:request.setdefault('extra_body',{})['thinking']={'type':'disabled'}
-                repaired.add('history')
-            elif unsupported and 'parameters' not in repaired:
-                request=deepcopy(request)
-                request.pop('reasoning_effort',None)
-                body=request.get('extra_body') or {}
-                body.pop('thinking',None)
-                if not body:request.pop('extra_body',None)
-                repaired.add('parameters')
+            requires_reasoning = "reasoning content" in message and any(
+                term in message for term in ("passed back", "not passed", "missing", "required")
+            )
+            rejects_parameters = any(
+                term in message
+                for term in ("unsupported", "unknown", "unrecognized", "unexpected", "not supported")
+            ) and any(term in message for term in ("thinking", "reasoning effort"))
+            if requires_reasoning:
+                if reasoning_retries == _MAX_REASONING_RETRIES:
+                    raise
+                if not history_repaired:
+                    request = deepcopy(request)
+                    request["messages"] = preserve_tool_observations(
+                        request.get("messages", []), all_tool_turns=True
+                    )
+                    if not parameters_repaired:
+                        request["extra_body"] = {
+                            **(request.get("extra_body") or {}),
+                            "thinking": {"type": "disabled"},
+                        }
+                    history_repaired = True
+                reasoning_retries += 1
+                logger.info(
+                    "Retrying DeepSeek reasoning protocol error (%s/%s)",
+                    reasoning_retries, _MAX_REASONING_RETRIES,
+                )
+                time.sleep(0.05 * 2 ** (reasoning_retries - 1))
+            elif rejects_parameters and not parameters_repaired:
+                request = deepcopy(request)
+                request.pop("reasoning_effort", None)
+                body = request.get("extra_body") or {}
+                body.pop("thinking", None)
+                if not body:
+                    request.pop("extra_body", None)
+                parameters_repaired = True
             else:
                 raise
+            continue
+        return _consume_stream(stream, chunks if first is _END_OF_STREAM else chain((first,), chunks))
