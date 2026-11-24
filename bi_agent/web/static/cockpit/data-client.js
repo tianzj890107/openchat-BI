@@ -8,6 +8,45 @@ export function canonical(value) {
 /* The AP backend now allows a three-minute SQL budget, so every layer between
  * the browser and the upstream has to wait longer than the old 35 s page
  * timeout. Keep a margin for network and receipt handling. */
+// Measures the delivered dashboard counts in 单 (e.g. 红区报价单数).  ProUI's
+// KPI card formats a bare number with two decimals, so these get an integer
+// formatValue for display; the value itself is left as AP returned it.
+export const WHOLE_NUMBER_UNITS = new Set(['单']);
+
+export function wholeNumberCodes(runtime) {
+  const codes = new Set();
+  const stack = [runtime];
+  while (stack.length) {
+    const value = stack.pop();
+    if (Array.isArray(value)) { stack.push(...value); continue; }
+    if (!value || typeof value !== 'object') continue;
+    if (typeof value.identifierCode === 'string' && WHOLE_NUMBER_UNITS.has(String(value.unit || '').trim())) codes.add(value.identifierCode);
+    stack.push(...Object.values(value));
+  }
+  return codes;
+}
+
+export function wholeNumberCells(data, codes) {
+  if (!codes || !codes.size || !data || typeof data !== 'object') return data;
+  const result = data.data?.result || data.result;
+  if (!Array.isArray(result?.rows) || !result.rows.some(row => row && [...codes].some(code => code in row))) return data;
+  const format = value => Math.round(value).toLocaleString('en-US');
+  const rows = result.rows.map(row => {
+    if (!row || typeof row !== 'object') return row;
+    const next = {...row};
+    for (const code of codes) {
+      const cell = row[code];
+      if (typeof cell === 'number' && Number.isFinite(cell)) next[code] = {value: cell, formatValue: format(cell)};
+      else if (cell && typeof cell === 'object' && typeof cell.value === 'number' && Number.isFinite(cell.value)) {
+        next[code] = {...cell, formatValue: format(cell.value)};
+      }
+    }
+    return next;
+  });
+  const nextResult = {...result, rows};
+  return data.data?.result ? {...data, data: {...data.data, result: nextResult}} : {...data, result: nextResult};
+}
+
 export const AP_QUERY_TIMEOUT_MS = 200000;
 export const SCOPE_READY_TIMEOUT_MS = 220000;
 export const TRANSIENT_RETRY_WINDOW_MS = 30000;
@@ -18,7 +57,7 @@ export const DATA_REUSE_WINDOW_MS = 0;
 
 export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}, onError = () => {}, onRecover = () => {},
   timeoutMs = AP_QUERY_TIMEOUT_MS, readyTimeoutMs = SCOPE_READY_TIMEOUT_MS, retryWindowMs = TRANSIENT_RETRY_WINDOW_MS,
-  idleMs = 3000, concurrency = AP_QUERY_CONCURRENCY, stageFor = () => '', priorityFor = () => ({})}) {
+  idleMs = 3000, concurrency = AP_QUERY_CONCURRENCY, stageFor = () => '', priorityFor = () => ({}), integerCodes = new Set()}) {
   const active = new Map(), all = new Map(), completed = new Map(), inflight = new Map(), queue = [];
   const controllers = new Set();
   const replay = new Map((snapshot?.entries || []).map(e => [e.kind + ':' + canonical(e.payload), e]));
@@ -315,7 +354,8 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     return JSON.parse(JSON.stringify([...all.values()].map(s=>s.entry)));
   }
   return {scope, ready, clearScope, applySnapshot, entries, failures, read:query, block:message=>{blocked=message;}, biAdapters: {
-    postAnalysisDataQuery: payload => query('analysis', payload),
+    // Counts in 单 are shown as whole numbers; the stored evidence keeps the raw AP value.
+    postAnalysisDataQuery: payload => query('analysis', payload).then(data => wholeNumberCells(data, integerCodes)),
   }, utils: {request: async req => {
     try {
       const url = new URL(req.url, globalThis.location?.origin || 'http://localhost');

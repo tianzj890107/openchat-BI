@@ -1396,7 +1396,7 @@
         }
         let installed;
         if (dataConfig.mode === 'ap') {
-          const [{createAPDataClient,observeRuntimeFilters,observeActivationActions,tableFilterIds},{createPageCache},{createPublicationPoller}] = await Promise.all([
+          const [{createAPDataClient,observeRuntimeFilters,observeActivationActions,tableFilterIds,wholeNumberCodes},{createPageCache},{createPublicationPoller}] = await Promise.all([
             import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`),
             import(`${assetBase}/page-client.js?v=${encodeURIComponent(assetVersion)}`),
             import(`${assetBase}/publication-poll.js?v=${encodeURIComponent(assetVersion)}`),
@@ -1410,6 +1410,8 @@
           const allowSnapshotReplay=/[?&]cache=1(?:&|$)/.test(location.search);
           const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot:allowSnapshotReplay?snapshot:null,
             stageFor:(kind,payload)=>queryStage(payload),priorityFor:queryPriority,
+            // 单-unit measures (红区报价单数) display as whole numbers.
+            integerCodes:wholeNumberCodes(payload),
             // The data client falls back to a live read for a query omitted by
             // the page snapshot.  Do not rebuild the dashboard or inject a
             // host-specific cache message into the delivered component.

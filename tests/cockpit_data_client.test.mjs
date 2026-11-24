@@ -554,3 +554,19 @@ test('the 销售额口径 helmet shows its nodes as 商机 / 订单 / 订未发'
   assert.equal(relabelHelmet({flowCode: 'OTHER'}, data), data);
   assert.equal(relabelHelmet({flowCode: 'SALES_CALIBER'}, null), null);
 });
+
+test('KPI counts in 单 display as whole numbers while the stored evidence keeps the AP value', async () => {
+  const {wholeNumberCodes} = clientModule;
+  const runtime = {components: [{type: 'kpiCard', title: '红区报价集中，存在增量风险', dataConfig: {
+    measure: [{identifierCode: 'YWLN_M0137', unit: '单'}], subMeasure: [{identifierCode: 'YWLN_M0131', unit: '%'}]}}]};
+  const codes = wholeNumberCodes(runtime);
+  assert.deepEqual([...codes], ['YWLN_M0137']);
+  const data = {success: true, data: {resultType: 'TABLE', result: {rows: [{YWLN_M0137: {value: 1200}, YWLN_M0131: {value: 0.6234}}]}}};
+  const client = createAPDataClient({apiBase: '/api/cockpit', id: 2, integerCodes: codes,
+    request: async () => ok('receipt-red', data)});
+  const shown = await client.biAdapters.postAnalysisDataQuery({analysisConfig: {indicators: [{identifierCode: 'YWLN_M0137'}, {identifierCode: 'YWLN_M0131'}]}});
+  const row = shown.data.result.rows[0];
+  assert.deepEqual(row.YWLN_M0137, {value: 1200, formatValue: '1,200'});
+  assert.deepEqual(row.YWLN_M0131, {value: 0.6234});
+  assert.deepEqual(client.entries()[0].data.data.result.rows[0].YWLN_M0137, {value: 1200});
+});

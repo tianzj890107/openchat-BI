@@ -790,7 +790,7 @@
       {
         "id": "kpiCard-bat771ma",
         "type": "kpiCard",
-        "title": "红区报价集中，存在增量不理风险",
+        "title": "红区报价集中，存在增量风险",
         "position": {
           "h": 6,
           "w": 60,
@@ -803,7 +803,7 @@
             {
               "name": "Red_Zone_Quote_Count",
               "unit": "单",
-              "alias": "红区报价集中，存在增量不理风险",
+              "alias": "红区报价集中，存在增量风险",
               "label": "红区报价单数",
               "isTree": false,
               "fieldType": "Indicator",
