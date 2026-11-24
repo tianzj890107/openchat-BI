@@ -70,20 +70,26 @@ test('stream deltas append to the same assistant message', () => {
 
 test('tool events merge into one call, and duplicate results are ignored', () => {
   let state = streaming();
-  state = applyEvent(state, {type: 'tool_use_start', turn_id: 't-1', id: 'tool-1', name: 'query_ontology'});
-  state = applyEvent(state, {type: 'tool_input_delta', turn_id: 't-1', id: 'tool-1', partial_json: '{"anchor":"pack"}'});
+  // The backend emits tool_start / tool_input / tool_result with a full input.
+  state = applyEvent(state, {type: 'tool_start', turn_id: 't-1', id: 'tool-1', name: 'query_ontology'});
   state = applyEvent(state, {
-    type: 'tool_result', turn_id: 't-1', tool_use_id: 'tool-1',
-    output: {table: {columns: ['customer', 'gap'], rows: [['宁德时代', 3]]}},
+    type: 'tool_input', turn_id: 't-1', id: 'tool-1', input: '{"anchor":"pack"}',
   });
   state = applyEvent(state, {
-    type: 'tool_result', turn_id: 't-1', tool_use_id: 'tool-1',
+    type: 'tool_result', turn_id: 't-1', id: 'tool-1', name: 'query_ontology',
+    input: '{"anchor":"pack"}',
+    output: {table: {columns: ['customer', 'gap'], rows: [['宁德时代', 3]]}},
+    ontology_entities: [{code: 'BO-PACK', type: 'business_object'}],
+  });
+  state = applyEvent(state, {
+    type: 'tool_result', turn_id: 't-1', id: 'tool-1',
     output: {table: {columns: ['customer', 'gap'], rows: [['宁德时代', 3]]}},
   });
   const tools = state.turns[0].assistant.tools;
   assert.equal(tools.length, 1);
   assert.equal(tools[0].status, 'done');
   assert.equal(tools[0].input, '{"anchor":"pack"}');
+  assert.equal(tools[0].entities[0].code, 'BO-PACK');
   assert.equal(boardItems(state).length, 1);
 });
 

@@ -212,6 +212,9 @@ export function applyEvent(state, event) {
       if (!turn) return state;
       return updateAssistant(state, {thinking: `${turn.assistant.thinking}${event.text || ''}`});
     }
+    // The backend emits `tool_start` / `tool_input`; the older `tool_use_*`
+    // spellings stay accepted so a stream from an earlier build still folds.
+    case 'tool_start':
     case 'tool_use_start': {
       const id = event.id || event.tool_use_id;
       if (!id) return state;
@@ -220,14 +223,21 @@ export function applyEvent(state, event) {
         return [...tools, {id, name: event.name || 'tool', status: 'running', input: '', output: null}];
       });
     }
+    case 'tool_input':
     case 'tool_input_delta': {
       const id = event.id || event.tool_use_id;
       if (!id) return state;
-      return updateTools(state, (tools) =>
-        tools.map((tool) =>
-          tool.id === id ? {...tool, input: `${tool.input}${event.partial_json || ''}`} : tool,
-        ),
-      );
+      const incoming = typeof event.input === 'string'
+        ? event.input
+        : typeof event.partial_json === 'string'
+          ? event.partial_json
+          : '';
+      return updateTools(state, (tools) => {
+        if (!tools.some((tool) => tool.id === id)) {
+          return [...tools, {id, name: event.name || 'tool', status: 'running', input: incoming, output: null}];
+        }
+        return tools.map((tool) => (tool.id === id ? {...tool, input: incoming} : tool));
+      });
     }
     case 'tool_result': {
       const id = event.tool_use_id || event.id;
@@ -242,7 +252,9 @@ export function applyEvent(state, event) {
         const merged = {
           ...(existing || {id, name: event.name || 'tool', input: ''}),
           status: 'done',
+          input: typeof event.input === 'string' ? event.input : existing?.input ?? '',
           output: event.output ?? existing?.output ?? null,
+          entities: Array.isArray(event.ontology_entities) ? event.ontology_entities : existing?.entities ?? [],
         };
         const without = tools.filter((tool) => tool.id !== id);
         return [...without, addBoardItemIfAny(merged)];

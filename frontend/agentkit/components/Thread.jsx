@@ -1,4 +1,4 @@
-import React from "react";
+import React, {useState} from "react";
 
 function ToolGroup({tools}) {
   if (!tools.length) return null;
@@ -24,19 +24,45 @@ function ToolGroup({tools}) {
 }
 
 function Clarification({choice, onChoose}) {
+  const [selected, setSelected] = useState([]);
   if (!choice) return null;
+  const options = choice.options || [];
+  const toggle = (option) => {
+    const id = String(option.id ?? option.label ?? "");
+    setSelected((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  };
+  const submit = () => {
+    const picked = options.filter((option) => selected.includes(String(option.id ?? option.label ?? "")));
+    if (picked.length) onChoose(picked);
+  };
   return (
     <div className="ak-clarify" role="group" aria-label="补充条件">
       <p className="ak-clarify-question">{choice.question}</p>
-      <div className="ak-clarify-options">
-        {choice.options.map((option) => {
-          const label = option.label ?? option.title ?? String(option.id);
+      <ul className="ak-clarify-options">
+        {options.map((option) => {
+          const id = String(option.id ?? option.label ?? "");
+          const label = option.label ?? option.title ?? id;
           return (
-            <button key={label} type="button" className="ak-option" onClick={() => onChoose(option)}>
-              {label}
-            </button>
+            <li key={id}>
+              <label className="ak-option">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(id)}
+                  onChange={() => toggle(option)}
+                />
+                <span className="ak-option-label">{label}</span>
+                {option.detail ? <span className="ak-option-detail">{option.detail}</span> : null}
+              </label>
+            </li>
           );
         })}
+      </ul>
+      <div className="ak-clarify-actions">
+        <button type="button" className="ak-primary" onClick={submit} disabled={!selected.length}>
+          确定（已选 {selected.length} 项）
+        </button>
       </div>
     </div>
   );

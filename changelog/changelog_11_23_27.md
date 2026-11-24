@@ -14,7 +14,7 @@
 
 - 新入口 `GET /workbench-agentkit`：沿用 `APP_ROOT_PATH`（如 `/api/ontology-agentic-analytics/workbench-agentkit`），无前缀与配置前缀都能打开；返回 `Cache-Control: no-store`，静态资源按文件 mtime 注入 `?v=`，不再使用写死版本号。`/` 与 `/workbench` 继续返回原 Pro UI 页面，与新入口互不影响。
 - 页面壳由 `bi_agent/web/static/agentkit/index.html` 提供首屏骨架（顶部交接区、左会话列表、中对话、右结果看板、窄屏切换按钮），React 挂载后接管；产物为 `bi_agent/web/static/vendor/agentkit/workbench-agentkit.{js,css}`（约 162 KB / 10 KB），与 Pro UI 的 `vendor/antd` 完全分开。
-- 前端源码在 `frontend/agentkit/`：`state.js` 把 `/api/chat`、`/api/choice` 的 SSE 投影成单一会话状态（正文增量合并、工具事件合并到原调用、澄清暂停、迟到/旧轮次事件丢弃、`done` 终态幂等、停止保留已得结论）；`api.js` 负责带 `APP_ROOT_PATH` 的请求与 SSE 解析；组件 `SessionList/Thread/Composer/Board/HandoffBanner` 覆盖会话新建与切换、工具过程、澄清选项、停止与重试、结果表/图/指标。
+- 前端源码在 `frontend/agentkit/`：`state.js` 把 `/api/chat`、`/api/choice` 的 SSE 投影成单一会话状态（正文增量合并、`tool_start`/`tool_input`/`tool_result` 合并到原调用并保留 `ontology_entities`、澄清暂停、迟到/旧轮次事件丢弃、`done` 终态幂等、停止保留已得结论）；`api.js` 负责带 `APP_ROOT_PATH` 的请求与 SSE 解析；组件 `SessionList/Thread/Composer/Board/HandoffBanner` 覆盖会话新建与切换、工具过程、澄清多选提交（与 AskUser 一致）、停止与重试、结果表/图/指标。
 - V6.1 交接：从 `source/anchor/period/filters/evidence/handoff` 查询参数读取卡片上下文并显示「按此范围继续」横幅；缺锚点时显示不可用反馈并提供「返回来源卡」「重新发起分析」两个出口，不再静默丢弃。
 - AgentKit 上游按固定提交 `b8df86dfa3c30de6676cd1d768cda504bf3c3338` 按文件导入：新增 `scripts/import_agentkit_upstream.py`（`git archive --remote` + `get-tar-commit-id` 校验，`--check` 只校验；`dev` 前进即报错），导入 `aui-thread.json`、`aui-thread-list.json`、`confirm-dialog.json`、`registry.json` 与 `thread.aui.tsx`、`thread-list.aui.tsx`、`tool-group.aui.tsx`、`tool-call.tsx`、`markdown-text.tsx` 到 `frontend/agentkit/upstream/`，来源与本地落点记在 `frontend/agentkit/UPSTREAM.md`。
 - 构建：新增 `frontend/vite.agentkit.config.js`（独立 IIFE + 独立样式表，`publicDir: false`，不把 Vue/Pro UI 公共库带进产物），日常构建只读本仓文件。

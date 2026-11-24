@@ -108,11 +108,13 @@ export default function App() {
   );
 
   const choose = useCallback(
-    (option) => {
+    (picked) => {
       const pending = stateRef.current.pendingChoice;
-      if (!pending || !option) return;
-      const ids = [String(option.id ?? option.label ?? "")];
-      const labels = [String(option.label ?? option.id ?? "")];
+      const chosen = Array.isArray(picked) ? picked : picked ? [picked] : [];
+      if (!pending || !chosen.length) return;
+      // AskUser supports multi-select: keep the ids/labels order the user picked.
+      const ids = chosen.map((option) => String(option.id ?? option.label ?? ""));
+      const labels = chosen.map((option) => String(option.label ?? option.id ?? ""));
       setWorkbench((previous) => ({...previous, pendingChoice: null, status: "streaming"}));
       runStream(sessionId, (options) => chooseOption({...options, ids, labels}));
     },
