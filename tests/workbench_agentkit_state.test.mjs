@@ -10,6 +10,7 @@ import {
   boardItems,
   buildHandoffUrl,
   createWorkbenchState,
+  hydrateTurns,
   parseHandoff,
   startTurn,
   stopTurn,
@@ -193,4 +194,23 @@ test('assistant-ui adapter projects turns into thread messages', async () => {
 test('the runtime module declares its assistant-ui adapter identity', async () => {
   const {AGENTKIT_RUNTIME} = await import('../frontend/agentkit/messageAdapter.js');
   assert.match(AGENTKIT_RUNTIME, /assistant-ui/);
+});
+
+test('hydrateTurns restores a stored conversation for the transcript', () => {
+  const messages = [
+    {role: 'user', content: [{type: 'text', text: 'PACK 缺口'}]},
+    {role: 'assistant', content: [
+      {type: 'text', text: '共 2 家客户'},
+      {type: 'tool_use', id: 'tu-1', name: 'TableGenerate', input: {a: 1}},
+    ]},
+    {role: 'assistant', content: [{type: 'text', text: '补充说明'}]},
+  ];
+  const turns = hydrateTurns(messages);
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0].user, 'PACK 缺口');
+  assert.equal(turns[0].status, 'done');
+  // Consecutive assistant records fold into one bubble.
+  assert.equal(turns[0].assistant.text, '共 2 家客户\n补充说明');
+  assert.equal(turns[0].assistant.tools[0].name, 'TableGenerate');
+  assert.equal(turns[0].assistant.tools[0].status, 'done');
 });

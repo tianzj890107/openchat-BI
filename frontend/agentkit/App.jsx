@@ -6,6 +6,7 @@ import {
   applyEvent,
   boardItems,
   createWorkbenchState,
+  hydrateTurns,
   parseHandoff,
   startTurn,
   stopTurn,
@@ -20,42 +21,6 @@ import {useAgentkitRuntime} from "./runtime.js";
 function newSessionId(handoff) {
   const stamp = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return handoff?.handoffId ? `agentkit-${handoff.handoffId}-${stamp}` : `agentkit-${stamp}`;
-}
-
-/** Rebuild display turns from a stored conversation (read-only restore). */
-function hydrateTurns(messages) {
-  const turns = [];
-  for (const message of messages || []) {
-    const blocks = Array.isArray(message.content)
-      ? message.content
-      : [{type: "text", text: String(message.content ?? "")}];
-    const text = blocks
-      .filter((block) => block && block.type === "text")
-      .map((block) => block.text || "")
-      .join("\n")
-      .trim();
-    const tools = blocks
-      .filter((block) => block && block.type === "tool_use")
-      .map((block) => ({
-        id: block.id || block.tool_use_id || `history-tool-${turns.length}`,
-        name: block.name || "tool",
-        status: "done",
-        input: JSON.stringify(block.input ?? {}),
-        output: null,
-      }));
-    if (message.role === "assistant") {
-      const last = turns[turns.length - 1];
-      if (last) last.assistant = {text, thinking: "", tools};
-    } else if (text) {
-      turns.push({
-        id: `history-${turns.length}`,
-        user: text,
-        status: "done",
-        assistant: {text: "", thinking: "", tools: []},
-      });
-    }
-  }
-  return turns;
 }
 
 export default function App() {
