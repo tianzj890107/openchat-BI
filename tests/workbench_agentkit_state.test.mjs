@@ -12,6 +12,11 @@ import {
   createWorkbenchState,
   hydrateTurns,
   parseHandoff,
+  resolveHandoffSession,
+  resumeTurn,
+  scopeFromHandoff,
+  snapshotFromState,
+  turnsFromSnapshot,
   startTurn,
   stopTurn,
 } from '../frontend/agentkit/state.js';
@@ -213,4 +218,99 @@ test('hydrateTurns restores a stored conversation for the transcript', () => {
   assert.equal(turns[0].assistant.text, '共 2 家客户\n补充说明');
   assert.equal(turns[0].assistant.tools[0].name, 'TableGenerate');
   assert.equal(turns[0].assistant.tools[0].status, 'done');
+});
+
+test('scopeFromHandoff sends only a usable card scope', () => {
+  const handoff = parseHandoff('?source=v61-cockpit&anchor=PACK_OPP_COVERAGE&period=2026Q3'
+    + '&filters=customer%3D%E5%AE%81%E5%BE%B7%E6%97%B6%E4%BB%A3&evidence=ev-11&handoff=h-7');
+  assert.deepEqual(scopeFromHandoff(handoff), {
+    source: 'v61-cockpit',
+    anchor: 'PACK_OPP_COVERAGE',
+    period: '2026Q3',
+    filters: {customer: '宁德时代'},
+    evidence: ['ev-11'],
+    handoff_id: 'h-7',
+  });
+  assert.equal(scopeFromHandoff(parseHandoff('')), null);
+  assert.equal(scopeFromHandoff(parseHandoff('?handoff=h-9')), null);
+});
+
+test('the same handoff keeps its session across a page refresh', () => {
+  const store = new Map();
+  const storage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, value),
+  };
+  const first = parseHandoff('?source=v61&anchor=PACK_OPP_COVERAGE&period=2026Q3&handoff=h-7');
+  const second = parseHandoff('?source=v61&anchor=PACK_OPP_COVERAGE&period=2026Q3&handoff=h-7');
+  const other = parseHandoff('?source=v61&anchor=OTHER_ANCHOR&period=2026Q3&handoff=h-8');
+
+  const sessionA = resolveHandoffSession(first, storage);
+  const sessionB = resolveHandoffSession(second, storage);
+  const sessionC = resolveHandoffSession(other, storage);
+  assert.ok(sessionA);
+  assert.equal(sessionA, sessionB, 'refresh reuses the established session');
+  assert.notEqual(sessionA, sessionC, 'a different card gets its own session');
+  assert.equal(resolveHandoffSession(parseHandoff(''), storage), '');
+});
+
+test('a clarification resume adopts the new request turn_id', () => {
+  let state = streaming();
+  state = applyEvent(state, {type: 'text_delta', turn_id: 'first-request', text: '需要确认期间。'});
+  state = applyEvent(state, {
+    type: 'user_choice_requested', turn_id: 'first-request', tool_use_id: 'tool-1',
+    question: '统计期间', options: [{id: 'q3', label: '2026Q3'}],
+  });
+  assert.equal(state.status, 'paused');
+
+  state = resumeTurn(state);
+  assert.equal(state.status, 'streaming');
+  assert.equal(state.activeTurnId, null, 'the resumed stream starts a new turn id');
+  assert.equal(state.pendingChoice, null);
+
+  // /api/choice allocates a new turn_id per request.
+  state = applyEvent(state, {type: 'text_delta', turn_id: 'resume-request', text: '按 2026Q3 统计…'});
+  state = applyEvent(state, {type: 'tool_result', turn_id: 'resume-request', id: 'tool-2', name: 'TableGenerate',
+    table: {title: '明细', columns: [{key: 'a', label: 'A'}], rows: [[1]]}});
+  state = applyEvent(state, {type: 'done', turn_id: 'resume-request'});
+
+  assert.equal(state.status, 'idle');
+  assert.equal(state.turns[0].assistant.text, '需要确认期间。按 2026Q3 统计…');
+  assert.equal(boardItems(state).length, 1);
+});
+
+test('a failed clarification resume becomes retryable instead of stuck', () => {
+  let state = resumeTurn(streaming());
+  state = applyEvent(state, {type: 'error', turn_id: 'resume-request', message: '选择已失效'});
+  assert.equal(state.status, 'error');
+  assert.match(state.error, /选择已失效/);
+});
+
+test('a conversation snapshot round-trips turns with boards and evidence', () => {
+  let state = startTurn(createWorkbenchState(), {text: 'PACK 缺口', sessionId: 's-1'});
+  state = applyEvent(state, {type: 'text_delta', turn_id: 't-1', text: '共 2 家客户'});
+  state = applyEvent(state, {
+    type: 'tool_start', turn_id: 't-1', id: 'tool-1', name: 'TableGenerate',
+  });
+  state = applyEvent(state, {
+    type: 'tool_result', turn_id: 't-1', id: 'tool-1', name: 'TableGenerate',
+    table: {title: '明细', columns: [{key: 'customer', label: '客户'}], rows: [['宁德时代']]},
+    duration_ms: 42,
+    ontology_entities: [{code: 'BO_PACK_OPP_002', kind: 'business_object', name: 'PACK 商机'}],
+  });
+  state = applyEvent(state, {type: 'done', turn_id: 't-1'});
+
+  const snapshot = snapshotFromState(state);
+  assert.equal(snapshot.version, 1);
+  assert.equal(snapshot.turns.length, 1);
+  // Must survive JSON persistence.
+  const restored = turnsFromSnapshot(JSON.parse(JSON.stringify(snapshot)));
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].assistant.text, '共 2 家客户');
+  assert.equal(restored[0].assistant.tools[0].table.rows[0][0], '宁德时代');
+  assert.equal(restored[0].assistant.tools[0].entities[0].code, 'BO_PACK_OPP_002');
+
+  assert.deepEqual(boardItems({turns: restored}).length, 1);
+  assert.equal(turnsFromSnapshot(null), null);
+  assert.equal(turnsFromSnapshot({turns: 'nope'}), null);
 });

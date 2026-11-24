@@ -35,3 +35,12 @@
 - 首屏冒烟：`tests/workbench_agentkit_dom.test.mjs` 用 jsdom 执行已提交的构建产物与页面模板，验证页面挂载、输入框、空态、V6.1 交接横幅和会话列表请求。真机浏览器点击结果见下方验收结论。
 - 测试：先写红测再实现——`tests/test_workbench_agentkit_route.py`（4 项，路由未实现时为 404，现全部通过）、`tests/workbench_agentkit_state.test.mjs`（11 项状态投影与交接 URL）、`tests/workbench_agentkit_results.test.mjs`（7 项结果/证据/子图请求适配）、`tests/workbench_agentkit_shell.test.mjs`（7 项页面壳/右栏/主题作用域/构建配置/上游记录）。AgentKit 相关 Node 25 项通过；`test_direct_root_workbench_entry.py`、`test_application_base_path.py`（10 项）与 `test_anonymous_read_surface_red.py`、`test_cockpit_main_service.py`（40 项）通过。
 - 首期验收基线 `2f64cdd` **未通过**。33 项前端和 26 项后端专项测试通过，路由、构建产物与上游 10 个文件校验通过。真机浏览器使用本地模拟 SSE 复现首次发送白屏和宿主范围未进入请求，按实际接口回放确认澄清续流被丢弃。历史正文可恢复，历史上下文接续和看板恢复待完善。真实 PACK 销售取数、看板与子图端到端验证仍待复验。复现条件和通过标准已写入规格 §6.1。
+
+### 2026-11-24 验收阻断项修复：发送、交接范围、澄清续流、历史恢复
+
+- 首次发送白屏：assistant 消息补齐 `status`（`running` / `complete`），修复 assistant-ui 读取 `status.type` 时的 `Cannot read properties of undefined (reading 'type')`；jsdom 测试改为真实输入并点击发送，覆盖逐帧正文与 `done` 后恢复发送键，另加慢流停止用例（停止后保留部分正文并提示「本轮已停止」）。
+- V6.1 交接范围：`/api/chat` 新增 `scope`（`source/anchor/period/filters/evidence/handoff_id`），后端校验锚点与期间后拼入模型提示词，`visible_user_text` 仍是用户问题；前端 `scopeFromHandoff()` 只在交接可用时携带，`buildChatBody()` 组装请求体。同一交接的会话 ID 存 sessionStorage（按交接号），刷新复用；新建会话会更新该记录。
+- 澄清续流：新增 `resumeTurn()`，提交 `/api/choice` 前释放旧 turn id（后端为续流分配新请求 id），续流正文与 `done` 归入原问题；提交失败转为可重试错误态。jsdom 用两个不同 turn id 回放验证。
+- 历史恢复：`activate` 按传入 `session_id` 建立/命中会话并回传 `session_id`、`messages` 与 `agentkit` 快照；快照（轮次、工具过程、表格/图表、证据、本体命中）随保存写入会话记录，上限 200 KB/40 轮且更新不丢；前端优先用快照恢复、旧记录回退消息文本，追问继续使用激活会话；每轮完成/失败/中断后自动保存（内容指纹去重）。
+- 验证：Node 165 项通过（含 6 项 jsdom 端到端：挂载、发送、停止、交接范围与刷新会话、历史恢复、澄清续流）；后端专项 21 项通过（路由、范围校验、历史存取、入口/base-path），会话存储回归 24 项通过。产物约 721 KB（gzip 210 KB）。
+- 主要文件：`frontend/agentkit/{App.jsx,api.js,state.js,messageAdapter.js}`、`bi_agent/web/{app.py,conversations.py}`、`tests/workbench_agentkit_{dom,api,state}.test.mjs`、`tests/test_workbench_agentkit_{scope,history,route}.py`。

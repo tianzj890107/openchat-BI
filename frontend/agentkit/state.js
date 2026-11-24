@@ -167,6 +167,89 @@ export function hydrateTurns(messages) {
   return turns;
 }
 
+
+/** Only a usable card handoff is sent as request scope. */
+export function scopeFromHandoff(handoff) {
+  if (!handoff?.active || handoff.invalid) return null;
+  const scope = {
+    source: handoff.source || "",
+    anchor: handoff.anchor,
+    period: handoff.period,
+    filters: handoff.filters || {},
+    evidence: handoff.evidence || [],
+  };
+  if (handoff.handoffId) scope.handoff_id = handoff.handoffId;
+  return scope;
+}
+
+/**
+ * One session per handoff card, kept for the tab's lifetime so a refresh
+ * resumes the established analysis session instead of starting a new one.
+ */
+export function handoffSessionStorageKey(handoff) {
+  return handoff?.handoffId ? `agentkit.handoff-session.${handoff.handoffId}` : "";
+}
+
+export function resolveHandoffSession(handoff, storage = null) {
+  const key = handoffSessionStorageKey(handoff);
+  if (!key) return "";
+  try {
+    const existing = storage?.getItem?.(key);
+    if (existing) return existing;
+    const created = `agentkit-${handoff.handoffId}-${Math.random().toString(16).slice(2)}`;
+    storage?.setItem?.(key, created);
+    return created;
+  } catch (_) {
+    return "";
+  }
+}
+
+/**
+ * Resume a paused turn for /api/choice: the backend allocates a NEW request
+ * turn_id for the continuation, so the previous id must be released before the
+ * resumed stream is accepted.
+ */
+export function resumeTurn(state) {
+  if (state.status !== 'paused') return state;
+  return {
+    ...state,
+    status: 'streaming',
+    activeTurnId: null,
+    pendingChoice: null,
+    error: '',
+  };
+}
+
+
+/**
+ * Persistable snapshot of a conversation: the turns already carry the text,
+ * tool runs, boards, evidence and ontology hits, so one round trip restores
+ * the whole right pane.
+ */
+export function snapshotFromState(state) {
+  const turns = (state?.turns || []).map((turn) => JSON.parse(JSON.stringify(turn)));
+  return {version: 1, turns};
+}
+
+/** Validate a stored snapshot; malformed history falls back to messages. */
+export function turnsFromSnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.turns)) return null;
+  const usable = snapshot.turns.filter((turn) => turn && typeof turn === 'object' && turn.user);
+  if (!usable.length) return null;
+  return usable.map((turn, index) => ({
+    id: String(turn.id || `restored-${index}`),
+    user: String(turn.user || ''),
+    status: 'done',
+    assistant: {
+      text: String(turn.assistant?.text || ''),
+      thinking: String(turn.assistant?.thinking || ''),
+      tools: Array.isArray(turn.assistant?.tools)
+        ? turn.assistant.tools.filter((tool) => tool && tool.id)
+        : [],
+    },
+  }));
+}
+
 let turnSeq = 0;
 
 /** Begin a turn: user text lands immediately, the assistant bubble streams in. */

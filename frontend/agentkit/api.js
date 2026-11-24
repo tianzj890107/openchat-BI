@@ -5,7 +5,8 @@
 // Chat turns are SSE frames: one JSON object per `data:` line.
 
 export function withBasePath(path) {
-  const base = String(window.APP_ROOT_PATH || "").replace(/\/+$/, "");
+  const appRoot = typeof window !== "undefined" ? window.APP_ROOT_PATH : "";
+  const base = String(appRoot || "").replace(/\/+$/, "");
   const clean = String(path || "").replace(/^\/+/, "");
   if (!clean) return base || "/";
   return base ? `${base}/${clean}` : `/${clean}`;
@@ -27,24 +28,47 @@ export async function listConversations() {
   return Array.isArray(payload.conversations) ? payload.conversations : [];
 }
 
-/** Reopen a stored conversation and return its server session + messages. */
-export async function openConversation(cid) {
+/**
+ * Reopen a stored conversation in the caller's session.
+ *
+ * The session id is sent explicitly so the restore lands where follow-up
+ * questions will be asked; the backend echoes it back. The response carries
+ * both the text messages and the AgentKit snapshot (boards/evidence/hits).
+ */
+export async function openConversation(cid, sessionId = "") {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
   const response = await fetch(
-    withBasePath(`api/conversations/${encodeURIComponent(cid)}/activate`),
+    withBasePath(`api/conversations/${encodeURIComponent(cid)}/activate${query}`),
     {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"},
   );
   const payload = await asJson(response);
-  let messages = Array.isArray(payload.messages) ? payload.messages : [];
-  if (!messages.length) {
-    const record = await fetch(
-      withBasePath(`api/conversations/${encodeURIComponent(cid)}/record`),
-      {cache: "no-store"},
-    );
-    const stored = await asJson(record);
-    const conversation = stored.conversation || {};
-    if (Array.isArray(conversation.messages)) messages = conversation.messages;
-  }
-  return {sessionId: payload.session_id || "", messages};
+  return {
+    sessionId: payload.session_id || sessionId || "",
+    messages: Array.isArray(payload.messages) ? payload.messages : [],
+    agentkit: payload.agentkit && typeof payload.agentkit === "object" ? payload.agentkit : null,
+  };
+}
+
+/** Persist the current turns so the conversation can be reopened later. */
+export async function saveConversation({sessionId, cid, title, turns, handoff}) {
+  const response = await fetch(withBasePath("api/conversations/save"), {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      mode: "data",
+      session_id: sessionId || "",
+      cid: cid || undefined,
+      title: title || "",
+      first_user_question: title || "",
+      agentkit: {
+        version: 1,
+        turns: turns || [],
+        ...(handoff ? {handoff} : {}),
+      },
+    }),
+  });
+  const payload = await asJson(response);
+  return {cid: payload.id || cid || ""};
 }
 
 /** Read one SSE response and dispatch every JSON frame to `onEvent`. */
@@ -93,12 +117,24 @@ async function readEventStream(response, onEvent) {
   }
 }
 
+
+/** Chat request body: visible question + optional card scope. */
+export function buildChatBody({message, visibleText, sessionId, scope}) {
+  const body = {
+    message,
+    visible_user_text: visibleText ?? message,
+    session_id: sessionId || "",
+  };
+  if (scope && scope.anchor) body.scope = scope;
+  return body;
+}
+
 /** Ask one question; resolves when the turn's stream ends. */
-export async function streamChat({message, sessionId, signal, onEvent}) {
+export async function streamChat({message, sessionId, scope, signal, onEvent}) {
   const response = await fetch(withBasePath("api/chat"), {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({message, visible_user_text: message, session_id: sessionId || ""}),
+    body: JSON.stringify(buildChatBody({message, sessionId, scope})),
     signal,
   });
   await readEventStream(response, onEvent);

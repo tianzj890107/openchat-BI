@@ -53,6 +53,29 @@ except ImportError:  # pragma: no cover - Python 3.10+ includes zoneinfo
 TITLE_ALGORITHM_VERSION = 3
 HISTORY_INDEX_VERSION = 3
 MAX_CONVERSATIONS = 100          # keep newest N per store; prune the rest
+# The AgentKit workbench stores its structured turns (message text, tool runs,
+# boards, evidence, ontology hits) so a reopened conversation can rebuild the
+# page without replaying the analysis.  The snapshot is bounded: the oldest
+# turns are dropped first, and an oversized payload never reaches disk.
+MAX_AGENTKIT_BYTES = 200_000
+MAX_AGENTKIT_TURNS = 40
+
+
+def bounded_agentkit(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    turns = value.get("turns")
+    snapshot: dict[str, Any] = {
+        "version": int(value.get("version") or 1),
+        "turns": [turn for turn in (turns or []) if isinstance(turn, dict)][:MAX_AGENTKIT_TURNS],
+    }
+    if isinstance(value.get("handoff"), dict):
+        snapshot["handoff"] = value["handoff"]
+    while snapshot["turns"] and len(json.dumps(snapshot, ensure_ascii=False)) > MAX_AGENTKIT_BYTES:
+        snapshot["turns"].pop()
+    return snapshot if snapshot["turns"] else {}
+
+
 MAX_HTML_BYTES = 4_000_000       # per-blob safety cap (~4 MB)
 # Recycle bin: deleting a conversation moves it into ``<root>/trash/`` instead
 # of unlinking it, so it stays recoverable for a bounded window
@@ -798,12 +821,14 @@ class ConversationStore:
         cid: Optional[str] = None,
         first_user_question_override: str = "",
         recovery_state: Optional[dict[str, Any]] = None,
+        agentkit: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Create or update (when `cid` exists) a conversation record."""
         if mode not in VALID_MODES:
             mode = "data"
         created = None
         existing_source_config: Optional[dict[str, Any]] = None
+        existing_agentkit: Optional[dict[str, Any]] = None
         existing_first_user_question = ""
         if cid:
             existing = self._load(cid)
@@ -811,6 +836,8 @@ class ConversationStore:
                 created = existing.get("created_at")
                 if isinstance(existing.get("source_config"), dict):
                     existing_source_config = existing.get("source_config")
+                if isinstance(existing.get("agentkit"), dict):
+                    existing_agentkit = existing.get("agentkit")
                 existing_first_user_question = record_first_user_question(existing)
             elif existing:
                 # Never mutate a record from the other mode or a migrated
@@ -877,6 +904,7 @@ class ConversationStore:
             # non-secret values: credentials must remain process/environment
             # state and must never be copied into history JSON or sync payloads.
             "source_config": sanitize_source_config(raw_source_config),
+            "agentkit": bounded_agentkit(agentkit or existing_agentkit),
         }
         # Lightweight Recovery state is persisted ONLY as the small, bounded,
         # normalized server-side snapshot (see bi_agent.recovery).  Old

@@ -1,15 +1,21 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {AssistantRuntimeProvider} from "@assistant-ui/react";
 
-import {chooseOption, listConversations, openConversation, streamChat} from "./api.js";
+import {chooseOption, listConversations, openConversation, saveConversation, streamChat} from "./api.js";
 import {
   applyEvent,
   boardItems,
   createWorkbenchState,
+  handoffSessionStorageKey,
   hydrateTurns,
   parseHandoff,
+  resolveHandoffSession,
+  resumeTurn,
+  scopeFromHandoff,
+  snapshotFromState,
   startTurn,
   stopTurn,
+  turnsFromSnapshot,
 } from "./state.js";
 import Board from "./components/Board.jsx";
 import Composer from "./components/Composer.jsx";
@@ -18,6 +24,14 @@ import SessionList from "./components/SessionList.jsx";
 import Thread from "./components/Thread.jsx";
 import {useAgentkitRuntime} from "./runtime.js";
 
+function safeSessionStorage() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 function newSessionId(handoff) {
   const stamp = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return handoff?.handoffId ? `agentkit-${handoff.handoffId}-${stamp}` : `agentkit-${stamp}`;
@@ -25,15 +39,20 @@ function newSessionId(handoff) {
 
 export default function App() {
   const handoff = useMemo(() => parseHandoff(window.location.search), []);
+  const scope = useMemo(() => scopeFromHandoff(handoff), [handoff]);
   const [handoffVisible, setHandoffVisible] = useState(handoff.active);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState("");
   const [view, setView] = useState("split");
   const [workbench, setWorkbench] = useState(() => createWorkbenchState());
-  const [sessionId, setSessionId] = useState(() => newSessionId(handoff));
+  // A card handoff keeps one session across refreshes; free entry gets a new one.
+  const [sessionId, setSessionId] = useState(
+    () => resolveHandoffSession(handoff, safeSessionStorage()) || newSessionId(handoff),
+  );
   const [notice, setNotice] = useState("");
   const controllerRef = useRef(null);
   const stateRef = useRef(workbench);
+  const savedSnapshotRef = useRef("");
   stateRef.current = workbench;
 
   const refreshConversations = useCallback(async () => {
@@ -69,9 +88,9 @@ export default function App() {
       if (!value || stateRef.current.status === "streaming") return;
       setNotice("");
       setWorkbench((previous) => startTurn(previous, {text: value, sessionId}));
-      runStream(sessionId, (options) => streamChat({...options, message: value}));
+      runStream(sessionId, (options) => streamChat({...options, message: value, scope}));
     },
-    [runStream, sessionId],
+    [runStream, scope, sessionId],
   );
 
   const choose = useCallback(
@@ -82,7 +101,9 @@ export default function App() {
       // AskUser supports multi-select: keep the ids/labels order the user picked.
       const ids = chosen.map((option) => String(option.id ?? option.label ?? ""));
       const labels = chosen.map((option) => String(option.label ?? option.id ?? ""));
-      setWorkbench((previous) => ({...previous, pendingChoice: null, status: "streaming"}));
+      // /api/choice resumes with a NEW request turn_id; release the old one so
+      // the continuation is not filtered out as stale.
+      setWorkbench((previous) => resumeTurn(previous));
       runStream(sessionId, (options) => chooseOption({...options, ids, labels}));
     },
     [runStream, sessionId],
@@ -98,6 +119,14 @@ export default function App() {
     controllerRef.current?.abort();
     controllerRef.current = null;
     const next = newSessionId(handoff);
+    const storageKey = handoffSessionStorageKey(handoff);
+    if (storageKey) {
+      try {
+        safeSessionStorage()?.setItem(storageKey, next);
+      } catch (_) {
+        /* storage can be unavailable in hardened browsers */
+      }
+    }
     setSessionId(next);
     setActiveConversation("");
     setWorkbench(createWorkbenchState());
@@ -108,20 +137,50 @@ export default function App() {
     controllerRef.current?.abort();
     controllerRef.current = null;
     try {
-      const restored = await openConversation(cid);
-      const nextSession = restored.sessionId || cid;
+      // The session id travels with the restore: follow-up questions must land
+      // in the analysis context this conversation was reopened into.
+      const restored = await openConversation(cid, sessionId);
+      const nextSession = restored.sessionId || sessionId || cid;
       setSessionId(nextSession);
       setActiveConversation(cid);
       setWorkbench({
         ...createWorkbenchState(),
         sessionId: nextSession,
-        turns: hydrateTurns(restored.messages),
+        // Structured turns restore boards/evidence/hits; old records fall back
+        // to the persisted messages.
+        turns: turnsFromSnapshot(restored.agentkit) || hydrateTurns(restored.messages),
       });
       setNotice("");
     } catch (error) {
       setNotice(`打开会话失败：${error.message}`);
     }
   }, []);
+
+  // Persist every completed turn so the conversation can be reopened with its
+  // boards, evidence and ontology hits. Legacy (message-only) records keep
+  // working through the messages fallback.
+  useEffect(() => {
+    if (!["idle", "error", "interrupted"].includes(workbench.status)) return;
+    if (!workbench.turns.length || !sessionId) return;
+    const snapshot = snapshotFromState(workbench);
+    const fingerprint = JSON.stringify(snapshot);
+    if (fingerprint === savedSnapshotRef.current) return;
+    savedSnapshotRef.current = fingerprint;
+    const title = workbench.turns[0]?.user || "未命名对话";
+    saveConversation({
+      sessionId,
+      cid: activeConversation || "",
+      title,
+      turns: snapshot.turns,
+      handoff: scope,
+    })
+      .then((saved) => {
+        if (saved.cid && saved.cid !== activeConversation) setActiveConversation(saved.cid);
+      })
+      .catch(() => {
+        /* saving history must never break the conversation */
+      });
+  }, [activeConversation, scope, sessionId, workbench.status, workbench.turns]);
 
   const restartWithoutHandoff = useCallback(() => {
     const url = new URL(window.location.href);

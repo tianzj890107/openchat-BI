@@ -20,6 +20,9 @@ export function toThreadMessages(turns) {
       id: `${turn.id}-assistant`,
       role: "assistant",
       content: [{type: "text", text: turn.assistant?.text || " "}],
+      status: turn.status === "streaming"
+        ? {type: "running"}
+        : {type: "complete", reason: turn.status === "error" ? "unknown" : "stop"},
       metadata: {
         custom: {
           tools: turn.assistant?.tools || [],

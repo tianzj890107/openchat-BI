@@ -839,6 +839,10 @@ class ChatRequest(BaseModel):
     message: str
     visible_user_text: Optional[str] = None
     session_id: Optional[str] = None
+    # V6.1 handoff scope: source/anchor/period/filters/evidence.  It is folded
+    # into the model-visible prompt while `visible_user_text` stays the plain
+    # question the user typed (spec §3.2, §4.1).
+    scope: Optional[dict[str, Any]] = None
 
 
 class ChoiceRequest(BaseModel):
@@ -2612,6 +2616,9 @@ class ConversationSaveRequest(BaseModel):
     cid: Optional[str] = None           # update in place when the browser has one
     first_user_question: str = ""       # visible first question captured by the browser
     session_id: Optional[str] = None
+    # Structured AgentKit turns (text, tool runs, boards, evidence, hits) so a
+    # reopened conversation can rebuild the AgentKit page, not just text.
+    agentkit: Optional[dict[str, Any]] = None
     # Concurrency stamp: the turn_id / generation of the turn this snapshot
     # belongs to (emitted by the server in `done`).  When present, saves from
     # a superseded (reset/restore/activate) generation are rejected.
@@ -2992,6 +2999,7 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
             if session is not None and hasattr(session, "recovery_state")
             else None
         ),
+        agentkit=req.agentkit,
     )
     # Local storage is authoritative. A configured sync URL is intentionally
     # not consulted here: an old mirror must never overwrite the canonical
@@ -3051,12 +3059,26 @@ def conversation_assets(cid: str) -> JSONResponse:
 
 @app.post("/api/conversations/{cid}/activate")
 def activate_conversation(cid: str, session_id: str = "") -> JSONResponse:
-    """Restore messages/source/session after the preview is visible."""
+    """Restore messages/source/session after the preview is visible.
+
+    A supplied session_id is materialised first so the restore lands in the
+    caller's session; the effective key is echoed back so the client keeps
+    asking follow-up questions in the analysis context it just restored.
+    """
     store = _require_conversation_store()
     rec = _load_conversation_record(store, cid)
     if not rec:
         raise HTTPException(404, f"conversation not found: {cid}")
-    return JSONResponse(_activate_conversation_record(store, rec, cid, session_id))
+    key = _session_key(session_id)
+    if key:
+        _ensure_session(key)
+    payload = _activate_conversation_record(store, rec, cid, key or None)
+    payload["session_id"] = key
+    # One round trip restores both the text history and the AgentKit snapshot
+    # (boards/evidence/hits), so the client needs no second record fetch.
+    payload["messages"] = rec.get("messages") or []
+    payload["agentkit"] = rec.get("agentkit") or {}
+    return JSONResponse(payload)
 
 
 @app.get("/api/conversations/{cid}/record")
@@ -3128,11 +3150,49 @@ def delete_conversation(cid: str) -> JSONResponse:
     return JSONResponse({"ok": bool(local_ok)})
 
 
+def _handoff_scope_text(scope: Optional[dict[str, Any]]) -> str:
+    """Render a V6.1 handoff scope into the prompt prefix.
+
+    The anchor and period are mandatory: a card without them cannot be matched
+    to an ontology code, so the turn is rejected instead of silently answering
+    a different question.  Returns "" when no scope was handed over.
+    """
+    if not scope:
+        return ""
+    if not isinstance(scope, dict):
+        raise HTTPException(400, "交接范围格式无效")
+    anchor = str(scope.get("anchor") or "").strip()
+    period = str(scope.get("period") or "").strip()
+    if not anchor:
+        raise HTTPException(400, "交接范围缺少风险或指标锚点，无法对齐口径")
+    if not period:
+        raise HTTPException(400, "交接范围缺少统计期间")
+    filters = scope.get("filters") if isinstance(scope.get("filters"), dict) else {}
+    filter_text = "；".join(f"{key}={value}" for key, value in filters.items())
+    evidence = [str(item) for item in (scope.get("evidence") or [])]
+    parts = [
+        "[来源卡带入的分析范围]",
+        f"来源={scope.get('source') or '未标注'}",
+        f"锚点={anchor}",
+        f"期间={period}",
+    ]
+    if filter_text:
+        parts.append(f"筛选={filter_text}")
+    if evidence:
+        parts.append(f"证据引用={', '.join(evidence)}")
+    if scope.get("handoff_id") or scope.get("handoffId"):
+        parts.append(f"交接号={scope.get('handoff_id') or scope.get('handoffId')}")
+    parts.append("请先按该范围核对期间、筛选与指标口径；范围与问题冲突或数据不足时先澄清。")
+    return "；".join(parts)
+
+
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     message = (req.message or "").strip()
     if not message:
         raise HTTPException(400, "empty message")
+    scope_text = _handoff_scope_text(req.scope)
+    prompt = f"{scope_text}\n\n用户问: {message}" if scope_text else message
     session = _ensure_session(req.session_id)
     try:
         slot, lease, turn_id, ticket, cancel = _begin_turn("data", req.session_id)
@@ -3140,7 +3200,7 @@ def chat(req: ChatRequest):
         return _turn_guard_json_response(exc)
     return _run_turn_stream(
         session,
-        session.generate_turn(message, req.visible_user_text),
+        session.generate_turn(prompt, req.visible_user_text),
         slot, lease, turn_id, ticket, cancel,
     )
 
