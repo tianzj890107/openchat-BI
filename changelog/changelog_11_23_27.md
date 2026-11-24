@@ -13,7 +13,7 @@
 
 - 明确由分析仓交付 `/workbench-agentkit`，按固定提交从 GitLab 提取 AgentKit UI 组件并持有依赖锁，分析对话继续接本仓执行与会话接口。
 - 规定独立展示与 V6.1 风险卡接入共用对话、看板、证据和本体子图，以 PACK 商机覆盖作为首期验收场景。
-- 本次交付为设计规格，入口、接口和浏览器验收列入实施阶段。主要文件为 [本体消费展示工作台规格](../docs/specs/workbench-agentkit-ontology-consumption.md)。
+- 规格与首期验收记录见 [本体消费展示工作台规格](../docs/specs/workbench-agentkit-ontology-consumption.md)。
 
 ### 2026-11-24 实施：AgentKit 工作台首期骨架（红测驱动）
 
@@ -32,6 +32,6 @@
 - 历史恢复：`hydrateTurns()` 从 `/api/conversations/*/record` 的存储消息重建轮次（用户文本、工具调用、连续 assistant 记录合并为同一气泡），切换会话即回看该轮答复与工具过程；状态测试锁定该行为。
 - 宿主交接示例：新增 `docs/examples/agentkit-host-handoff.html`（V6.1 风格风险卡 → `/workbench-agentkit?...`），并新增 `tests/workbench_agentkit_host.test.mjs` 在 jsdom 中点击卡片后校验 URL 前缀与 `parseHandoff` 往返（来源、锚点、期间、筛选、证据、交接号），宿主与本页参数不会各写一套。
 - 依赖锁：`frontend/package.json` / `package-lock.json` 新增 `@assistant-ui/react@0.14.14`、`@radix-ui/react-collapsible@1.1.12`、`lucide-react@0.468.0`、`class-variance-authority@0.7.1`，`jsdom@26.1.0` 为 devDependency。
-- 浏览器级验收（可复现）：新增 `tests/workbench_agentkit_dom.test.mjs`，用 jsdom 执行**已提交的构建产物**与页面模板，断言 shell 挂载、assistant-ui 输入框、空态文案、V6.1 交接横幅、会话列表请求，且无脚本错误；这不是真机浏览器点击，部署后仍需人工过一遍。风险：`tests/` 侧通过 `createRequire` 从 `frontend/` 解析 jsdom，避免在仓库根重复安装。
+- 首屏冒烟：`tests/workbench_agentkit_dom.test.mjs` 用 jsdom 执行已提交的构建产物与页面模板，验证页面挂载、输入框、空态、V6.1 交接横幅和会话列表请求。真机浏览器点击结果见下方验收结论。
 - 测试：先写红测再实现——`tests/test_workbench_agentkit_route.py`（4 项，路由未实现时为 404，现全部通过）、`tests/workbench_agentkit_state.test.mjs`（11 项状态投影与交接 URL）、`tests/workbench_agentkit_results.test.mjs`（7 项结果/证据/子图请求适配）、`tests/workbench_agentkit_shell.test.mjs`（7 项页面壳/右栏/主题作用域/构建配置/上游记录）。AgentKit 相关 Node 25 项通过；`test_direct_root_workbench_entry.py`、`test_application_base_path.py`（10 项）与 `test_anonymous_read_surface_red.py`、`test_cockpit_main_service.py`（40 项）通过。
-- 未完成（不在本次范围）：其余上游 TSX 的逐项移植（Thread/列表/附件等仍需 Tailwind 与别名管线；已移植的工具折叠组见对照表）、PACK 销售数据的成功取数复验（本机为采购域）、V6.1 真机宿主联调与真机浏览器实点验收。主要文件：`bi_agent/web/app.py`、`bi_agent/web/static/agentkit/index.html`、`bi_agent/web/static/vendor/agentkit/`、`frontend/agentkit/`、`frontend/vite.agentkit.config.js`、`scripts/import_agentkit_upstream.py`。
+- 首期验收基线 `2f64cdd` **未通过**。33 项前端和 26 项后端专项测试通过，路由、构建产物与上游 10 个文件校验通过。真机浏览器使用本地模拟 SSE 复现首次发送白屏和宿主范围未进入请求，按实际接口回放确认澄清续流被丢弃。历史正文可恢复，历史上下文接续和看板恢复待完善。真实 PACK 销售取数、看板与子图端到端验证仍待复验。复现条件和通过标准已写入规格 §6.1。
