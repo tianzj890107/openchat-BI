@@ -139,6 +139,8 @@ def _write_record(commit: str, files: dict[str, bytes]) -> None:
         "`frontend/agentkit/state.js` + `frontend/agentkit/runtime.js` | SSE → 单一会话状态，再由 `useExternalStoreRuntime` 投影成 assistant-ui 消息 |\n"
         "| `agentkit-ui/src/components/assistant-ui/elements/tool-group.aui.tsx` | "
         "`frontend/agentkit/adapters/ToolGroup.jsx` | 工具折叠组：保留上游 Root/Trigger/Content 与 data-slot 结构，Tailwind 类换成本页 `ak-tools` 样式 |\n"
+        "| `agentkit-ui/src/components/assistant-ui/elements/markdown-text.tsx` | "
+        "`frontend/agentkit/adapters/MarkdownText.jsx` | 助手正文 Markdown（GFM 表格/列表），禁用原始 HTML；样式用本页 `ak-markdown` |\n"
         "| `agentkit-ui/src/components/assistant-ui/utils/tool-display-label.ts` | "
         "`frontend/agentkit/adapters/ToolGroup.jsx` | 工具分组计数文案（`N 次工具调用`）直接复用上游实现 |\n"
         "| `agentkit-ui/public/r/confirm-dialog.json` | `frontend/agentkit/components/HandoffBanner.jsx` | "

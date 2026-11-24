@@ -6,7 +6,7 @@
 
 - 上游仓库：`git@gitlab.boulderaitech.com:ai-team/spzn-agentkit.git`
 - 固定提交：`b8df86dfa3c30de6676cd1d768cda504bf3c3338`（当前对应 `dev`）
-- 导入时间：2026-11-24 15:36 +0800
+- 导入时间：2026-11-24 15:39 +0800
 - 导入方式：`git archive --remote` + `git get-tar-commit-id` 校验提交
 
 ## 导入文件
@@ -32,6 +32,7 @@
 | `agentkit-ui/public/r/aui-thread-list.json` | `frontend/agentkit/components/SessionList.jsx` | 会话列表的视觉与新建/切换行为，接本仓 `/api/conversations` |
 | `agentkit-ui/src/components/assistant-ui/elements/thread.aui.tsx` | `frontend/agentkit/state.js` + `frontend/agentkit/runtime.js` | SSE → 单一会话状态，再由 `useExternalStoreRuntime` 投影成 assistant-ui 消息 |
 | `agentkit-ui/src/components/assistant-ui/elements/tool-group.aui.tsx` | `frontend/agentkit/adapters/ToolGroup.jsx` | 工具折叠组：保留上游 Root/Trigger/Content 与 data-slot 结构，Tailwind 类换成本页 `ak-tools` 样式 |
+| `agentkit-ui/src/components/assistant-ui/elements/markdown-text.tsx` | `frontend/agentkit/adapters/MarkdownText.jsx` | 助手正文 Markdown（GFM 表格/列表），禁用原始 HTML；样式用本页 `ak-markdown` |
 | `agentkit-ui/src/components/assistant-ui/utils/tool-display-label.ts` | `frontend/agentkit/adapters/ToolGroup.jsx` | 工具分组计数文案（`N 次工具调用`）直接复用上游实现 |
 | `agentkit-ui/public/r/confirm-dialog.json` | `frontend/agentkit/components/HandoffBanner.jsx` | 交接校验失败时的确认与返回入口 |
 

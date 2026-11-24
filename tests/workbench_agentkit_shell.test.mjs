@@ -141,3 +141,17 @@ test('the tool group is adapted from the pinned AgentKit component', async () =>
   );
   assert.match(util, /export function toolGroupCountLabel/);
 });
+
+test('assistant bodies render markdown instead of raw markers', async () => {
+  const thread = await read('frontend/agentkit/components/Thread.jsx');
+  assert.match(thread, /MarkdownText/);
+
+  const adapter = await read('frontend/agentkit/adapters/MarkdownText.jsx');
+  assert.match(adapter, /react-markdown/);
+  assert.match(adapter, /remark-gfm/);
+  // Raw HTML stays disabled: the backend only sends Markdown.
+  assert.ok(!/rehype-raw/.test(adapter), 'raw HTML must not be enabled');
+
+  const js = await read('bi_agent/web/static/vendor/agentkit/workbench-agentkit.js');
+  assert.match(js, /ak-markdown/);
+});

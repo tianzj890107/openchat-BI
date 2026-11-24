@@ -1,5 +1,6 @@
 import React, {useState} from "react";
 
+import MarkdownText from "../adapters/MarkdownText.jsx";
 import ToolGroup from "../adapters/ToolGroup.jsx";
 
 function Clarification({choice, onChoose}) {
@@ -72,7 +73,7 @@ export default function Thread({turns, status, error, pendingChoice, onChoose, o
           </div>
           <div className="ak-assistant">
             {turn.assistant.text ? (
-              <div className="ak-answer">{turn.assistant.text}</div>
+              <MarkdownText text={turn.assistant.text} />
             ) : (
               <div className="ak-answer ak-answer--muted">
                 {turn.status === "streaming" ? "正在取证…" : "本轮没有文字结论"}
