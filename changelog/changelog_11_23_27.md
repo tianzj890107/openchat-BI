@@ -42,5 +42,6 @@
 - V6.1 交接范围：`/api/chat` 新增 `scope`（`source/anchor/period/filters/evidence/handoff_id`），后端校验锚点与期间后拼入模型提示词，`visible_user_text` 仍是用户问题；前端 `scopeFromHandoff()` 只在交接可用时携带，`buildChatBody()` 组装请求体。同一交接的会话 ID 存 sessionStorage（按交接号），刷新复用；新建会话会更新该记录。
 - 澄清续流：新增 `resumeTurn()`，提交 `/api/choice` 前释放旧 turn id（后端为续流分配新请求 id），续流正文与 `done` 归入原问题；提交失败转为可重试错误态。jsdom 用两个不同 turn id 回放验证。
 - 历史恢复：`activate` 按传入 `session_id` 建立/命中会话并回传 `session_id`、`messages` 与 `agentkit` 快照；快照（轮次、工具过程、表格/图表、证据、本体命中）随保存写入会话记录，上限 200 KB/40 轮且更新不丢；前端优先用快照恢复、旧记录回退消息文本，追问继续使用激活会话；每轮完成/失败/中断后自动保存（内容指纹去重）。
+- 本机真实服务复验（未改线上）：带 `scope` 的 `/api/chat` 返回 124 个 SSE 事件，`user_message` 事件中可见「[来源卡带入的分析范围]…锚点=PACK_OPP_COVERAGE；期间=2026Q3…」，随后因采购域无商机数据进入澄清；缺锚点的 `scope` 返回 400「交接范围缺少风险或指标锚点」。保存会话后带新 `session_id` 调 `activate`，回传该 `session_id`、20 条消息和含表格的 `agentkit` 快照，确认保存/恢复契约生效。
 - 验证：Node 165 项通过（含 6 项 jsdom 端到端：挂载、发送、停止、交接范围与刷新会话、历史恢复、澄清续流）；后端专项 21 项通过（路由、范围校验、历史存取、入口/base-path），会话存储回归 24 项通过。产物约 721 KB（gzip 210 KB）。
 - 主要文件：`frontend/agentkit/{App.jsx,api.js,state.js,messageAdapter.js}`、`bi_agent/web/{app.py,conversations.py}`、`tests/workbench_agentkit_{dom,api,state}.test.mjs`、`tests/test_workbench_agentkit_{scope,history,route}.py`。
