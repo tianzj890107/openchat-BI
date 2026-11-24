@@ -175,6 +175,7 @@ export default function App() {
   const runtime = useAgentkitRuntime({
     turns: workbench.turns,
     running: workbench.status === "streaming",
+    paused: workbench.status === "paused",
     onNew: send,
     onCancel: stop,
   });

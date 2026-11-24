@@ -16,11 +16,14 @@ import {textFromAppend} from "./messageAdapter.js";
 
 export {AGENTKIT_RUNTIME, textFromAppend, toThreadMessages} from "./messageAdapter.js";
 
-export function useAgentkitRuntime({turns, running, onNew, onCancel}) {
+export function useAgentkitRuntime({turns, running, paused, onNew, onCancel}) {
   const messages = useMemo(() => toThreadMessages(turns), [turns]);
   return useExternalStoreRuntime({
     messages,
     isRunning: Boolean(running),
+    // While a clarification is open the user must answer it, not start a new
+    // question: keep the input usable but hold sending until they choose.
+    isSendDisabled: Boolean(paused),
     onNew: async (message) => {
       const text = textFromAppend(message);
       if (text) await onNew(text);
