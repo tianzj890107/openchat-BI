@@ -90,3 +90,24 @@ test('saving a conversation sends the structured turns', async () => {
     globalThis.fetch = original;
   }
 });
+
+test('report mode uses its own chat, choice and save routes and EOF is not a success', async () => {
+  const {streamChat, chooseOption, saveConversation} = await import('../frontend/agentkit/api.js');
+  const calls = [];
+  const events = [];
+  const fetchBefore = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    calls.push([url, JSON.parse(options.body)]);
+    return url.includes('/save')
+      ? new Response('{"id":"report-history"}')
+      : new Response('data: {"type":"text_delta","text":"部分结果"}\n\n');
+  };
+  try {
+    await streamChat({mode:'report', sessionId:'r1', message:'报表问题', onEvent:event => events.push(event)});
+    await chooseOption({mode:'report', sessionId:'r1', ids:['manual:上期'], labels:['上期'], onEvent:() => {}});
+    await saveConversation({mode:'report', sessionId:'r1'});
+    assert.deepEqual(calls.map(([url]) => url), ['/api/report/chat','/api/report/choice','/api/conversations/save']);
+    assert.equal(calls[2][1].mode, 'report');
+    assert.equal(events.at(-1).type, 'stream_interrupted');
+  } finally { globalThis.fetch = fetchBefore; }
+});

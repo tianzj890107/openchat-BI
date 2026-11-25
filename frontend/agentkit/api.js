@@ -22,12 +22,13 @@ async function asJson(response) {
   }
 }
 
-async function requestJson(path, {method = "GET", body, signal} = {}) {
+export async function requestJson(path, {method = "GET", body, signal} = {}) {
+  const multipart = typeof FormData !== "undefined" && body instanceof FormData;
   const response = await fetch(withBasePath(path), {
     method,
     cache: "no-store",
     signal,
-    ...(body === undefined ? {} : {
+    ...(multipart ? {body} : body === undefined ? {} : {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body),
     }),
@@ -56,9 +57,8 @@ export function updateModelConfig(body) {
   return requestJson("api/config", {method: "PUT", body});
 }
 
-export async function listConversations() {
-  const response = await fetch(withBasePath("api/conversations"), {cache: "no-store"});
-  const payload = await asJson(response);
+export async function listConversations(mode) {
+  const payload = await requestJson(`api/conversations${mode ? `?mode=${encodeURIComponent(mode)}` : ""}`);
   return Array.isArray(payload.conversations) ? payload.conversations : [];
 }
 
@@ -77,31 +77,79 @@ export async function openConversation(cid, sessionId = "") {
   });
   return {
     sessionId: payload.session_id || sessionId || "",
+    mode: payload.mode || "data",
     messages: Array.isArray(payload.messages) ? payload.messages : [],
     agentkit: payload.agentkit && typeof payload.agentkit === "object" ? payload.agentkit : null,
     sourceRestoreError: payload.source_restore_error || "",
+    reportRestoreError: payload.report_restore_error || "",
+    awaitingChoice: Boolean(payload.awaiting_choice),
   };
 }
 
+export function historyAssets(cid) {
+  return requestJson(`api/conversations/${encodeURIComponent(cid)}/assets`);
+}
+
+export function loadTrash() {
+  return requestJson("api/conversations/trash");
+}
+
+export function changeTrash(action, cid) {
+  const key = encodeURIComponent(cid || "");
+  if (action === "remove") return requestJson(`api/conversations/${key}`, {method: "DELETE"});
+  if (action === "restore") return requestJson(`api/conversations/trash/${key}/restore`, {method: "POST"});
+  if (action === "purge") return requestJson(`api/conversations/trash/${key}`, {method: "DELETE"});
+  if (action === "empty") return requestJson("api/conversations/trash?confirm=1", {method: "DELETE"});
+  throw new Error("未知回收站操作");
+}
+
+export function reportStatus(sessionId, signal) {
+  return requestJson(`api/report/status?session_id=${encodeURIComponent(sessionId)}`, {signal});
+}
+
+export function listReports() {
+  return requestJson("api/report/list");
+}
+
+export function uploadReport(file) {
+  const body = new FormData();
+  body.append("file", file);
+  return requestJson("api/report/upload", {method: "POST", body});
+}
+
+export function activateReports(sessionId, ids, withDb, resumeId = "") {
+  return requestJson("api/report/activate", {method: "POST", body: {
+    session_id: sessionId, report_ids: ids, with_db: withDb, preserve_context: true, resume_conversation_id: resumeId || undefined,
+  }});
+}
+
+export function startReportGenerator(sessionId) {
+  return requestJson(`api/report/generate?session_id=${encodeURIComponent(sessionId)}`, {method: "POST"});
+}
+
+export function updateReportConfig(sessionId, withDb) {
+  return requestJson("api/report/config", {method: "PUT", body: {session_id: sessionId, with_db: withDb}});
+}
+
 /** Persist the current turns so the conversation can be reopened later. */
-export async function saveConversation({sessionId, cid, title, turns, handoff}) {
-  const response = await fetch(withBasePath("api/conversations/save"), {
+export async function saveConversation({sessionId, cid, title, turns, handoff, mode = "data", generation, pendingChoice}) {
+  const payload = await requestJson("api/conversations/save", {
     method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      mode: "data",
+    body: {
+      mode,
       session_id: sessionId || "",
       cid: cid || undefined,
       title: title || "",
       first_user_question: title || "",
+      generation,
       agentkit: {
         version: 1,
         turns: turns || [],
         ...(handoff ? {handoff} : {}),
+        ...(pendingChoice ? {pendingChoice} : {}),
       },
-    }),
+    },
   });
-  const payload = await asJson(response);
   return {cid: payload.id || cid || ""};
 }
 
@@ -121,34 +169,28 @@ async function readEventStream(response, onEvent) {
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
+  let terminal = false;
+  let waiting = false;
+  const dispatch = (line) => {
+    if (!line.startsWith("data:")) return;
+    let event;
+    try { event = JSON.parse(line.slice(5).trim()); } catch { return; }
+    if (["done", "error", "session_superseded", "stream_interrupted"].includes(event.type)) terminal = true;
+    if (["user_choice_requested", "awaiting_user_choice"].includes(event.type)) waiting = true;
+    if (event.type === "user_choice_resolved") waiting = false;
+    onEvent(event);
+  };
   let buffer = "";
   while (true) {
     const {value, done} = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, {stream: true});
-    const frames = buffer.split("\n\n");
+    const frames = buffer.split(/\r?\n/);
     buffer = frames.pop() || "";
-    for (const frame of frames) {
-      for (const line of frame.split("\n")) {
-        if (!line.startsWith("data:")) continue;
-        const payload = line.slice(5).trim();
-        if (!payload) continue;
-        try {
-          onEvent(JSON.parse(payload));
-        } catch {
-          /* ignore malformed frame, keep the stream alive */
-        }
-      }
-    }
+    for (const line of frames) dispatch(line);
   }
-  const tail = buffer.trim();
-  if (tail.startsWith("data:")) {
-    try {
-      onEvent(JSON.parse(tail.slice(5).trim()));
-    } catch {
-      /* ignore trailing partial frame */
-    }
-  }
+  dispatch((buffer + decoder.decode()).trim());
+  if (!terminal && !waiting) onEvent({type: "stream_interrupted", message: "响应中断，已保留部分结果。"});
 }
 
 
@@ -164,19 +206,19 @@ export function buildChatBody({message, visibleText, sessionId, scope}) {
 }
 
 /** Ask one question; resolves when the turn's stream ends. */
-export async function streamChat({message, sessionId, scope, signal, onEvent}) {
-  const response = await fetch(withBasePath("api/chat"), {
+export async function streamChat({message, visibleText, sessionId, scope, signal, onEvent, mode = "data"}) {
+  const response = await fetch(withBasePath(mode === "report" ? "api/report/chat" : "api/chat"), {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(buildChatBody({message, sessionId, scope})),
+    body: JSON.stringify(buildChatBody({message, visibleText, sessionId, scope: mode === "data" ? scope : null})),
     signal,
   });
   await readEventStream(response, onEvent);
 }
 
 /** Resume a turn that paused on a clarification card. */
-export async function chooseOption({sessionId, ids, labels, signal, onEvent}) {
-  const response = await fetch(withBasePath("api/choice"), {
+export async function chooseOption({sessionId, ids, labels, signal, onEvent, mode = "data"}) {
+  const response = await fetch(withBasePath(mode === "report" ? "api/report/choice" : "api/choice"), {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({

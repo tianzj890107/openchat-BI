@@ -82,7 +82,8 @@ export function multiDimModel(spec) {
   if (!spec || !Array.isArray(spec.dimensions)) return null;
   const dimensions = spec.dimensions
     .map((dim) => {
-      const chart = chartModel({title: dim.label || dim.key, chart_type: dim.chart_type, option: dim.option});
+      const chart = chartModel({title: dim.label || dim.key, chart_type: dim.chart_type, option: dim.option,
+        source_note: dim.source_note || spec.source_note || spec.metric_code || ""});
       if (!chart) return null;
       return {key: dim.key, label: dim.label || dim.key, summary: dim.summary || "", chart};
     })
@@ -140,6 +141,48 @@ export function turnsBoardItems(turns) {
 /** One turn's cards, keeping results attached to the question that produced them. */
 export function turnBoardItems(turn) {
   return turnsBoardItems(turn ? [turn] : []);
+}
+
+const sectionTypes = [
+  {kind: "conclusion", title: "结论", heading: /^(?:📌\s*.*|(?:关键)?结论(?:[（(].*)?)$/},
+  {kind: "rootcause", title: "根因分析", heading: /^(?:[🔍🔎].*|根因(?:分析|证据链)?(?:[（(].*)?)$/u},
+  {kind: "actions", title: "行动建议", heading: /^(?:💡.*|(?:行动|管理|决策与?|执行|改进|处置)?建议(?:雏形)?|下一步行动|行动方案)$/},
+];
+
+export function turnSections(turn) {
+  const sections = new Map((turn.sections || []).map((section) => [section.kind, section]));
+  const answer = turn.assistant?.text || "";
+  let current;
+  const extracted = new Map();
+  for (const line of answer.split("\n")) {
+    const heading = line.match(/^\s*(?:#{1,6}\s+(.+)|\*\*([^*]+)\*\*\s*)$/);
+    if (heading) {
+      const label = (heading[1] || heading[2]).replace(/[:：*]+\s*$/, "").trim();
+      current = sectionTypes.find((type) => type.heading.test(label));
+      if (current) extracted.set(current.kind, {kind: current.kind, title: current.title, lines: []});
+    } else if (current) {
+      extracted.get(current.kind).lines.push(line);
+    }
+  }
+  for (const {kind, title, lines} of extracted.values()) {
+    const content = lines.join("\n").trim();
+    if (content && !/^(一句话|分层展开|基于证据链|用\s*`?TableGenerate|用\s*`?ChartGenerate)/.test(content) && !sections.has(kind)) {
+      sections.set(kind, {kind, title, content});
+    }
+  }
+  if (turn.delivery?.length) {
+    const content = turn.delivery.map(({title, content, evidence}) =>
+      [`- ${[title, content].filter(Boolean).join("：")}`, evidence && `  依据：${evidence}`].filter(Boolean).join("\n"),
+    ).join("\n");
+    sections.set("actions", {kind: "actions", title: "行动建议", content});
+  }
+  return sectionTypes.flatMap(({kind}) => sections.has(kind) ? [sections.get(kind)] : []);
+}
+
+export function chartInsightPrompt(chart) {
+  const source = chart?.source_note;
+  const metric = source?.match(/M\d{3}/)?.[0];
+  return metric ? `[深入洞察] 图表标题:"${chart.title || "图表"}";指标:${metric};来源口径:${source}` : "";
 }
 
 /** Keep the hits tied to the tool that actually returned them. */

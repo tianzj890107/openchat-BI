@@ -227,12 +227,13 @@ export function resolveHandoffSession(handoff, storage = null) {
  * turn_id for the continuation, so the previous id must be released before the
  * resumed stream is accepted.
  */
-export function resumeTurn(state) {
+export function resumeTurn(state, picked = []) {
   if (state.status !== 'paused') return state;
   return {
     ...state,
     status: 'streaming',
     activeTurnId: null,
+    submittingChoice: {...state.pendingChoice, picked},
     pendingChoice: null,
     error: '',
   };
@@ -257,7 +258,11 @@ export function turnsFromSnapshot(snapshot) {
   return usable.map((turn, index) => ({
     id: String(turn.id || `restored-${index}`),
     user: String(turn.user || ''),
-    status: 'done',
+    status: ['done', 'error', 'interrupted', 'paused'].includes(turn.status) ? turn.status : 'done',
+    resolvedChoices: Array.isArray(turn.resolvedChoices) ? turn.resolvedChoices : [],
+    delivery: Array.isArray(turn.delivery) ? turn.delivery : [],
+    sections: Array.isArray(turn.sections) ? turn.sections : [],
+    warnings: Array.isArray(turn.warnings) ? turn.warnings : [],
     sop: Array.isArray(turn.sop?.todos) ? turn.sop : null,
     assistant: {
       text: String(turn.assistant?.text || ''),
@@ -450,16 +455,32 @@ export function applyEvent(state, event) {
       const pendingChoice = {
         toolUseId: event.tool_use_id || '',
         question: event.question || '需要补充条件',
+        context: event.context || '',
         options: Array.isArray(event.options) ? event.options : [],
       };
       return updateTurn(
-        {...state, status: 'paused', pendingChoice},
+        {...state, status: 'paused', pendingChoice, submittingChoice: null},
         {status: 'paused'},
       );
     }
+    case 'choice_failed': {
+      if (!state.submittingChoice) return state;
+      return updateTurn({...state, status: 'paused', submittingChoice: null,
+        pendingChoice: {...state.submittingChoice, error: event.message}}, {status: 'paused'});
+    }
+    case 'user_choice_resolved':
+      return recordChoice(state, event);
+    case 'action_recommendations':
+      return updateTurn(state, {delivery: Array.isArray(event.items) ? event.items : []});
+    case 'answer_blocked':
+    case 'delivery_incomplete':
+      return updateTurn(state, {warnings: [...(currentTurn(state)?.warnings || []),
+        [event.message || (type === 'answer_blocked' ? '最终回答未通过校验' : '本轮交付不完整'),
+          ...(event.issues || [])].join(' · ')]});
     case 'done': {
+      if (state.submittingChoice?.picked?.length) state = recordChoice(state, {});
       const status = state.pendingChoice ? 'paused' : 'idle';
-      return updateTurn({...state, status, pendingChoice: state.pendingChoice}, {
+      return updateTurn({...state, status, generation: event.generation}, {
         status: status === 'paused' ? 'paused' : 'done',
         ...(status === 'idle' ? {sop: finishSop(currentTurn(state), 'done')} : {}),
       });
@@ -475,6 +496,18 @@ export function applyEvent(state, event) {
     default:
       return state;
   }
+}
+
+function recordChoice(state, event) {
+  const turn = currentTurn(state);
+  if (!turn) return state;
+  const id = event.tool_use_id || state.submittingChoice?.toolUseId || '';
+  const labels = event.choice_labels || state.submittingChoice?.picked?.map((item) => item.label) || [];
+  if (!labels.length) return state;
+  return updateTurn({...state, submittingChoice: null}, {resolvedChoices: [
+    ...(turn.resolvedChoices || []).filter((item) => item.id !== id),
+    {id, labels},
+  ]});
 }
 
 /** Stop the running turn: partial text and results stay on screen. */

@@ -55,10 +55,9 @@ HISTORY_INDEX_VERSION = 3
 MAX_CONVERSATIONS = 100          # keep newest N per store; prune the rest
 # The AgentKit workbench stores its structured turns (message text, tool runs,
 # boards, evidence, ontology hits) so a reopened conversation can rebuild the
-# page without replaying the analysis.  The snapshot is bounded: the oldest
-# turns are dropped first, and an oversized payload never reaches disk.
-MAX_AGENTKIT_BYTES = 200_000
-MAX_AGENTKIT_TURNS = 40
+# page without replaying the analysis. Reject an oversized update as a whole
+# so a saved conversation always contains every visible round.
+MAX_AGENTKIT_BYTES = 16_000_000
 
 
 def _legacy(existing: dict[str, Any], key: str) -> Any:
@@ -72,12 +71,16 @@ def bounded_agentkit(value: Any) -> dict[str, Any]:
     turns = value.get("turns")
     snapshot: dict[str, Any] = {
         "version": int(value.get("version") or 1),
-        "turns": [turn for turn in (turns or []) if isinstance(turn, dict)][:MAX_AGENTKIT_TURNS],
+        "turns": [turn for turn in turns if isinstance(turn, dict)] if isinstance(turns, list) else [],
     }
     if isinstance(value.get("handoff"), dict):
         snapshot["handoff"] = value["handoff"]
-    while snapshot["turns"] and len(json.dumps(snapshot, ensure_ascii=False)) > MAX_AGENTKIT_BYTES:
-        snapshot["turns"].pop()
+    if isinstance(value.get("reportContext"), dict):
+        snapshot["reportContext"] = value["reportContext"]
+    if isinstance(value.get("pendingChoice"), dict):
+        snapshot["pendingChoice"] = value["pendingChoice"]
+    if len(json.dumps(snapshot, ensure_ascii=False).encode("utf-8")) > MAX_AGENTKIT_BYTES:
+        raise ValueError("会话结果超过单条历史的容量上限")
     return snapshot if snapshot["turns"] else {}
 
 

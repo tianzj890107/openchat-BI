@@ -8,7 +8,7 @@ import {modelKey, ModelSettings} from "./Settings.jsx";
  * AgentKit composer: assistant-ui's composer primitives own the input state,
  * Enter/Shift+Enter behaviour, and the send/stop pair driven by thread state.
  */
-export default function Composer({busy}) {
+export default function Composer({busy, mode, sessionId, onSavePreferences}) {
   const [config, setConfig] = useState(null);
   const [open, setOpen] = useState(false);
   const ready = Boolean(config?.data);
@@ -32,7 +32,7 @@ export default function Composer({busy}) {
       <ComposerPrimitive.Input
         className="ak-composer-input"
         rows={2}
-        placeholder="描述你的经营问题，例如：PACK 未签单商机主要涉及哪些客户和产品部？"
+        placeholder={mode === "report" ? "输入要分析的报表问题" : "描述你的经营问题，例如：PACK 未签单商机主要涉及哪些客户和产品部？"}
         aria-label="输入问题"
       />
       <div className="ak-composer-actions">
@@ -49,7 +49,7 @@ export default function Composer({busy}) {
         </AuiIf>
       </div>
     </ComposerPrimitive.Root>
-    {open ? <ModelSettings config={config} onSaved={(data) => setConfig({data})}
+    {open ? <ModelSettings config={config} onSaved={(data) => setConfig({data})} sessionId={sessionId} onSavePreferences={onSavePreferences}
       busy={busy} onClose={() => setOpen(false)} /> : null}
     </div>
   );

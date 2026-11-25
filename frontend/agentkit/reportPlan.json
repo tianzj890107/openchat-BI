@@ -1,0 +1,230 @@
+[
+  {
+    "title": "数据底座",
+    "fields": [
+      {
+        "key": "period",
+        "label": "报表期间",
+        "type": "select",
+        "options": [
+          "2025年3月(损益当前期)",
+          "2025年2月",
+          "2025年1月",
+          "2025年一季度(累计)",
+          "2025年4-12月(收入预测期)"
+        ],
+        "initial": "2025年3月(损益当前期)"
+      },
+      {
+        "key": "dataSources",
+        "label": "数据底座",
+        "type": "checkbox",
+        "options": [
+          "损益明细表 · T_HF_PL_Detail",
+          "收入预测清单 · T_HF_RevenueForecast",
+          "经营明细 · T_HF_RefreshData",
+          "超聚变本体语义层"
+        ],
+        "initial": [
+          "损益明细表 · T_HF_PL_Detail",
+          "收入预测清单 · T_HF_RevenueForecast",
+          "超聚变本体语义层"
+        ]
+      },
+      {
+        "key": "compareBase",
+        "label": "对比基期",
+        "type": "select",
+        "options": [
+          "上期环比(2025年2月)",
+          "历史实际数基线",
+          "预算数",
+          "全年预测数",
+          "不对比"
+        ],
+        "initial": "上期环比(2025年2月)"
+      }
+    ]
+  },
+  {
+    "title": "指标体系",
+    "fields": [
+      {
+        "key": "metricSets",
+        "label": "指标集",
+        "type": "checkbox",
+        "options": [
+          "收入销毛类 · 净销售收入/销售成本/销毛额/销毛率",
+          "报告金额类 · 报告金额CNY/USD",
+          "收入预测类 · 收入预测/预测执行率",
+          "名义销毛类 · 名义销毛/名义销毛率"
+        ],
+        "initial": [
+          "收入销毛类 · 净销售收入/销售成本/销毛额/销毛率",
+          "报告金额类 · 报告金额CNY/USD",
+          "收入预测类 · 收入预测/预测执行率"
+        ]
+      },
+      {
+        "key": "metricSource",
+        "label": "口径来源",
+        "type": "select",
+        "options": [
+          "超聚变本体 · 已发布指标定义",
+          "报表方案自定义口径"
+        ],
+        "initial": "超聚变本体 · 已发布指标定义"
+      }
+    ]
+  },
+  {
+    "title": "经营规则",
+    "fields": [
+      {
+        "key": "rulePlan",
+        "label": "规则方案",
+        "type": "select",
+        "options": [
+          "收入销毛分析 · 标准口径",
+          "销毛率基线推演 · 产业+行管",
+          "自定义规则方案…"
+        ],
+        "initial": "收入销毛分析 · 标准口径"
+      },
+      {
+        "key": "ruleItems",
+        "label": "规则明细",
+        "type": "checkbox",
+        "options": [
+          "行管标签 · 行管1-7 判定(国内外/经营单元/行业/销售类型)",
+          "销毛率基线 · 按产业+行管维度搭建基线",
+          "基线调整 · 规则类 / 利好利空 / 基线替换",
+          "报表项归集 · 报表项一级~四级归集"
+        ],
+        "initial": [
+          "行管标签 · 行管1-7 判定(国内外/经营单元/行业/销售类型)",
+          "销毛率基线 · 按产业+行管维度搭建基线",
+          "基线调整 · 规则类 / 利好利空 / 基线替换",
+          "报表项归集 · 报表项一级~四级归集"
+        ]
+      },
+      {
+        "key": "customRule",
+        "label": "自定义规则",
+        "type": "textarea",
+        "initial": ""
+      }
+    ]
+  },
+  {
+    "title": "模板·输出",
+    "fields": [
+      {
+        "key": "template",
+        "label": "报表模板",
+        "type": "radio",
+        "options": [
+          "损益明细表",
+          "收入预测清单",
+          "收入销毛分析报告",
+          "销毛率基线推演表"
+        ],
+        "initial": "损益明细表"
+      },
+      {
+        "key": "layout",
+        "label": "版式",
+        "type": "select",
+        "options": [
+          "标准版",
+          "精简版",
+          "管理层汇报版"
+        ],
+        "initial": "标准版"
+      },
+      {
+        "key": "outputs",
+        "label": "输出格式",
+        "type": "checkbox",
+        "options": [
+          "在线交互报表",
+          "Excel",
+          "PPT",
+          "PDF"
+        ],
+        "initial": [
+          "在线交互报表",
+          "Excel"
+        ]
+      }
+    ]
+  },
+  {
+    "title": "权限切片",
+    "fields": [
+      {
+        "key": "orgScope",
+        "label": "组织范围",
+        "type": "select",
+        "options": [
+          "全公司",
+          "国内",
+          "国际",
+          "指定经营单元"
+        ],
+        "initial": "全公司"
+      },
+      {
+        "key": "industryScope",
+        "label": "产业范围",
+        "type": "checkbox",
+        "options": [
+          "全部产业",
+          "产业1",
+          "产业2",
+          "产业3"
+        ],
+        "initial": [
+          "全部产业"
+        ]
+      },
+      {
+        "key": "visScope",
+        "label": "可见口径",
+        "type": "select",
+        "options": [
+          "管理层全口径",
+          "经营单元口径",
+          "脱敏口径"
+        ],
+        "initial": "管理层全口径"
+      }
+    ]
+  },
+  {
+    "title": "图表库",
+    "fields": [
+      {
+        "key": "charts",
+        "label": "配图",
+        "type": "checkbox",
+        "options": [
+          "趋势线图 · 收入/销毛月度趋势",
+          "维度对比柱状图 · 产业/经营单元",
+          "占比饼图 · 产业结构分布",
+          "销毛率瀑布图 · 基线→调整→定稿",
+          "预算 / 预测执行率对比图"
+        ],
+        "initial": [
+          "趋势线图 · 收入/销毛月度趋势",
+          "维度对比柱状图 · 产业/经营单元",
+          "占比饼图 · 产业结构分布"
+        ]
+      }
+    ]
+  },
+  {
+    "title": "确认生成",
+    "fields": []
+  }
+]

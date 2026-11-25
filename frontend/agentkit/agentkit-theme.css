@@ -1358,3 +1358,122 @@
 @keyframes ak-stage-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .ak-stage-dot { animation: none; } }
 .ak-close { font-size: 18px; line-height: 1; padding: 0 6px; }
+
+.ak-shell[data-theme="dark"] {
+  color-scheme: dark;
+  --ak-bg: #14171d;
+  --ak-panel: #1b2028;
+  --ak-panel-muted: #171b22;
+  --ak-border: #303846;
+  --ak-border-strong: #465164;
+  --ak-text: #e8eef7;
+  --ak-text-muted: #aab6c7;
+  --ak-accent: #8db5ff;
+  --ak-accent-soft: #233453;
+  --ak-warn: #ffc66a;
+  --ak-warn-soft: #392d20;
+  --ak-danger: #ff9c97;
+}
+
+.ak-modes, .ak-inline-actions, .ak-session-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ak-modes {
+  flex-shrink: 0;
+  margin: 0 10px;
+  padding: 3px;
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius-sm);
+}
+
+.ak-modes button { flex: 1; padding: 4px; white-space: nowrap; }
+.ak-modes button[aria-pressed="true"], .ak-question-rail button[aria-current] {
+  color: var(--ak-accent);
+  background: var(--ak-accent-soft);
+}
+.ak-session-search { margin-bottom: 10px; }
+.ak-session-search input { min-width: 0; flex: 1; }
+.ak-shell :is(input[type="search"], .ak-clarify-actions input, .ak-plan-options textarea) {
+  font: inherit;
+  padding: 5px 7px;
+  border: 1px solid var(--ak-border-strong);
+  border-radius: var(--ak-radius-sm);
+  color: var(--ak-text);
+  background: var(--ak-panel);
+}
+.ak-session-search button { padding-inline: 4px; white-space: nowrap; }
+.ak-session-row, .ak-trash-item { display: flex; align-items: center; gap: 4px; }
+.ak-session-row .ak-session { flex: 1; min-width: 0; }
+.ak-trash-trigger { flex-shrink: 0; }
+.ak-trash-item { padding: 6px 0; }
+.ak-trash-item span { flex: 1; }
+
+.ak-main { position: relative; }
+.ak-divider {
+  position: absolute;
+  inset-block: 0;
+  width: 8px;
+  transform: translateX(-50%);
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+.ak-divider:hover, .ak-divider:focus-visible { background: var(--ak-accent-soft); }
+.ak-divider--sidebar { left: var(--ak-sidebar-width); }
+.ak-divider--thread {
+  left: calc(var(--ak-sidebar-width) + (100% - var(--ak-sidebar-width)) * var(--ak-thread-ratio));
+}
+.ak-question-rail {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  padding: 5px 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--ak-border);
+}
+.ak-question-rail button {
+  flex: 0 0 auto;
+  max-width: 17rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ak-user[data-question-anchor]:focus {
+  outline: 2px solid var(--ak-accent);
+  outline-offset: 3px;
+  scroll-margin-block-start: 12px;
+}
+.ak-suggestions button { text-align: left; white-space: normal; }
+.ak-clarify-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ak-clarify-actions input { min-width: 8rem; flex: 1; }
+.ak-choice-confirmed { color: var(--ak-text-muted); font-size: 12px; text-align: right; }
+.ak-report-controls { padding: 6px 12px; border-bottom: 1px solid var(--ak-border); }
+.ak-inline-actions { flex-wrap: wrap; }
+.ak-report-controls .ak-settings-check { margin: 0; }
+.ak-report-attachments { margin: 4px 0; font-size: 12px; color: var(--ak-text-muted); overflow-wrap: anywhere; }
+.ak-report-list { max-height: 40vh; overflow-y: auto; }
+.ak-report-item { padding: 6px 0; border-bottom: 1px solid var(--ak-border); }
+.ak-report-item small { color: var(--ak-text-muted); }
+.ak-advanced > summary { cursor: pointer; }
+.ak-delivery { padding-block: 4px; }
+.ak-delivery p { margin-block: 4px; color: var(--ak-text-muted); }
+.ak-settings { max-height: 88dvh; }
+.ak-settings :is(input, textarea, select) { color: var(--ak-text); background: var(--ak-panel); }
+.ak-settings-field textarea { width: 100%; font: inherit; }
+
+@media (min-width: 961px) {
+  .ak-main {
+    grid-template-columns: var(--ak-sidebar-width)
+      minmax(0, calc((100% - var(--ak-sidebar-width)) * var(--ak-thread-ratio))) minmax(0, 1fr);
+  }
+}
+@media (max-width: 960px) {
+  .ak-main { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .ak-modes { grid-row: 2; margin-block: 4px; }
+  .ak-session-pane, .ak-thread, .ak-board { grid-row: 3; }
+  .ak-nav-footer { grid-row: 4; }
+  .ak-divider { display: none; }
+}

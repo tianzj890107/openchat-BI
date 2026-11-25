@@ -53,7 +53,7 @@ function stubFetch(window, {chatFrames = null, chatDelay = 0, activatePayload = 
       const {body, status = 200} = handler(options);
       return {ok: status < 400, status, text: async () => JSON.stringify(body)};
     }
-    if (target.includes('api/chat')) {
+    if (target.includes('api/chat') || target.includes('api/report/chat')) {
       if (chatFrames) return sseResponse(window, chatFrames, {delayMs: chatDelay});
       return sseResponse(window, [{type: 'done', turn_id: 't1'}]);
     }
@@ -65,7 +65,7 @@ function stubFetch(window, {chatFrames = null, chatDelay = 0, activatePayload = 
         text: async () => JSON.stringify(activatePayload || {session_id: '', messages: [], agentkit: {}}),
       };
     }
-    if (target.includes('api/choice')) {
+    if (target.includes('api/choice') || target.includes('api/report/choice')) {
       return sseResponse(window, [
         {type: 'text_delta', turn_id: 't2', text: '已按选择继续。'},
         {type: 'done', turn_id: 't2'},
@@ -611,4 +611,107 @@ test('refreshing a V6.1 card reopens the conversation it already produced', asyn
     0,
     'reopening the card conversation writes nothing',
   );
+});
+
+test('default entry submits an incoming question once and offers both analysis modes', async () => {
+  const {window, calls} = await boot({url: 'http://localhost/workbench?prompt=%E8%BF%9B%E5%85%A5%E9%97%AE%E9%A2%98'});
+  try {
+    assert.equal(calls.filter(({url}) => url === '/api/chat').length, 1);
+    assert.equal(new window.URL(window.location.href).searchParams.has('prompt'), false);
+    assert.ok([...window.document.querySelectorAll('button')].some(({textContent}) => textContent === '报表分析'));
+  } finally {
+    window.close();
+  }
+});
+
+test('legacy assets appear in the new history, and a board question locates the original turn', async () => {
+  const {window, calls} = await boot({
+    activatePayload: {session_id: 'legacy-target', mode: 'data', messages: [], agentkit: {}},
+    endpoints: {
+      '/api/conversations/conv-1/assets': () => ({body: {
+        chat_html: '<div class="msg-user" data-turn="3"><p class="msg-body">旧问题</p></div>' +
+          '<div class="msg-assistant"><div class="msg-body">旧结论<script>throw 1</script></div></div>',
+        dashboard_html: '<div class="dash-card dash-table" data-turn="3"><span class="dash-title">旧明细</span>' +
+          '<table><thead><tr><th>地区</th></tr></thead><tbody><tr><td>华东</td></tr></tbody></table></div>',
+        sop_steps: [{content: '核对数据口径', status: 'completed'}],
+      }}),
+      '/api/report/compose': () => ({body: {title: '结构化管报', summary: '执行摘要', sections: [{heading: '第一章', blocks: [0]}]}}),
+    },
+  });
+  try {
+    const {document} = window;
+    document.querySelector('.ak-session').click();
+    await new Promise((done) => setTimeout(done, 120));
+    assert.match(document.querySelector('.ak-assistant').textContent, /旧结论/);
+    assert.doesNotMatch(document.querySelector('.ak-assistant').textContent, /throw 1/);
+    assert.match(document.querySelector('.ak-board table').textContent, /华东/);
+    document.querySelector('.ak-turn-question').click();
+    await new Promise((done) => setTimeout(done, 100));
+    assert.equal(document.activeElement.textContent, '旧问题');
+    assert.equal(document.querySelector('[aria-label="问题定位"] button').textContent, '1. 旧问题');
+    const word = [...document.querySelectorAll('.ak-delivery button')].find((button) => button.textContent === '导出 Word');
+    word.click();
+    await new Promise((done) => setTimeout(done, 100));
+    const compose = calls.find(({url}) => url === '/api/report/compose');
+    assert.equal(JSON.parse(compose.body).blocks[0].kind, 'table');
+    assert.match(document.querySelector('.ak-delivery').textContent, /下载 Word/);
+    assert.equal(calls.filter(({url}) => url === '/api/conversations/save').length, 0);
+  } finally { window.close(); }
+});
+
+test('report attachment and question use a separate session and keyboard resizing persists', async () => {
+  const {window, calls} = await boot({
+    url: 'http://localhost/workbench',
+    endpoints: {
+      '/api/report/list': () => ({body: {items: [{id: 'pdf-1', filename: '经营简报.pdf'}]}}),
+      '/api/report/activate': () => ({body: {active_reports: [{id: 'pdf-1', filename: '经营简报.pdf'}], with_db: true}}),
+    },
+  });
+  try {
+    const {document} = window;
+    const button = (title) => [...document.querySelectorAll('button')].find((node) => node.textContent === title);
+    document.querySelector('.ak-suggestions button').click();
+    await new Promise((done) => setTimeout(done, 80));
+    assert.match(document.querySelector('textarea').value, /PACK 未签单商机/);
+    button('报表分析').click();
+    await new Promise((done) => setTimeout(done, 80));
+    button('选择或上传报表').click();
+    await new Promise((done) => setTimeout(done, 80));
+    document.querySelector('.ak-report-list input').click();
+    await new Promise((done) => setTimeout(done, 80));
+    button('启用报表（1/5）').click();
+    await new Promise((done) => setTimeout(done, 100));
+    assert.match(document.querySelector('.ak-report-controls').textContent, /经营简报.pdf/);
+    assert.ok(calls.some(({url}) => url === '/api/conversations?mode=report'));
+    const attach = calls.find(({url}) => url === '/api/report/activate');
+    assert.deepEqual(JSON.parse(attach.body).report_ids, ['pdf-1']);
+    await typeAndSend(window, '核对报表金额');
+    await new Promise((done) => setTimeout(done, 180));
+    const question = calls.find(({url}) => url === '/api/report/chat');
+    assert.equal(JSON.parse(question.body).session_id, JSON.parse(attach.body).session_id);
+    const separator = document.querySelector('.ak-divider--thread');
+    separator.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+    await new Promise((done) => setTimeout(done, 80));
+    assert.equal(separator.getAttribute('aria-valuenow'), '44');
+    assert.equal(window.localStorage.getItem('agentkit.layout.threadPercent'), '44');
+  } finally { window.close(); }
+});
+
+test('standard report wizard sends its configuration to a fresh report generator', async () => {
+  const {window, calls} = await boot({url: 'http://localhost/workbench?mode=report'});
+  try {
+    const {document} = window;
+    const button = (label) => [...document.querySelectorAll('button')].find((node) => node.textContent === label);
+    button('标准报表生成').click();
+    await waitFor(() => button('确认生成'));
+    button('确认生成').click();
+    await waitFor(() => button('确认 · 开启报表生成'));
+    button('确认 · 开启报表生成').click();
+    await waitFor(() => calls.some(({url}) => url === '/api/report/chat'));
+    const generator = calls.find(({url}) => url.startsWith('/api/report/generate?'));
+    const question = JSON.parse(calls.find(({url}) => url === '/api/report/chat').body);
+    assert.equal(new window.URL(generator.url, window.location.href).searchParams.get('session_id'), question.session_id);
+    assert.match(question.message, /标准报表生成任务.*报表期间.*模板.*配图/s);
+    assert.equal(question.visible_user_text, '生成标准报表');
+  } finally { window.close(); }
 });

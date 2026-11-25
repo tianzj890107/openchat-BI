@@ -1,6 +1,7 @@
 import React, {useEffect, useId, useRef, useState} from "react";
 
-import {loadSources, updateModelConfig} from "../api.js";
+import {loadSources, requestJson, updateModelConfig} from "../api.js";
+import {readPreferences} from "../preferences.js";
 import {sourceSelection} from "../sourcePreference.js";
 
 const localModes = [
@@ -20,16 +21,20 @@ function sourceValues(data, preference) {
     retrieval_mode: data.retrieval?.mode || "semantic",
     graph: data.retrieval?.graph?.active || "",
     doris_database: data.doris?.database || "",
+    doris_api_url: data.doris?.api_url || "",
+    doris_jdbc_url: data.doris?.jdbc_url || "",
+    doris_driver: data.doris?.driver || "",
+    doris_username: data.doris?.username || "",
     ...preference,
   };
 }
 
-function SelectField({label, name, value, options, onChange}) {
+function SelectField({label, name, value, options, onChange, allowEmpty = false}) {
   return (
     <label className="ak-settings-field">
       <span>{label}</span>
       <select name={name} value={value} onChange={(event) => onChange(name, event.target.value)}>
-        {value === "" ? <option value="">请选择</option> : null}
+        {allowEmpty || value === "" ? <option value="">{allowEmpty ? "默认" : "请选择"}</option> : null}
         {options.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
       </select>
     </label>
@@ -40,6 +45,7 @@ function SourcesForm({data, preference, hasConversation, busy, onSave}) {
   const [values, setValues] = useState(() => sourceValues(data, preference));
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
+  const [builtGraphs, setBuiltGraphs] = useState([]);
   const pairs = data.ontology?.remote_repositories || [];
   const production = data.ontology?.production;
   const selectedRepo = pairs.find((pair) => pair.value === values.ontology);
@@ -82,11 +88,12 @@ function SourcesForm({data, preference, hasConversation, busy, onSave}) {
     setStatus(null);
     const {graph, doris_database: schema, ...binding} = values;
     try {
-      const saved = await onSave(sourceSelection({
-        ...binding,
+      const saved = await onSave({
+        ...sourceSelection(binding),
+        ...(genericDoris ? Object.fromEntries(Object.entries(binding).filter(([key, value]) => key.startsWith("doris_") && value)) : {}),
         graph: !isRemote && values.retrieval_mode === "graph" ? graph : "",
         doris_database: genericDoris ? schema : "",
-      }));
+      });
       setValues((current) => ({...current, ...saved, graph: saved.graph || ""}));
       setStatus({text: "数据源已保存"});
     } catch (error) {
@@ -103,16 +110,35 @@ function SourcesForm({data, preference, hasConversation, busy, onSave}) {
         <SelectField label="本体库" name="ontology" value={values.ontology} options={ontologyOptions} onChange={change} />
         <SelectField label="业务数据源" name="database" value={values.database} options={databaseOptions} onChange={change} />
         <SelectField label="检索模式" name="retrieval_mode" value={values.retrieval_mode} options={localModes} onChange={change} />
-        {!isRemote && values.retrieval_mode === "graph" ? (
+        {!isRemote && values.retrieval_mode === "graph" ? <>
           <SelectField label="本地图库" name="graph" value={values.graph}
-            options={optionsWithActive(data.retrieval?.graph?.options, values.graph)} onChange={change} />
-        ) : null}
+            options={optionsWithActive([...(data.retrieval?.graph?.options || []), ...builtGraphs], values.graph)} onChange={change} />
+          <button type="button" className="ak-ghost" disabled={busy || !values.ontology} onClick={async () => {
+            setSaving(true);
+            try {
+              const {graph} = await requestJson("api/graph/build", {method: "POST", body: {ontology: values.ontology}});
+              setBuiltGraphs((current) => [...current, graph]);
+              change("graph", graph);
+              setStatus({text: "图库已构建，保存后生效"});
+            } catch (error) { setStatus({text: error.message, error: true}); }
+            finally { setSaving(false); }
+          }}>从当前本体构建图库</button>
+        </> : null}
         {genericDoris ? (
           <label className="ak-settings-field">
             <span>Doris 数据库名</span>
             <input value={values.doris_database} onChange={(event) => change("doris_database", event.target.value)} />
           </label>
         ) : null}
+        {genericDoris ? <details className="ak-advanced">
+          <summary>Doris 连接配置</summary>
+          {[["doris_api_url", "HTTP API 地址"], ["doris_jdbc_url", "JDBC 地址"], ["doris_driver", "驱动"],
+            ["doris_username", "用户名"], ["doris_password", "密码"]].map(([key, label]) =>
+            <label className="ak-settings-field" key={key}>{label}
+              <input name={key} type={key === "doris_password" ? "password" : "text"}
+                value={values[key] || ""} onChange={(event) => change(key, event.target.value)} />
+            </label>)}
+        </details> : null}
         {hasConversation ? <p className="ak-settings-hint">保存后开启新会话，已有对话可从历史打开。</p> : null}
         {status ? <p role={status.error ? "alert" : "status"}>{status.text}</p> : null}
         <button type="submit" className="ak-primary" disabled={busy || !values.ontology || !values.database}>
@@ -127,11 +153,16 @@ export function modelKey(model) {
   return model?.model_key || model?.key || "";
 }
 
+const providers = [
+  ["anthropic", "Anthropic"], ["qwen", "通义千问"], ["deepseek", "DeepSeek"], ["team", "Team 网关"],
+];
+
 function ModelForm({config, busy, onSaved}) {
   const models = config.models || [];
   const [values, setValues] = useState(config.current || {});
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
+  const [keys, setKeys] = useState({});
   const model = models.find((item) => modelKey(item) === values.model_key) || models[0];
 
   const change = (name, value) => {
@@ -149,8 +180,11 @@ function ModelForm({config, busy, onSaved}) {
         max_tokens: Number(values.max_tokens),
         temperature: Number(values.temperature),
         thinking: Boolean(model.supports_thinking && values.thinking),
+        ...Object.fromEntries(Object.entries(keys).filter(([, value]) => value.trim())
+          .map(([provider, value]) => [`${provider}_api_key`, value.trim()])),
       });
       setValues(saved.current);
+      setKeys({});
       onSaved(saved);
       setStatus({text: "模型已保存，下一轮对话生效"});
     } catch (error) {
@@ -191,6 +225,31 @@ function ModelForm({config, busy, onSaved}) {
             disabled={!model.supports_thinking} onChange={(event) => change("thinking", event.target.checked)} />
           <span>思考模式</span>
         </label>
+        {config.api_keys ? <details className="ak-advanced">
+          <summary>模型服务 API Key</summary>
+          {providers.filter(([key]) => Object.hasOwn(config.api_keys, key)).map(([provider, label]) => {
+            const info = config.api_keys[provider];
+            return <div className="ak-model-key" key={provider}>
+              <label className="ak-settings-field">{label}
+                <input type="password" autoComplete="new-password" value={keys[provider] || ""}
+                  placeholder={info?.present ? "已配置" : "输入 API Key"}
+                  onChange={(event) => setKeys((current) => ({...current, [provider]: event.target.value}))} />
+              </label>
+              {info?.present && info.source !== "env" ? <button type="button" className="ak-ghost" disabled={busy}
+                onClick={async () => {
+                  if (!window.confirm(`清除已保存的 ${label} API Key？`)) return;
+                  setSaving(true);
+                  try {
+                    const saved = await updateModelConfig({[`${provider}_api_key`]: ""});
+                    setKeys((current) => ({...current, [provider]: ""}));
+                    onSaved(saved);
+                    setStatus({text: `已清除 ${label} API Key`});
+                  } catch (error) { setStatus({text: error.message, error: true}); }
+                  finally { setSaving(false); }
+                }}>清除</button> : null}
+            </div>;
+          })}
+        </details> : null}
         <p className="ak-settings-hint">模型配置会应用到当前分析服务的后续对话。</p>
         {status ? <p role={status.error ? "alert" : "status"}>{status.text}</p> : null}
         <button type="submit" className="ak-primary" disabled={busy}>{saving ? "保存中…" : "保存模型"}</button>
@@ -205,9 +264,10 @@ function SettingsContent({result, label, children}) {
   return children(result.data);
 }
 
-function SettingsDialog({name, busy, onClose, children}) {
+export function SettingsDialog({name, title, busy, onClose, children}) {
   const dialog = useRef(null);
-  const title = useId();
+  const heading = useId();
+  const label = title || `${name}设置`;
   useEffect(() => {
     const element = dialog.current;
     if (typeof element.showModal === "function") element.showModal();
@@ -216,11 +276,11 @@ function SettingsDialog({name, busy, onClose, children}) {
   }, []);
 
   return (
-    <dialog className="ak-settings" ref={dialog} aria-labelledby={title}
+    <dialog className="ak-settings" ref={dialog} aria-labelledby={heading}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <header className="ak-settings-head">
-        <h2 id={title}>{name}设置</h2>
-        <button type="button" className="ak-ghost ak-close" aria-label={`关闭${name}`} title={`关闭${name}`} onClick={onClose}>×</button>
+        <h2 id={heading}>{label}</h2>
+        <button type="button" className="ak-ghost ak-close" aria-label={`关闭${name || title}`} title={`关闭${name || title}`} onClick={onClose}>×</button>
       </header>
       {busy ? <p className="ak-settings-hint">当前分析结束后可以保存设置。</p> : null}
       {children}
@@ -248,12 +308,53 @@ export function SourceSettings({sessionId, preference, hasConversation, busy, on
   );
 }
 
-export function ModelSettings({config, busy, onSaved, onClose}) {
+function PreferencesForm({sessionId, busy, onSaved}) {
+  const [values, setValues] = useState(readPreferences);
+  const [options, setOptions] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    requestJson(`api/roles?session_id=${encodeURIComponent(sessionId)}`, {signal: controller.signal}).then((roles) => {
+      if (controller.signal.aborted) return;
+      setOptions(roles);
+      setValues((current) => ({...current, user_role: current.user_role ?? roles.user_role ?? "",
+        agent_pref: current.agent_pref ?? roles.agent_pref ?? ""}));
+    }, (error) => { if (!controller.signal.aborted) setStatus({error: error.message}); });
+    return () => controller.abort();
+  }, [sessionId]);
+  const change = (key, value) => setValues((current) => ({...current, [key]: value}));
+  return <form className="ak-settings-form" onSubmit={async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await onSaved(values);
+      setStatus({text: "偏好已保存"});
+    } catch (error) { setStatus({error: error.message}); }
+    finally { setSaving(false); }
+  }}>
+    <fieldset disabled={busy || saving}>
+      <legend>个人偏好</legend>
+      <label className="ak-settings-field">称呼<input value={values.name} maxLength={40}
+        onChange={(event) => change("name", event.target.value)} /></label>
+      <SelectField name="theme" label="界面主题" value={values.theme}
+        options={[{value: "light", label: "浅色"}, {value: "dark", label: "深色"}]} onChange={change} />
+      {[["user_role", "我的角色"], ["agent_pref", "回答风格"]].map(([key, label]) =>
+        <SelectField key={key} name={key} label={label} value={values[key] || ""} allowEmpty
+          options={(options?.[`${key}_options`] || []).map(({key, label}) => ({value: key, label}))} onChange={change} />)}
+      {status ? <p role={status.error ? "alert" : "status"}>{status.error || status.text}</p> : null}
+      <button type="submit" className="ak-primary" disabled={!options}>保存个人偏好</button>
+    </fieldset>
+  </form>;
+}
+
+export function ModelSettings({config, busy, onSaved, onClose, sessionId, onSavePreferences}) {
   return (
     <SettingsDialog name="模型" busy={busy} onClose={onClose}>
       <SettingsContent result={config} label="模型配置">
         {(data) => <ModelForm config={data} busy={busy} onSaved={onSaved} />}
       </SettingsContent>
+      <PreferencesForm sessionId={sessionId} busy={busy} onSaved={onSavePreferences} />
     </SettingsDialog>
   );
 }

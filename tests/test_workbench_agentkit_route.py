@@ -1,11 +1,4 @@
-"""TDD RED: /workbench-agentkit is an independent AgentKit workbench entry.
-
-The AgentKit workbench ships beside the existing Pro UI workbench: same
-analysis service and conversation APIs, separate page, separate assets.  The
-legacy ``/`` and ``/workbench`` entries keep serving the old page unchanged so
-they stay a regression reference (spec: workbench-agentkit-ontology-consumption
-§2, §5).
-"""
+"""Serve AgentKit at both default entries and retain an explicit legacy fallback."""
 
 from __future__ import annotations
 
@@ -35,7 +28,8 @@ def url(path):
     return (prefix + path) if prefix else path
 
 agentkit = client.get(url("/workbench-agentkit"))
-legacy = client.get(url("/workbench"))
+workbench = client.get(url("/workbench?prompt=PACK"))
+legacy = client.get(url("/workbench-legacy"))
 root = client.get(prefix or "/")
 js = client.get(url("/static/vendor/agentkit/workbench-agentkit.js"))
 css = client.get(url("/static/vendor/agentkit/workbench-agentkit.css"))
@@ -46,6 +40,9 @@ print(json.dumps({
     "agentkit_type": agentkit.headers.get("content-type", ""),
     "agentkit_cache": agentkit.headers.get("cache-control", ""),
     "agentkit_html": agentkit.text,
+    "workbench_status": workbench.status_code,
+    "workbench_html": workbench.text,
+    "workbench_location": workbench.headers.get("location"),
     "legacy_status": legacy.status_code,
     "legacy_html": legacy.text,
     "root_html": root.text,
@@ -103,7 +100,7 @@ class WorkbenchAgentkitRouteTests(unittest.TestCase):
     def test_unprefixed_entry_serves_agentkit_workbench(self) -> None:
         self.assert_agentkit_page(probe(""), "")
 
-    def test_legacy_workbench_entries_stay_on_the_old_page(self) -> None:
+    def test_default_entries_serve_agentkit_and_legacy_fallback_serves_old_page(self) -> None:
         result = probe(PREFIX)
         legacy = str(result["legacy_html"])
         root_html = str(result["root_html"])
@@ -111,12 +108,15 @@ class WorkbenchAgentkitRouteTests(unittest.TestCase):
         # The regression reference still loads the Pro UI bundle, not AgentKit.
         self.assertIn("static/vendor/antd/workbench.js", legacy)
         self.assertNotIn("vendor/agentkit/workbench-agentkit.js", legacy)
-        self.assertEqual(root_html, legacy)
+        self.assertEqual(result["workbench_status"], 200)
+        self.assertIsNone(result["workbench_location"])
+        self.assertEqual(root_html, result["agentkit_html"])
+        self.assertEqual(result["workbench_html"], root_html)
 
     def test_route_is_registered_beside_the_legacy_entry(self) -> None:
         source = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
         self.assertIn('@app.get("/workbench-agentkit")', source)
-        # The legacy handler is untouched: one shared response builder each.
+        # Keep the existing user-facing alias.
         self.assertIn('@app.get("/workbench")', source)
         self.assertIn('def workbench() -> HTMLResponse:', source)
 

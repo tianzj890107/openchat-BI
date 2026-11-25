@@ -17,7 +17,7 @@
 
 ### 2026-11-24 实施：AgentKit 工作台首期骨架（红测驱动）
 
-- 新入口 `GET /workbench-agentkit`：沿用 `APP_ROOT_PATH`（如 `/api/ontology-agentic-analytics/workbench-agentkit`），无前缀与配置前缀都能打开；返回 `Cache-Control: no-store`，静态资源按文件 mtime 注入 `?v=`，不再使用写死版本号。`/` 与 `/workbench` 继续返回原 Pro UI 页面，与新入口互不影响。
+- 新入口 `GET /workbench-agentkit`：沿用 `APP_ROOT_PATH`（如 `/api/ontology-agentic-analytics/workbench-agentkit`），无前缀与配置前缀都能打开；返回 `Cache-Control: no-store`，静态资源按文件 mtime 注入 `?v=`，不再使用写死版本号。首期用独立入口验收；25 日切换默认入口的最终行为见本周后续条目。
 - 页面壳由 `bi_agent/web/static/agentkit/index.html` 提供首屏骨架（顶部交接区、左会话列表、中对话、右结果看板、窄屏切换按钮），React 挂载后接管；产物为 `bi_agent/web/static/vendor/agentkit/workbench-agentkit.{js,css}`（约 162 KB / 10 KB），与 Pro UI 的 `vendor/antd` 完全分开。
 - 前端源码在 `frontend/agentkit/`：`state.js` 把 `/api/chat`、`/api/choice` 的 SSE 投影成单一会话状态（正文增量合并、`tool_start`/`tool_input`/`tool_result` 合并到原调用并保留 `ontology_entities`、澄清暂停、迟到/旧轮次事件丢弃、`done` 终态幂等、停止保留已得结论）；`api.js` 负责带 `APP_ROOT_PATH` 的请求与 SSE 解析；组件 `SessionList/Thread/Composer/Board/HandoffBanner` 覆盖会话新建与切换、工具过程、澄清多选提交（与 AskUser 一致）、停止与重试、结果表/图/指标。
 - 右栏按后端真实 `tool_result` 契约渲染（`table` / `chart` / `multi_chart` / `ontology_entities` / `duration_ms` / `error_code`）：`results.js` 负责把表格列标签、ECharts 系列、饼图切片、多图拆成看板卡片，并输出证据行与去重后的本体命中（同一编码在不同本体库分别计）；图表支持柱状、折线、饼图三类；`ChartGenerateMultiDim` 的 `multi_chart`（单对象 + `dimensions`）渲染为一张可切维度的卡片；证据区展示工具、耗时、命中数与错误码。
@@ -40,8 +40,8 @@
 
 - 首次发送白屏：assistant 消息补齐 `status`（`running` / `complete`），修复 assistant-ui 读取 `status.type` 时的 `Cannot read properties of undefined (reading 'type')`；jsdom 测试改为真实输入并点击发送，覆盖逐帧正文与 `done` 后恢复发送键，另加慢流停止用例（停止后保留部分正文并提示「本轮已停止」）。
 - V6.1 交接范围：`/api/chat` 新增 `scope`（`source/anchor/period/filters/evidence/handoff_id`），后端校验锚点与期间后拼入模型提示词，`visible_user_text` 仍是用户问题；前端 `scopeFromHandoff()` 只在交接可用时携带，`buildChatBody()` 组装请求体。同一交接的会话 ID 存 sessionStorage（按交接号），刷新复用；新建会话会更新该记录。
-- 澄清续流：新增 `resumeTurn()`，提交 `/api/choice` 前释放旧 turn id（后端为续流分配新请求 id），续流正文与 `done` 归入原问题；提交失败转为可重试错误态。jsdom 用两个不同 turn id 回放验证。
-- 历史恢复：`activate` 按传入 `session_id` 建立/命中会话并回传 `session_id`、`messages` 与 `agentkit` 快照；快照（轮次、工具过程、表格/图表、证据、本体命中）随保存写入会话记录，上限 200 KB/40 轮且更新不丢；前端优先用快照恢复、旧记录回退消息文本，追问继续使用激活会话；每轮完成/失败/中断后自动保存（内容指纹去重）。
+- 澄清续流：新增 `resumeTurn()`，提交 `/api/choice` 前释放旧 turn id（后端为续流分配新请求 id），续流正文与 `done` 归入原问题；提交失败后可从原澄清卡重试，并保留已填选项和手工输入。jsdom 用两个不同 turn id 回放验证。
+- 历史恢复：`activate` 按传入 `session_id` 建立/命中会话并回传 `session_id`、`messages` 与 `agentkit` 快照；快照（轮次、工具过程、表格/图表、证据、本体命中）随保存写入会话记录，保留所有轮次；超出单条 16 MB 容量时提示失败并保留已保存的记录；前端结合结构化快照、旧消息与旧版已保存资产回看，追问继续使用激活会话；每轮完成/失败/中断后自动保存（内容指纹去重）。
 - 本机真实服务复验（未改线上）：带 `scope` 的 `/api/chat` 返回 124 个 SSE 事件，`user_message` 事件中可见「[来源卡带入的分析范围]…锚点=PACK_OPP_COVERAGE；期间=2026Q3…」，随后因采购域无商机数据进入澄清；缺锚点的 `scope` 返回 400「交接范围缺少风险或指标锚点」。保存会话后带新 `session_id` 调 `activate`，回传该 `session_id`、20 条消息和含表格的 `agentkit` 快照，确认保存/恢复契约生效。
 - 验证：Node 165 项通过（含 6 项 jsdom 端到端：挂载、发送、停止、交接范围与刷新会话、历史恢复、澄清续流）；后端专项 21 项通过（路由、范围校验、历史存取、入口/base-path），会话存储回归 24 项通过。产物约 721 KB（gzip 210 KB）。
 - 主要文件：`frontend/agentkit/{App.jsx,api.js,state.js,messageAdapter.js}`、`bi_agent/web/{app.py,conversations.py}`、`tests/workbench_agentkit_{dom,api,state}.test.mjs`、`tests/test_workbench_agentkit_{scope,history,route}.py`。
@@ -103,3 +103,10 @@
   release `agentkit-4c90a1d-20261125-1410`，复用 preview.env 与 dataset-local 本体，未触碰 8765。
 - 验证：`/healthz` 200、页面 200、bundle 含 `ak-stage`、`/api/config` 返回真实模型名、`/api/sources` 源不变。
 - 主要文件：`DEPLOYMENT.md`（§9 发布记录）。
+
+### 2026-11-25 分析 Agent 默认工作台切换到 AgentKit
+
+- 应用根路径、`/workbench` 和 `/workbench-agentkit` 直达同一页面。带网关前缀的旧链接、一次性 `?prompt=` 和 V6.1 来源卡交接继续使用；`/workbench-legacy` 可打开旧工作台。
+- 智能分析和报表分析分别保留会话。报表支持 PDF／DOCX、最近报表多选、按需数据库对账及标准报表生成。历史保留报表附件与对账配置，旧快照中的文字、明细、图表、SOP 及可关联到原工具的本体命中在新版回看。
+- 对话支持建议问题填入、手工澄清、原卡重试及已确认选项。看板按问题展示结论、根因、建议和证据产物，点问题回到对话对应位置，支持每轮 HTML、Word 与嵌入时的主页同步。
+- 增加会话搜索、刷新和回收站入口，导航与内容栏宽可拖动并记住。高级本体和 Doris 配置集中在数据源设置，称呼、主题、角色与回答风格集中在模型设置。实现与验收范围见 [切换规格](../docs/specs/workbench-agentkit-ontology-consumption.md#66-替换原工作台的用户功能2026-11-25)。

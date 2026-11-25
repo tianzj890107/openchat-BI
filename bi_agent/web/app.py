@@ -74,7 +74,7 @@ from ..tools.sql_tools import (
     DorisConn,
     DorisHttpConn,
 )
-from .conversations import ConversationStore, sanitize_source_config
+from .conversations import ConversationStore, bounded_agentkit, sanitize_source_config
 from ..runtime.session import TurnContext, AgentSession as WebSession
 
 
@@ -1234,12 +1234,7 @@ def _render_workbench_index() -> str:
 
 
 def _workbench_response() -> HTMLResponse:
-    """Build the single workbench response shared by every HTML entry point.
-
-    The application root (``/``, or ``APP_ROOT_PATH`` when configured) and the
-    compatibility entry ``/workbench`` must return byte-identical HTML, so the
-    template rendering and the no-store cache headers live here only.
-    """
+    """Serve the legacy Pro UI workbench for explicit fallback."""
     return HTMLResponse(
         content=_render_workbench_index(),
         headers={
@@ -1256,7 +1251,7 @@ def index() -> HTMLResponse:
     # workbench directly: no redirect, so the browser address bar keeps the
     # configured external base path (e.g. /api/ontology-agentic-analytics).
     # The role dashboard remains directly available at /dashboard.html.
-    return _workbench_response()
+    return _agentkit_workbench_response()
 
 
 @app.get("/healthz")
@@ -1336,6 +1331,11 @@ def analysis_nav_prototype_page() -> FileResponse:
 
 @app.get("/workbench")
 def workbench() -> HTMLResponse:
+    return _agentkit_workbench_response()
+
+
+@app.get("/workbench-legacy")
+def workbench_legacy() -> HTMLResponse:
     return _workbench_response()
 
 
@@ -1379,17 +1379,17 @@ def _render_workbench_agentkit_index() -> str:
     return html.replace("</head>", runtime_config + "</head>", 1)
 
 
-@app.get("/workbench-agentkit")
-def workbench_agentkit() -> HTMLResponse:
-    """Independent AgentKit workbench entry (also used by V6.1 host embeds).
-
-    The legacy ``/`` and ``/workbench`` entries keep serving the Pro UI page:
-    this route never rewrites or redirects them.
-    """
+def _agentkit_workbench_response() -> HTMLResponse:
     return HTMLResponse(
         content=_render_workbench_agentkit_index(),
         headers=dict(_NO_STORE_HEADERS),
     )
+
+
+@app.get("/workbench-agentkit")
+def workbench_agentkit() -> HTMLResponse:
+    """Explicit AgentKit alias also used by V6.1 host embeds."""
+    return _agentkit_workbench_response()
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -2878,7 +2878,22 @@ def _activate_conversation_record(
             source_restore_error = str(exc)
 
     context_restored = False
+    report_restore_error = ""
     if mode == "report":
+        report_context = (rec.get("agentkit") or {}).get("reportContext") or {}
+        report_ids = report_context.get("reportIds") or []
+        try:
+            if report_ids:
+                report_activate(ReportActivate(
+                    session_id=session_id, report_ids=report_ids,
+                    with_db=report_context.get("withDb", True),
+                ))
+            elif report_context.get("generated"):
+                report_generate(session_id or "")
+                if report_context.get("withDb") is False:
+                    report_config(ReportConfigUpdate(session_id=session_id, with_db=False))
+        except Exception as exc:
+            report_restore_error = str(getattr(exc, "detail", None) or exc)
         session = _session_for_mode("report", session_id)
         if session is not None:
             session.messages = list(messages)
@@ -2943,6 +2958,8 @@ def _activate_conversation_record(
         "first_user_question": ConversationStore._metadata(rec).get("first_user_question") or "",
         "source_config": source_config,
         "source_restore_error": source_restore_error,
+        "report_restore_error": report_restore_error,
+        "awaiting_choice": bool(restored and restored.get("status") == WAITING_USER and getattr(session, "pending_tool_use_id", None)),
         "context_restored": context_restored,
     }
 
@@ -2979,6 +2996,16 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
             if field in binding
         }
     messages = list(session.messages) if session else []
+    agentkit = req.agentkit
+    if agentkit:
+        agentkit = {name: agentkit[name] for name in ("version", "turns", "handoff", "pendingChoice") if name in agentkit}
+        if mode == "report" and session is not None:
+            _, report_ids, with_db = _report_context_state(req.session_id)
+            agentkit["reportContext"] = {"reportIds": report_ids, "withDb": with_db, "generated": not report_ids}
+        try:
+            bounded_agentkit(agentkit)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(422, str(exc)) from exc
     summary = store.save(
         mode=mode,
         title=req.title or "未命名对话",
@@ -3006,7 +3033,7 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
             if session is not None and hasattr(session, "recovery_state")
             else None
         ),
-        agentkit=req.agentkit,
+        agentkit=agentkit,
         # An AgentKit save owns the structured turns only; keep the legacy
         # HTML/SOP/messages snapshots the Pro UI stored for this conversation.
         preserve_legacy=bool(req.agentkit),
@@ -3665,6 +3692,8 @@ class ReportActivate(BaseModel):
     # mode is the exception, not the rule.
     with_db: bool = True
     session_id: Optional[str] = None
+    resume_conversation_id: Optional[str] = None
+    preserve_context: bool = False
 
     def resolve_ids(self) -> list[str]:
         if self.report_ids:
@@ -3838,11 +3867,23 @@ def report_activate(req: ReportActivate) -> JSONResponse:
             raise HTTPException(404, f"report not found: {rid}")
         actives.append(_record_to_summary(rec))
 
+    previous, _, _ = _report_context_state(req.session_id)
+    history = None
+    if req.resume_conversation_id:
+        history = _load_conversation_record(_require_conversation_store(), req.resume_conversation_id)
+        if not history or history.get("mode") != "report":
+            raise HTTPException(404, "未找到报表会话")
     # Activating a new report replaces the report session: invalidate any
     # running report turn before the swap.
     _supersede_session("report", _session_key(req.session_id))
     source = _source_for_session(req.session_id)
     session = _build_report_session(ids, req.with_db, source, req.session_id)
+    if history is not None:
+        session.messages = list(history.get("messages") or [])
+        session.first_user_question = str(history.get("first_user_question") or "")
+    elif previous is not None and req.preserve_context:
+        session.messages = list(previous.messages)
+        session.first_user_question = previous.first_user_question
     _set_report_context(req.session_id, session, ids, req.with_db)
 
     return JSONResponse({
@@ -3879,6 +3920,9 @@ def report_config(req: ReportConfigUpdate) -> JSONResponse:
                 session.set_context_header(
                     _report_context_header(recs, with_db)
                 )
+        elif not active_ids:
+            availability = "enabled" if with_db else "disabled"
+            session.set_context_header(f"# 任务类型: 标准报表生成\n# 数据库工具可用性: {availability}")
         _set_report_context(req.session_id, session, active_ids, with_db)
         return JSONResponse({"ok": True, "with_db": with_db})
     finally:

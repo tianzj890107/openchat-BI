@@ -182,3 +182,75 @@ class SavePreservesLegacyTests(unittest.TestCase):
             self.assertEqual(record["sop_steps"][0]["content"], "旧步骤")
             self.assertTrue(record["messages"], "stored messages are not blanked")
             self.assertEqual(record["agentkit"]["turns"][0]["id"], "turn-1")
+
+
+def test_agentkit_history_preserves_all_structured_turns():
+    from bi_agent.web.conversations import bounded_agentkit
+
+    turns = [{"id": f"turn-{index}", "user": "经营问题", "assistant": {"tools": []}} for index in range(1, 46)]
+    assert bounded_agentkit({"version": 1, "turns": turns})["turns"] == turns
+
+
+def test_report_save_and_activate_restore_attachments_and_follow_up_context(tmp_path, monkeypatch):
+    store = ConversationStore(tmp_path)
+    session = FakeSession()
+    session.messages = [{"role": "user", "content": "核对报表"}]
+    sessions = {"report-original": (session, ["r1", "r2"], False)}
+    records = {rid: {"id": rid, "filename": f"{rid}.pdf"} for rid in ("r1", "r2")}
+    source = SimpleNamespace(
+        remote_ontology=None, ontology_path="", use_doris=False, db_path="",
+        retrieval_mode="semantic", graph_path="", doris_api_url="", doris_jdbc_url="",
+        doris_driver="", doris_username="", doris_database="",
+    )
+    monkeypatch.setattr(web_app, "_require_conversation_store", lambda: store)
+    monkeypatch.setattr(web_app, "_require_report_store", lambda: records)
+    monkeypatch.setattr(web_app, "_build_report_session", lambda *_: FakeSession())
+    monkeypatch.setattr(web_app, "_ensure_session", lambda _: FakeSession())
+    monkeypatch.setattr(web_app, "_source_for_session", lambda _: source)
+    monkeypatch.setattr(web_app, "_history_ontology_entities", lambda *_: [])
+    monkeypatch.setattr(web_app, "_set_report_context", lambda key, session, ids, with_db: sessions.update({
+        key: (session, ids, with_db),
+    }))
+    monkeypatch.setattr(web_app, "_report_context_state", lambda key: sessions.get(key, (None, [], True)))
+    monkeypatch.setattr(web_app, "_session_for_mode", lambda mode, key: sessions.get(key, (None,))[0])
+    client = TestClient(web_app.app)
+    saved = client.post("/api/conversations/save", json={
+        "mode": "report", "session_id": "report-original", "agentkit": AGENTKIT_SNAPSHOT,
+    })
+    assert saved.status_code == 200
+    cid = saved.json()["id"]
+    assert store.get(cid)["agentkit"]["reportContext"] == {"reportIds": ["r1", "r2"], "withDb": False, "generated": False}
+    opened = client.post(f"/api/conversations/{cid}/activate?session_id=report-reopened")
+    assert opened.status_code == 200
+    assert opened.json()["report_restore_error"] == ""
+    restored, ids, with_db = sessions["report-reopened"]
+    assert restored.messages == session.messages
+    assert ids == ["r1", "r2"]
+    assert with_db is False
+
+
+def test_report_upload_parses_pdf_and_word_into_the_recent_list(tmp_path, monkeypatch):
+    from io import BytesIO
+    import pytest
+
+    pymupdf = pytest.importorskip("pymupdf")
+    docx = pytest.importorskip("docx")
+    from bi_agent.report.store import ReportStore
+
+    with pymupdf.open() as pdf:
+        pdf.new_page().insert_text((30, 45), "Operating revenue 100")
+        pdf_data = pdf.tobytes()
+    word_data = BytesIO()
+    word = docx.Document()
+    word.add_paragraph("Operating revenue 120")
+    word.save(word_data)
+
+    store = ReportStore(str(tmp_path))
+    monkeypatch.setattr(web_app, "_require_report_store", lambda: store)
+    client = TestClient(web_app.app)
+    for filename, payload in (("summary.pdf", pdf_data), ("detail.docx", word_data.getvalue())):
+        upload = client.post("/api/report/upload", files={"file": (filename, payload)})
+        assert upload.status_code == 200, upload.text
+        assert upload.json()["text_length"] > 0
+    files = client.get("/api/report/list").json()["items"]
+    assert {item["filename"] for item in files} == {"summary.pdf", "detail.docx"}

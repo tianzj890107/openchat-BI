@@ -40,7 +40,7 @@ function loadChartLibrary() {
   return chartLibrary;
 }
 
-function loadScatterLibrary() {
+export function loadEcharts() {
   if (window.echarts) return Promise.resolve();
   if (!scatterLibrary) {
     scatterLibrary = loadScript("static/vendor/echarts.min.js").catch((error) => {
@@ -56,25 +56,24 @@ export default function ProBiChart({chart}) {
   const [error, setError] = useState("");
   const {title, chart_type: chartType, option} = chart;
   const spec = useMemo(() => buildProBiChart({title, chart_type: chartType, option}), [title, chartType, option]);
-  const scatter = spec.type === "scatter";
-  const supported = scatter || Object.hasOwn(chartComponents, spec.type);
-  const hasData = scatter
+  const useProBi = Object.hasOwn(chartComponents, spec.type);
+  const hasData = !useProBi
     ? Array.isArray(option?.series) && option.series.some((series) => Array.isArray(series?.data) && series.data.length)
     : spec.rows.length > 0;
   const hasMissing = spec.rows.some((row) => spec.measures.some((field) => row[field.id] == null));
   useEffect(() => {
-    if (!supported || !hasData) return undefined;
+    if (!hasData) return undefined;
     const node = host.current;
     let active = true;
     let dispose;
     setError("");
     const mount = async () => {
       try {
-        if (scatter) {
-          await loadScatterLibrary();
+        if (!useProBi) {
+          await loadEcharts();
           if (!active) return;
-          // The shared component library has no scatter renderer. The legacy
-          // workbench preserves its numeric axes through the ECharts option.
+          // Preserve charts the component library does not render, including
+          // scatter with its original numeric axes.
           const instance = window.echarts.init(node);
           const resize = new ResizeObserver(() => instance.resize());
           resize.observe(node);
@@ -111,9 +110,8 @@ export default function ProBiChart({chart}) {
       observer?.disconnect();
       dispose?.();
     };
-  }, [option, hasData, scatter, spec, supported]);
+  }, [option, hasData, useProBi, spec]);
 
-  if (!supported) return <p className="ak-card-note">该类型暂不可绘制。</p>;
   if (!hasData) return <p className="ak-card-note">该图没有可展示的数据。</p>;
   return (
     <>

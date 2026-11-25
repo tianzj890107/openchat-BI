@@ -357,3 +357,16 @@ test('SOP follows backend steps and survives clarification, rewind and history',
     ['completed', 'skipped', 'completed', 'skipped', 'skipped', 'skipped']);
   assert.equal(turn.sop.todos[2].detail, '重新规划');
 });
+
+test('clarification failure keeps the original card and success records the resolved answer', () => {
+  let state = startTurn(createWorkbenchState(), {text:'核对经营期间'});
+  state = applyEvent(state, {type:'user_choice_requested',tool_use_id:'ask',context:'缺少期间',options:[]});
+  assert.equal(state.pendingChoice.context, '缺少期间');
+  state = resumeTurn(state);
+  state = applyEvent(state, {type:'choice_failed',message:'请重试'});
+  assert.equal(state.status, 'paused');
+  assert.equal(state.pendingChoice.toolUseId,'ask');
+  state = resumeTurn(state);
+  state = applyEvent(state,{type:'user_choice_resolved',tool_use_id:'ask',choice_labels:['上期']});
+  assert.deepEqual(state.turns[0].resolvedChoices[0].labels,['上期']);
+});

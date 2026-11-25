@@ -1,6 +1,8 @@
 import React, {useState} from "react";
 
-import {turnBoardItems} from "../results.js";
+import {chartInsightPrompt, turnBoardItems, turnSections} from "../results.js";
+import MarkdownText from "../adapters/MarkdownText.jsx";
+import Delivery from "./Delivery.jsx";
 import ProBiChart from "./ProBiChart.jsx";
 
 function TableCard({item}) {
@@ -30,13 +32,16 @@ function TableCard({item}) {
         </tbody>
       </table>
       {item.summary ? <p className="ak-card-note">{item.summary}</p> : null}
+      {item.footnote ? <p className="ak-card-note">{item.footnote}</p> : null}
+      {item.sourceNote ? <p className="ak-card-note">{item.sourceNote}</p> : null}
     </div>
   );
 }
 
-function MultiDimCard({item}) {
+function MultiDimCard({item, onInsight, busy}) {
   const [activeKey, setActiveKey] = useState(item.defaultKey);
   const dimension = item.dimensions.find((dim) => dim.key === activeKey) || item.dimensions[0];
+  const prompt = onInsight && chartInsightPrompt(dimension.chart.spec);
   return (
     <section className="ak-card" data-kind="chart">
       <h3 className="ak-card-title">{item.title}</h3>
@@ -57,29 +62,43 @@ function MultiDimCard({item}) {
       </div>
       <p className="ak-card-note">{dimension.summary || item.summary}</p>
       <ProBiChart key={dimension.key} chart={dimension.chart.spec} />
+      {prompt ? <button type="button" className="ak-ghost" disabled={busy} onClick={() => onInsight(prompt)}>深入洞察</button> : null}
     </section>
   );
 }
 
-function ResultCard({item}) {
-  if (item.chartType === "multi") return <MultiDimCard item={item} />;
+function ResultCard({item, onInsight, onPrefill, busy}) {
+  if (item.chartType === "multi") return <MultiDimCard item={item} onInsight={onInsight} busy={busy} />;
+  const prompt = onInsight && chartInsightPrompt(item.spec);
+  const clauses = item.sectionKind === "rootcause"
+    ? [...item.content.matchAll(/^\s*(?:[-*•]|\d+[.、)])\s+(.+)$/gm)].map((match) => match[1]) : [];
   return (
     <section className="ak-card" data-kind={item.kind}>
       <h3 className="ak-card-title">{item.title}</h3>
       {item.kind === "table" ? <TableCard item={item} /> : null}
       {item.kind === "chart" ? <ProBiChart chart={item.spec} /> : null}
+      {item.kind === "text" ? <MarkdownText text={item.content} /> : null}
+      {clauses.length ? <details>
+        <summary>按根因追问</summary>
+        {clauses.map((clause, index) => <button key={index} type="button" className="ak-ghost"
+          onClick={() => onPrefill(clause)}>{clause}</button>)}
+      </details> : null}
+      {item.spec?.source_note ? <p className="ak-card-note">{item.spec.source_note}</p> : null}
+      {prompt ? <button type="button" className="ak-ghost" disabled={busy} onClick={() => onInsight(prompt)}>深入洞察</button> : null}
     </section>
   );
 }
 
-export default function Board({turns, status}) {
+export default function Board({turns, status, onJump, onInsight, onPrefill, busy}) {
   const groups = (turns || [])
     .map((turn, index) => ({
       turn,
       index,
-      items: turnBoardItems(turn),
+      items: [...turnSections(turn).map((section) => ({...section, id: `${turn.id}:${section.kind}`,
+        sectionKind: section.kind, kind: "text"})),
+        ...turnBoardItems(turn)],
     }))
-    .filter((group) => group.items.length);
+    .filter((group) => group.turn.user || group.items.length);
   const totalItems = groups.reduce((sum, group) => sum + group.items.length, 0);
 
   return (
@@ -103,12 +122,23 @@ export default function Board({turns, status}) {
               <details key={group.turn.id} className="ak-turn-results" open={isLatest}>
                 <summary className="ak-turn-results-head">
                   <span className="ak-turn-index">第 {group.index + 1} 轮</span>
-                  <span className="ak-turn-question">{group.turn.user}</span>
+                  <button type="button" className="ak-link ak-turn-question" title="定位到对话"
+                    aria-label={`定位到对话：${group.turn.user}`} onClick={(event) => {
+                      event.preventDefault();
+                      onJump(group.turn.id);
+                    }}>{group.turn.user}</button>
                 </summary>
                 <div className="ak-turn-results-body">
                   {group.items.map((item) => (
-                    <ResultCard key={item.id} item={item} />
+                    <ResultCard key={item.id} item={item} onInsight={onInsight} onPrefill={onPrefill} busy={busy} />
                   ))}
+                  {group.items.length === 0 && !group.turn.assistant?.text ? <p className="ak-board-empty">暂无结果</p> : null}
+                  {["done", "error", "interrupted"].includes(group.turn.status) &&
+                    (group.items.length || group.turn.assistant?.text?.trim()) ? <Delivery turn={group.turn}
+                      index={group.index} items={group.items.some((item) => item.kind === "text") || !group.turn.assistant?.text?.trim()
+                        ? group.items : [...group.items,
+                        {kind: "text", title: "分析答复", content: group.turn.assistant.text},
+                      ]} /> : null}
                 </div>
               </details>
             );

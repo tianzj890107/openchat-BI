@@ -26,7 +26,7 @@ root_url = prefix or "/"
 
 root = client.get(root_url)
 compat = client.get((prefix + "/workbench") if prefix else "/workbench")
-asset = client.get((prefix + "/static/vendor/antd/workbench.js") if prefix else "/static/vendor/antd/workbench.js")
+asset = client.get((prefix + "/static/vendor/agentkit/workbench-agentkit.js") if prefix else "/static/vendor/agentkit/workbench-agentkit.js")
 
 print(json.dumps({
     "app_root_path": prefix,
@@ -62,7 +62,7 @@ class DirectRootWorkbenchEntryTests(unittest.TestCase):
         self.assertEqual(result["root_html"], result["compat_html"])
         self.assertIn("window.APP_ROOT_PATH", result["root_html"])
         self.assertIn(
-            f'{expected_prefix}/static/vendor/antd/workbench.js',
+            f'{expected_prefix}/static/vendor/agentkit/workbench-agentkit.js',
             result["root_html"],
         )
         self.assertEqual(result["asset_status"], 200)

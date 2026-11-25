@@ -3,9 +3,9 @@ import React, {useLayoutEffect, useRef, useState} from "react";
 import MarkdownText from "../adapters/MarkdownText.jsx";
 import ToolGroup from "../adapters/ToolGroup.jsx";
 
-function Clarification({choice, onChoose}) {
-  const [selected, setSelected] = useState([]);
-  if (!choice) return null;
+function Clarification({choice, onChoose, onStop}) {
+  const [selected, setSelected] = useState(() => (choice.picked || []).map((item) => item.id));
+  const [manual, setManual] = useState(() => (choice.picked || []).find((item) => item.id.startsWith("manual:"))?.label || "");
   const options = choice.options || [];
   const toggle = (option) => {
     const id = String(option.id ?? option.label ?? "");
@@ -13,13 +13,17 @@ function Clarification({choice, onChoose}) {
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
     );
   };
-  const submit = () => {
+  const submit = (event) => {
+    event.preventDefault();
     const picked = options.filter((option) => selected.includes(String(option.id ?? option.label ?? "")));
+    if (manual.trim()) picked.push({id: `manual:${manual.trim()}`, label: manual.trim()});
     if (picked.length) onChoose(picked);
   };
   return (
-    <div className="ak-clarify" role="group" aria-label="补充条件">
+    <form className="ak-clarify" aria-label="补充条件" onSubmit={submit}>
       <p className="ak-clarify-question">{choice.question}</p>
+      {choice.context ? <MarkdownText text={choice.context} /> : null}
+      {choice.error ? <p role="alert">{choice.error}</p> : null}
       <ul className="ak-clarify-options">
         {options.map((option) => {
           const id = String(option.id ?? option.label ?? "");
@@ -40,11 +44,13 @@ function Clarification({choice, onChoose}) {
         })}
       </ul>
       <div className="ak-clarify-actions">
-        <button type="button" className="ak-primary" onClick={submit} disabled={!selected.length}>
-          确定（已选 {selected.length} 项）
+        <input aria-label="自定义补充条件" placeholder="输入其他条件" value={manual} onChange={(event) => setManual(event.target.value)} />
+        <button type="submit" className="ak-primary" disabled={!selected.length && !manual.trim()}>
+          {selected.length ? `确定（已选 ${selected.length} 项）` : "确定"}
         </button>
+        <button type="button" className="ak-ghost" onClick={onStop}>结束本轮</button>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -65,7 +71,10 @@ function Turn({turn, error, onRetry, onOpenOntology}) {
   const stage = active ? stageNote(turn) : "";
   return (
     <article className="ak-turn">
-      {turn.user ? <div className="ak-user"><p>{turn.user}</p></div> : null}
+      {turn.user ? <div className="ak-user" tabIndex={-1} data-question-anchor={turn.id}><p>{turn.user}</p></div> : null}
+      {(turn.resolvedChoices || []).map((choice, index) => (
+        <p key={index} className="ak-choice-confirmed">已确认：{choice.labels.join("、")}</p>
+      ))}
       {active ? (
         <div className="ak-stage" role="status" aria-live="polite">
           <span className="ak-stage-dot" aria-hidden="true" />
@@ -78,6 +87,7 @@ function Turn({turn, error, onRetry, onOpenOntology}) {
           ) : null}
         </div>
       ) : null}
+      {(turn.warnings || []).map((warning, index) => <p key={index} className="ak-progress ak-progress--warn">{warning}</p>)}
       {hasAnswer || tools.length || showError ? (
         <div className="ak-assistant">
           {hasAnswer ? <MarkdownText text={text} /> : null}
@@ -97,13 +107,23 @@ function Turn({turn, error, onRetry, onOpenOntology}) {
   );
 }
 
-export default function Thread({turns, status, error, pendingChoice, onChoose, onRetry, onOpenOntology}) {
+export default function Thread({turns, status, error, pendingChoice, onChoose, onStop, onRetry, onOpenOntology,
+  jump, onPrefill, mode, name}) {
   const transcriptRef = useRef(null);
   const followLatest = useRef(true);
   useLayoutEffect(() => {
     const viewport = transcriptRef.current;
     if (viewport && followLatest.current) viewport.scrollTop = viewport.scrollHeight;
   }, [turns, status, pendingChoice]);
+  useLayoutEffect(() => {
+    if (!jump) return;
+    const target = [...(transcriptRef.current?.querySelectorAll("[data-question-anchor]") || [])]
+      .find((node) => node.dataset.questionAnchor === jump.id);
+    if (!target) return;
+    followLatest.current = false;
+    target.focus({preventScroll: true});
+    target.scrollIntoView?.({block: "start"});
+  }, [jump]);
 
   const trackScroll = ({currentTarget}) => {
     followLatest.current = currentTarget.scrollHeight - currentTarget.scrollTop - currentTarget.clientHeight < 48;
@@ -113,13 +133,16 @@ export default function Thread({turns, status, error, pendingChoice, onChoose, o
     return (
       <div className="ak-transcript" ref={transcriptRef} onScroll={trackScroll}>
         <div className="ak-empty" role="status">
-          <h2 className="ak-empty-title">从一个经营问题开始</h2>
+          <h2 className="ak-empty-title">{name ? `${name}，你好。 ` : ""}{mode === "report" ? "从一份报表开始" : "从一个经营问题开始"}</h2>
           <p className="ak-empty-text">
             展开工具调用可查看查询证据和本体命中。生成的明细和图表会出现在结果看板。
           </p>
           <ul className="ak-suggestions">
-            <li>PACK 未签单商机主要涉及哪些客户和产品部？缺口怎么算出来的？</li>
-            <li>本期商机覆盖风险最高的三个客户是谁，依据是什么？</li>
+            {(mode === "report" ? ["概括报表中的主要变化和异常。", "按业务板块对比本期和上期的变化。"] : [
+              "PACK 未签单商机主要涉及哪些客户和产品部？缺口怎么算出来的？",
+              "本期商机覆盖风险最高的三个客户是谁，依据是什么？",
+            ]).map((prompt) => <li key={prompt}><button type="button" className="ak-ghost"
+              onClick={() => onPrefill(prompt)}>{prompt}</button></li>)}
           </ul>
         </div>
       </div>
@@ -132,7 +155,8 @@ export default function Thread({turns, status, error, pendingChoice, onChoose, o
         <Turn key={turn.id} turn={turn} error={error} onRetry={onRetry} onOpenOntology={onOpenOntology} />
       ))}
 
-      {pendingChoice ? <Clarification choice={pendingChoice} onChoose={onChoose} /> : null}
+      {pendingChoice ? <Clarification key={pendingChoice.toolUseId || pendingChoice.question} choice={pendingChoice}
+        onChoose={onChoose} onStop={onStop} /> : null}
 
       {status === "interrupted" ? (
         <div className="ak-progress ak-progress--warn" role="status">
