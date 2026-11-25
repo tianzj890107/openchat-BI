@@ -1,4 +1,4 @@
-import React, {useState} from "react";
+import React, {useLayoutEffect, useRef, useState} from "react";
 
 import MarkdownText from "../adapters/MarkdownText.jsx";
 import ToolGroup from "../adapters/ToolGroup.jsx";
@@ -48,24 +48,37 @@ function Clarification({choice, onChoose}) {
   );
 }
 
-export default function Thread({turns, status, error, pendingChoice, onChoose, onRetry}) {
+export default function Thread({turns, status, error, pendingChoice, onChoose, onRetry, onOpenOntology}) {
+  const transcriptRef = useRef(null);
+  const followLatest = useRef(true);
+  useLayoutEffect(() => {
+    const viewport = transcriptRef.current;
+    if (viewport && followLatest.current) viewport.scrollTop = viewport.scrollHeight;
+  }, [turns, status, pendingChoice]);
+
+  const trackScroll = ({currentTarget}) => {
+    followLatest.current = currentTarget.scrollHeight - currentTarget.scrollTop - currentTarget.clientHeight < 48;
+  };
+
   if (!turns.length) {
     return (
-      <div className="ak-empty" role="status">
-        <h2 className="ak-empty-title">从一个经营问题开始</h2>
-        <p className="ak-empty-text">
-          提问后，结论、指标口径、查询证据和命中的本体关系会一起回到本页；右侧保留该轮的结果看板。
-        </p>
-        <ul className="ak-suggestions">
-          <li>PACK 未签单商机主要涉及哪些客户和产品部？缺口怎么算出来的？</li>
-          <li>本期商机覆盖风险最高的三个客户是谁，依据是什么？</li>
-        </ul>
+      <div className="ak-transcript" ref={transcriptRef} onScroll={trackScroll}>
+        <div className="ak-empty" role="status">
+          <h2 className="ak-empty-title">从一个经营问题开始</h2>
+          <p className="ak-empty-text">
+            展开工具调用可查看查询证据和本体命中。生成的明细和图表会出现在结果看板。
+          </p>
+          <ul className="ak-suggestions">
+            <li>PACK 未签单商机主要涉及哪些客户和产品部？缺口怎么算出来的？</li>
+            <li>本期商机覆盖风险最高的三个客户是谁，依据是什么？</li>
+          </ul>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="ak-transcript" aria-live="polite">
+    <div className="ak-transcript" ref={transcriptRef} onScroll={trackScroll} aria-live="polite">
       {turns.map((turn) => (
         <article key={turn.id} className="ak-turn">
           <div className="ak-user">
@@ -79,7 +92,9 @@ export default function Thread({turns, status, error, pendingChoice, onChoose, o
                 {turn.status === "streaming" ? "正在取证…" : "本轮没有文字结论"}
               </div>
             )}
-            {turn.assistant.tools.length ? <ToolGroup tools={turn.assistant.tools} /> : null}
+            {turn.assistant.tools.length ? (
+              <ToolGroup tools={turn.assistant.tools} onOpenOntology={onOpenOntology} />
+            ) : null}
             {turn.status === "error" ? (
               <div className="ak-inline-error" role="alert">
                 <span>{error || "本轮分析失败"}</span>

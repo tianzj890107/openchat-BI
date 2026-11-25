@@ -1,7 +1,6 @@
 import React, {useState} from "react";
 
-import {turnBoardItems, turnEvidence, turnHits} from "../results.js";
-import OntologyGraph from "./OntologyGraph.jsx";
+import {turnBoardItems} from "../results.js";
 
 function TableCard({item}) {
   const columns = item.columns?.length ? item.columns : Object.keys(item.rows?.[0] || {});
@@ -161,17 +160,14 @@ function ResultCard({item}) {
   );
 }
 
-export default function Board({turns, sessionId, status}) {
-  const [graphHit, setGraphHit] = useState(null);
+export default function Board({turns, status}) {
   const groups = (turns || [])
     .map((turn, index) => ({
       turn,
       index,
       items: turnBoardItems(turn),
-      evidence: turnEvidence(turn),
-      hits: turnHits(turn),
     }))
-    .filter((group) => group.items.length || group.evidence.length || group.hits.length);
+    .filter((group) => group.items.length);
   const totalItems = groups.reduce((sum, group) => sum + group.items.length, 0);
 
   return (
@@ -186,7 +182,7 @@ export default function Board({turns, sessionId, status}) {
       <section className="ak-board-section" data-agentkit-results>
         {groups.length === 0 ? (
           <p className="ak-board-empty">
-            结果会随每一轮分析出现在这里；左侧提问、右侧按轮保留表格、图表、证据与本体命中。
+            分析生成的表格和图表会按问题显示在这里。
           </p>
         ) : (
           groups.map((group, position) => {
@@ -201,42 +197,6 @@ export default function Board({turns, sessionId, status}) {
                   {group.items.map((item) => (
                     <ResultCard key={item.id} item={item} />
                   ))}
-                  <section className="ak-subsection" data-agentkit-evidence>
-                    <h4 className="ak-subsection-title">证据 · 工具过程</h4>
-                    {group.evidence.length === 0 ? (
-                      <p className="ak-board-empty">该轮没有产生可追溯的工具结果。</p>
-                    ) : (
-                      <ul className="ak-evidence">
-                        {group.evidence.map((row) => (
-                          <li key={row.id} className="ak-evidence-row" data-status={row.status}>
-                            <span className="ak-evidence-tool">{row.tool}</span>
-                            <span className="ak-evidence-meta">
-                              {row.durationMs ? `${row.durationMs} ms` : "—"}
-                              {row.hitCount ? ` · 命中 ${row.hitCount} 个本体` : ""}
-                              {row.errorCode ? ` · ${row.errorCode}` : ""}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                  <section className="ak-subsection" data-agentkit-ontology>
-                    <h4 className="ak-subsection-title">本体命中 · {group.hits.length}</h4>
-                    {group.hits.length === 0 ? (
-                      <p className="ak-board-empty">该轮没有命中本体。</p>
-                    ) : (
-                      <ul className="ak-hits">
-                        {group.hits.map((hit) => (
-                          <li key={`${hit.repositoryId}:${hit.code}`}>
-                            <button type="button" className="ak-hit" onClick={() => setGraphHit(hit)}>
-                              <span className="ak-hit-name">{hit.name}</span>
-                              <span className="ak-hit-code">{hit.code}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
                 </div>
               </details>
             );
@@ -244,9 +204,6 @@ export default function Board({turns, sessionId, status}) {
         )}
       </section>
 
-      {graphHit ? (
-        <OntologyGraph hit={graphHit} sessionId={sessionId} onClose={() => setGraphHit(null)} />
-      ) : null}
     </div>
   );
 }

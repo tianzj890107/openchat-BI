@@ -1,10 +1,9 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {AssistantRuntimeProvider} from "@assistant-ui/react";
 
-import {chooseOption, listConversations, openConversation, saveConversation, streamChat} from "./api.js";
+import {chooseOption, listConversations, openConversation, saveConversation, streamChat, updateSources} from "./api.js";
 import {
   applyEvent,
-  boardItems,
   createWorkbenchState,
   handoffConversationStorageKey,
   handoffSessionStorageKey,
@@ -21,9 +20,12 @@ import {
 import Board from "./components/Board.jsx";
 import Composer from "./components/Composer.jsx";
 import HandoffBanner from "./components/HandoffBanner.jsx";
+import OntologyGraph from "./components/OntologyGraph.jsx";
 import SessionList from "./components/SessionList.jsx";
+import Settings from "./components/Settings.jsx";
 import Thread from "./components/Thread.jsx";
 import {useAgentkitRuntime} from "./runtime.js";
+import {readSourcePreference, sourceSelection, writeSourcePreference} from "./sourcePreference.js";
 
 function safeSessionStorage() {
   try {
@@ -45,13 +47,19 @@ export default function App() {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState("");
   const [view, setView] = useState("split");
+  const [graphHit, setGraphHit] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [workbench, setWorkbench] = useState(() => createWorkbenchState());
   // A card handoff keeps one session across refreshes; free entry gets a new one.
   const [sessionId, setSessionId] = useState(
     () => resolveHandoffSession(handoff, safeSessionStorage()) || newSessionId(handoff),
   );
+  const [sourcePreference, setSourcePreference] = useState(readSourcePreference);
   const [notice, setNotice] = useState("");
   const controllerRef = useRef(null);
+  const contextVersion = useRef(0);
+  const boundSourceSession = useRef("");
+  const settingsSaving = useRef(false);
   const stateRef = useRef(workbench);
   const savedSnapshotRef = useRef("");
   const handoffRestoredRef = useRef(false);
@@ -75,13 +83,15 @@ export default function App() {
   const runStream = useCallback(async (session, opener) => {
     const controller = new AbortController();
     controllerRef.current = controller;
-    const onEvent = (event) => setWorkbench((previous) => applyEvent(previous, event));
+    const onEvent = (event) => {
+      if (controllerRef.current === controller) {
+        setWorkbench((previous) => applyEvent(previous, event));
+      }
+    };
     try {
       await opener({sessionId: session, signal: controller.signal, onEvent});
     } catch (error) {
-      if (error?.name !== "AbortError") {
-        setWorkbench((previous) => applyEvent(previous, {type: "error", message: error.message}));
-      }
+      if (error?.name !== "AbortError") onEvent({type: "error", message: error.message});
     } finally {
       if (controllerRef.current === controller) controllerRef.current = null;
     }
@@ -92,11 +102,22 @@ export default function App() {
       const value = String(text || "").trim();
       if (!value || stateRef.current.status === "streaming") return;
       setNotice("");
-      dirtyRef.current = true;
       setWorkbench((previous) => startTurn(previous, {text: value, sessionId}));
-      runStream(sessionId, (options) => streamChat({...options, message: value, scope}));
+      runStream(sessionId, async (options) => {
+        if (sourcePreference && boundSourceSession.current !== sessionId) {
+          try {
+            await updateSources(sessionId, sourcePreference, options.signal);
+          } catch (error) {
+            throw new Error(`绑定所选数据源失败：${error.message}`);
+          }
+          if (options.signal.aborted) return;
+          boundSourceSession.current = sessionId;
+        }
+        dirtyRef.current = true;
+        await streamChat({...options, message: value, scope});
+      });
     },
-    [runStream, scope, sessionId],
+    [runStream, scope, sessionId, sourcePreference],
   );
 
   const choose = useCallback(
@@ -122,10 +143,12 @@ export default function App() {
     setWorkbench((previous) => stopTurn(previous));
   }, []);
 
-  const startNew = useCallback(() => {
+  const resetSession = useCallback((next) => {
+    contextVersion.current += 1;
     controllerRef.current?.abort();
     controllerRef.current = null;
-    const next = newSessionId(handoff);
+    dirtyRef.current = false;
+    savedSnapshotRef.current = "";
     const storageKey = handoffSessionStorageKey(handoff);
     const conversationKey = handoffConversationStorageKey(handoff);
     try {
@@ -136,20 +159,50 @@ export default function App() {
     }
     setSessionId(next);
     setActiveConversation("");
+    setGraphHit(null);
     setWorkbench(createWorkbenchState());
     setNotice("");
   }, [handoff]);
 
-  const selectConversation = useCallback(async (cid) => {
+  const startNew = useCallback(() => resetSession(newSessionId(handoff)), [handoff, resetSession]);
+
+  const applySourceSettings = useCallback(async (changes) => {
+    if (settingsSaving.current || ["streaming", "paused"].includes(stateRef.current.status)) {
+      throw new Error("请在当前分析结束后切换数据源。");
+    }
+    settingsSaving.current = true;
+    const version = contextVersion.current;
+    const next = newSessionId(handoff);
+    try {
+      const response = await updateSources(next, changes);
+      if (contextVersion.current !== version || ["streaming", "paused"].includes(stateRef.current.status)) {
+        throw new Error("当前会话已变化，请重新打开设置保存。");
+      }
+      const selection = sourceSelection({...changes, ...response});
+      boundSourceSession.current = next;
+      writeSourcePreference(selection);
+      setSourcePreference(selection);
+      resetSession(next);
+      return selection;
+    } finally {
+      settingsSaving.current = false;
+    }
+  }, [handoff, resetSession]);
+
+  const selectConversation = useCallback(async (cid, targetSession = newSessionId(null)) => {
+    const version = ++contextVersion.current;
     controllerRef.current?.abort();
     controllerRef.current = null;
+    setGraphHit(null);
     try {
       // The session id travels with the restore: follow-up questions must land
       // in the analysis context this conversation was reopened into.
-      const restored = await openConversation(cid, sessionId);
-      const nextSession = restored.sessionId || sessionId || cid;
+      const restored = await openConversation(cid, targetSession);
+      if (contextVersion.current !== version) return;
+      const nextSession = restored.sessionId || targetSession;
       dirtyRef.current = false;
       savedSnapshotRef.current = "";
+      boundSourceSession.current = nextSession;
       setSessionId(nextSession);
       setActiveConversation(cid);
       setWorkbench({
@@ -159,9 +212,9 @@ export default function App() {
         // to the persisted messages.
         turns: turnsFromSnapshot(restored.agentkit) || hydrateTurns(restored.messages),
       });
-      setNotice("");
+      setNotice(restored.sourceRestoreError ? `历史数据源恢复失败：${restored.sourceRestoreError}` : "");
     } catch (error) {
-      setNotice(`打开会话失败：${error.message}`);
+      if (contextVersion.current === version) setNotice(`打开会话失败：${error.message}`);
     }
   }, []);
 
@@ -176,8 +229,8 @@ export default function App() {
     } catch (_) {
       cid = "";
     }
-    if (cid) void selectConversation(cid);
-  }, [handoff, selectConversation]);
+    if (cid) void selectConversation(cid, sessionId);
+  }, [handoff, selectConversation, sessionId]);
 
   // Persist every completed turn so the conversation can be reopened with its
   // boards, evidence and ontology hits. Legacy (message-only) records keep
@@ -190,6 +243,7 @@ export default function App() {
     const fingerprint = JSON.stringify(snapshot);
     if (fingerprint === savedSnapshotRef.current) return;
     savedSnapshotRef.current = fingerprint;
+    const version = contextVersion.current;
     const title = workbench.turns[0]?.user || "未命名对话";
     saveConversation({
       sessionId,
@@ -199,6 +253,7 @@ export default function App() {
       handoff: scope,
     })
       .then((saved) => {
+        if (contextVersion.current !== version) return;
         dirtyRef.current = false;
         if (saved.cid && saved.cid !== activeConversation) setActiveConversation(saved.cid);
         // Keep the card's conversation so a refresh reopens it instead of
@@ -218,7 +273,7 @@ export default function App() {
       .catch(() => {
         /* saving history must never break the conversation */
       });
-  }, [activeConversation, refreshConversations, scope, sessionId, workbench.status, workbench.turns]);
+  }, [activeConversation, handoff, refreshConversations, scope, sessionId, workbench.status, workbench.turns]);
 
   const restartWithoutHandoff = useCallback(() => {
     const url = new URL(window.location.href);
@@ -233,7 +288,6 @@ export default function App() {
     else restartWithoutHandoff();
   }, [restartWithoutHandoff]);
 
-  const items = boardItems(workbench);
   const runtime = useAgentkitRuntime({
     turns: workbench.turns,
     running: workbench.status === "streaming",
@@ -252,6 +306,7 @@ export default function App() {
           <span className="ak-brand-chip">AgentKit</span>
         </div>
         <div className="ak-topbar-actions">
+          <button type="button" className="ak-ghost" onClick={() => setSettingsOpen(true)}>设置</button>
           <button
             type="button"
             className="ak-ghost"
@@ -294,11 +349,13 @@ export default function App() {
 
         <section className="ak-thread" data-agentkit-thread aria-label="对话">
           <Thread
+            key={sessionId}
             turns={workbench.turns}
             status={workbench.status}
             error={workbench.error}
             pendingChoice={workbench.pendingChoice}
             onChoose={choose}
+            onOpenOntology={setGraphHit}
             onRetry={() => {
               const lastUser = [...workbench.turns].reverse().find((turn) => turn.user);
               if (lastUser) send(lastUser.user);
@@ -308,9 +365,22 @@ export default function App() {
         </section>
 
         <section className="ak-board" data-agentkit-board aria-label="分析结果">
-          <Board items={items} turns={workbench.turns} sessionId={sessionId} status={workbench.status} />
+          <Board turns={workbench.turns} status={workbench.status} />
         </section>
       </div>
+      {graphHit ? (
+        <OntologyGraph hit={graphHit} sessionId={sessionId} onClose={() => setGraphHit(null)} />
+      ) : null}
+      {settingsOpen ? (
+        <Settings
+          sessionId={sessionId}
+          preference={workbench.turns.length ? null : sourcePreference}
+          hasConversation={Boolean(activeConversation || workbench.turns.length)}
+          busy={["streaming", "paused"].includes(workbench.status)}
+          onSaveSources={applySourceSettings}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
     </div>
     </AssistantRuntimeProvider>
   );

@@ -139,14 +139,9 @@ export function turnBoardItems(turn) {
   return turnsBoardItems(turn ? [turn] : []);
 }
 
-/** One turn's evidence rows. */
-export function turnEvidence(turn) {
-  return evidenceItems({turns: turn ? [turn] : []});
-}
-
-/** One turn's ontology hits. */
-export function turnHits(turn) {
-  return ontologyHits({turns: turn ? [turn] : []});
+/** Keep the hits tied to the tool that actually returned them. */
+export function toolOntologyHits(tool) {
+  return ontologyHits({turns: [{assistant: {tools: [tool]}}]});
 }
 
 /** Deduped ontology hits; the same code in two repositories stays two hits. */
@@ -200,13 +195,13 @@ export function evidenceItems(state) {
 }
 
 /** Subgraph request for one hit; invalid codes never reach the API. */
-export function subgraphRequest(hit, sessionId) {
+export function subgraphRequest(hit, sessionId, strategy = "context") {
   const code = String(hit?.code || "").trim();
   if (!ONTOLOGY_CODE_RE.test(code)) return null;
   const request = {
     code,
     type: hit.kind || hit.type || "ontology",
-    strategy: "context",
+    strategy: strategy === "expand" ? "expand" : "context",
     session_id: sessionId || "",
   };
   const repositoryId = String(hit.repositoryId || hit.repository_id || "");

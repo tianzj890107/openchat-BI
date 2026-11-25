@@ -78,13 +78,11 @@ test('the upstream import keeps the pinned commit and file list on record', asyn
   assert.match(script, /b8df86dfa3c30de6676cd1d768cda504bf3c3338/);
 });
 
-test('the right pane exposes results, evidence and the ontology subgraph', async () => {
+test('the right pane contains results and the thread owns tools and their subgraph actions', async () => {
   const board = await read('frontend/agentkit/components/Board.jsx');
-  // Boards are grouped per turn; each group carries its own evidence and hits.
-  assert.match(board, /turnEvidence/);
-  assert.match(board, /turnHits/);
+  assert.match(board, /turnBoardItems/);
   assert.match(board, /ak-turn-results/);
-  assert.match(board, /OntologyGraph/);
+  assert.doesNotMatch(board, /turnEvidence|turnHits|OntologyGraph/);
 
   const graph = await read('frontend/agentkit/components/OntologyGraph.jsx');
   assert.match(graph, /@boulderaitech\/ontology-graph/);
@@ -94,14 +92,22 @@ test('the right pane exposes results, evidence and the ontology subgraph', async
   const api = await read('frontend/agentkit/api.js');
   assert.match(api, /ontology\/subgraph/);
   // The request body (code/type/strategy/session) is built by the pure adapter.
-  const results = await read('frontend/agentkit/results.js');
-  assert.match(results, /strategy: "context"/);
+  assert.match(graph, /关系扩散/);
 
   // The shipped bundle carries the same contract strings.
   const js = await read('bi_agent/web/static/vendor/agentkit/workbench-agentkit.js');
   assert.match(js, /ontology\/subgraph/);
   assert.match(js, /本体命中/);
   assert.match(js, /证据/);
+});
+
+test('the workbench limits scrolling to the transcript and keeps the composer in the thread', async () => {
+  const css = await read('frontend/agentkit/agentkit-theme.css');
+  assert.match(css, /\.ak-shell\s*\{[^}]*height:\s*100dvh/);
+  assert.match(css, /\.ak-transcript\s*\{[^}]*overflow-y:\s*auto/);
+  assert.match(css, /\.ak-composer\s*\{[^}]*flex-shrink:\s*0/);
+  const app = await read('frontend/agentkit/App.jsx');
+  assert.match(app, /data-agentkit-thread[\s\S]*<Thread[\s\S]*<Composer\s*\/>/);
 });
 
 test('hosts can build the handoff URL through one helper', async () => {

@@ -22,6 +22,40 @@ async function asJson(response) {
   }
 }
 
+async function requestJson(path, {method = "GET", body, signal} = {}) {
+  const response = await fetch(withBasePath(path), {
+    method,
+    cache: "no-store",
+    signal,
+    ...(body === undefined ? {} : {
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    }),
+  });
+  const payload = await asJson(response);
+  if (!response.ok) {
+    const detail = payload?.detail || payload?.message;
+    throw new Error(typeof detail === "string" ? detail : `HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+export function loadSources(sessionId, signal) {
+  return requestJson(`api/sources?session_id=${encodeURIComponent(sessionId)}`, {signal});
+}
+
+export function updateSources(sessionId, body, signal) {
+  return requestJson("api/sources", {method: "PUT", body: {...body, session_id: sessionId}, signal});
+}
+
+export function loadModelConfig(signal) {
+  return requestJson("api/config", {signal});
+}
+
+export function updateModelConfig(body) {
+  return requestJson("api/config", {method: "PUT", body});
+}
+
 export async function listConversations() {
   const response = await fetch(withBasePath("api/conversations"), {cache: "no-store"});
   const payload = await asJson(response);
@@ -37,15 +71,15 @@ export async function listConversations() {
  */
 export async function openConversation(cid, sessionId = "") {
   const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
-  const response = await fetch(
-    withBasePath(`api/conversations/${encodeURIComponent(cid)}/activate${query}`),
-    {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"},
-  );
-  const payload = await asJson(response);
+  const payload = await requestJson(`api/conversations/${encodeURIComponent(cid)}/activate${query}`, {
+    method: "POST",
+    body: {},
+  });
   return {
     sessionId: payload.session_id || sessionId || "",
     messages: Array.isArray(payload.messages) ? payload.messages : [],
     agentkit: payload.agentkit && typeof payload.agentkit === "object" ? payload.agentkit : null,
+    sourceRestoreError: payload.source_restore_error || "",
   };
 }
 
@@ -156,16 +190,6 @@ export async function chooseOption({sessionId, ids, labels, signal, onEvent}) {
 }
 
 /** Ontology context/expand subgraph for one hit (read-only). */
-export async function fetchSubgraph(request, signal) {
-  const response = await fetch(withBasePath("api/ontology/subgraph"), {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(request),
-    signal,
-  });
-  const payload = await asJson(response);
-  if (!response.ok) {
-    throw new Error(payload?.detail || payload?.message || `HTTP ${response.status}`);
-  }
-  return payload;
+export function fetchSubgraph(request, signal) {
+  return requestJson("api/ontology/subgraph", {method: "POST", body: request, signal});
 }

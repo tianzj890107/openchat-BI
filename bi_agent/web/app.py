@@ -2971,6 +2971,13 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
             return _superseded_response(str(req.session_id or ""))
     session = _session_for_mode(mode, req.session_id)
     safe_source_config = sanitize_source_config(req.source_config)
+    if req.agentkit and not req.cid and key and session is not None:
+        binding = _current_source_config(_source_for_session(key))
+        safe_source_config = {
+            field: binding[field]
+            for field in ("ontology", "database", "retrieval_mode", "graph", "doris_database")
+            if field in binding
+        }
     messages = list(session.messages) if session else []
     summary = store.save(
         mode=mode,

@@ -42,11 +42,16 @@ function sseResponse(window, frames, {delayMs = 0} = {}) {
   return {ok: true, status: 200, headers: {get: () => null}, body: stream, text: async () => ''};
 }
 
-function stubFetch(window, {chatFrames = null, chatDelay = 0, activatePayload = null} = {}) {
+function stubFetch(window, {chatFrames = null, chatDelay = 0, activatePayload = null, endpoints = {}} = {}) {
   const calls = [];
   window.fetch = async (url, options = {}) => {
     const target = String(url);
     calls.push({url: target, method: options.method || 'GET', body: options.body});
+    const handler = endpoints[target.split('?')[0]];
+    if (handler) {
+      const {body, status = 200} = handler(options);
+      return {ok: status < 400, status, text: async () => JSON.stringify(body)};
+    }
     if (target.includes('api/chat')) {
       if (chatFrames) return sseResponse(window, chatFrames, {delayMs: chatDelay});
       return sseResponse(window, [{type: 'done', turn_id: 't1'}]);
@@ -293,8 +298,12 @@ test('opening a stored conversation restores the board and keeps the caller sess
 
   assert.match(document.body.textContent, /共 12 家客户/, 'restored answer text');
   assert.match(document.body.textContent, /宁德时代/, 'restored table row');
-  assert.match(document.body.textContent, /TableGenerate/, 'restored tool run');
-  assert.match(document.body.textContent, /BO_PACK_OPP_002/, 'restored ontology hit');
+  document.querySelector('[data-slot="tool-group-trigger"]').click();
+  await waitFor(() => document.querySelector('[data-slot="tool-group-item"]'));
+  const tool = document.querySelector('[data-slot="tool-group-item"]');
+  assert.match(tool.textContent, /TableGenerate/, 'restored tool run');
+  tool.querySelector('summary')?.click();
+  assert.match(tool.textContent, /BO_PACK_OPP_002/, 'restored ontology hit');
   assert.equal(
     calls.filter((call) => call.url.includes('api/conversations/save')).length,
     0,
@@ -316,6 +325,138 @@ test('opening a stored conversation restores the board and keeps the caller sess
     calls.filter((call) => call.url.includes('api/conversations') && !call.url.includes('save')).length >= 2,
     'conversation list refreshes after saving',
   );
+});
+
+async function waitFor(predicate) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const result = predicate();
+    if (result) return result;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return null;
+}
+
+function findButton(document, label) {
+  return [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === label);
+}
+
+test('tool details own their evidence and single-anchor subgraph actions', async () => {
+  const {window, calls} = await boot({
+    chatFrames: [
+      {type: 'tool_start', id: 'lookup', name: 'Ontology-SemanticQuery'},
+      {type: 'tool_result', id: 'lookup', name: 'Ontology-SemanticQuery',
+        input: {query: '客户覆盖'}, output: '命中客户覆盖指标', duration_ms: 42,
+        ontology_entities: [{code: 'M_COVERAGE', kind: 'indicator', name: '覆盖率', repository_id: 'repo-a'}]},
+      {type: 'tool_result', id: 'fallback', name: 'Ontology-RelationQuery', output: '关系检索失败',
+        execution_status: 'FAILED', error_code: 'UPSTREAM_TIMEOUT',
+        ontology_entities: [{code: 'BO_CUSTOMER', kind: 'business_object', name: '客户', repository_id: 'repo-a'}]},
+      {type: 'tool_result', id: 'chart', name: 'TableGenerate',
+        table: {title: '客户结果表', columns: [{key: 'customer'}], rows: [['样例客户']]}},
+      {type: 'done'},
+    ],
+    endpoints: {'/api/ontology/subgraph': () => ({body: {nodes: [], links: []}})},
+  });
+  const {document} = window;
+  await typeAndSend(window, '跟踪证据');
+  await waitFor(() => document.querySelector('.ak-board').textContent.includes('客户结果表'));
+  assert.match(document.querySelector('.ak-board').textContent, /客户结果表/);
+  assert.doesNotMatch(document.querySelector('.ak-board').textContent, /证据 · 工具过程|本体命中|M_COVERAGE/);
+  const trigger = document.querySelector('[data-slot="tool-group-trigger"]');
+  if (trigger.getAttribute('aria-expanded') === 'false') trigger.click();
+  await waitFor(() => document.querySelectorAll('[data-slot="tool-group-item"]').length === 3);
+  const lookup = [...document.querySelectorAll('[data-slot="tool-group-item"]')].find((item) => item.textContent.includes('Ontology-SemanticQuery'));
+  const fallback = [...document.querySelectorAll('[data-slot="tool-group-item"]')].find((item) => item.textContent.includes('Ontology-RelationQuery'));
+  lookup.querySelector('summary').click();
+  fallback.querySelector('summary').click();
+  assert.match(lookup.textContent, /客户覆盖.*命中客户覆盖指标/s);
+  assert.match(lookup.textContent, /42 ms/);
+  assert.match(fallback.textContent, /UPSTREAM_TIMEOUT/);
+  assert.doesNotMatch(lookup.textContent, /BO_CUSTOMER/);
+  lookup.querySelector('[data-ontology-code="M_COVERAGE"]').click();
+  await waitFor(() => document.querySelector('[role="dialog"]')?.textContent.includes('没有可展示'));
+  findButton(document, '关系扩散').click();
+  await waitFor(() => calls.filter((call) => call.url.includes('/api/ontology/subgraph')).length === 2);
+  const graphCalls = calls.filter((call) => call.url.includes('/api/ontology/subgraph'))
+    .map((call) => JSON.parse(call.body));
+  const session = JSON.parse(calls.find((call) => call.url.includes('/api/chat')).body).session_id;
+  assert.deepEqual(graphCalls, ['context', 'expand'].map((strategy) => ({
+    code: 'M_COVERAGE', type: 'indicator', repository_id: 'repo-a', session_id: session, strategy,
+  })));
+});
+
+test('workbench settings save paired sources and models and keep history on its own source', async () => {
+  const pairs = [
+    {name: '样例库 A', value: 'repo:a', databaseValue: 'db:a', dorisDatabase: 'schema_a'},
+    {name: '样例库 B', value: 'repo:b', databaseValue: 'db:b', dorisDatabase: 'schema_b'},
+  ];
+  const config = {
+    models: [{model_key: 'test-model', label: '样例模型', max_output_tokens: 20000, supports_thinking: true}],
+    current: {model_key: 'test-model', max_tokens: 8000, temperature: 0.5, thinking: false},
+  };
+  let rejectSource = true;
+  const {window, calls} = await boot({
+    activatePayload: {session_id: 'agentkit-history', messages: [{role: 'user', content: '旧会话问题'}]},
+    endpoints: {
+      '/api/sources': (options) => options.method === 'PUT'
+        ? rejectSource
+          ? (rejectSource = false, {status: 400, body: {detail: '源暂不可用'}})
+          : {body: {...JSON.parse(options.body), changed: ['ontology', 'database']}}
+        : {body: {
+          ontology: {active: 'repo:a', options: pairs.map((pair) => pair.value), remote_repositories: pairs},
+          database: {active: 'db:a', options: pairs.map((pair) => pair.databaseValue), remote_databases: pairs},
+          retrieval: {mode: 'semantic', graph: {options: []}},
+        }},
+      '/api/config': (options) => ({body: options.method === 'PUT'
+        ? {...config, current: JSON.parse(options.body)} : config}),
+    },
+  });
+  const {document} = window;
+  document.querySelector('button.ak-session').click();
+  await waitFor(() => document.querySelector('.ak-turn')?.textContent.includes('旧会话问题'));
+  const settings = findButton(document, '设置');
+  assert.ok(settings, 'settings are reachable from the workbench header');
+  settings.click();
+  const ontology = await waitFor(() => document.querySelector('select[name="ontology"]'));
+  assert.ok(ontology);
+  ontology.value = 'repo:b';
+  ontology.dispatchEvent(new window.Event('change', {bubbles: true}));
+  const database = document.querySelector('select[name="database"]');
+  await waitFor(() => database.value === 'db:b');
+  assert.equal(database.value, 'db:b');
+  findButton(document, '保存数据源').click();
+  assert.ok(await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('源暂不可用')));
+  assert.match(document.querySelector('.ak-turn').textContent, /旧会话问题/);
+  findButton(document, '保存数据源').click();
+  assert.ok(await waitFor(() => [...document.querySelectorAll('[role="status"]')].some((item) => item.textContent.includes('数据源已保存'))));
+  assert.equal(document.querySelector('.ak-turn'), null, 'save opens a new conversation');
+
+  const thinking = document.querySelector('input[name="thinking"]');
+  thinking.click();
+  findButton(document, '保存模型').click();
+  assert.ok(await waitFor(() => [...document.querySelectorAll('[role="status"]')].some((item) => item.textContent.includes('模型已保存'))));
+  const modelPut = calls.find((call) => call.url === '/api/config' && call.method === 'PUT');
+  assert.deepEqual(JSON.parse(modelPut.body), {...config.current, thinking: true});
+
+  findButton(document, '关闭设置').click();
+  await typeAndSend(window, '用新配置分析');
+  await waitFor(() => calls.some((call) => call.url === '/api/chat'));
+  const sourcePuts = calls.filter((call) => call.url === '/api/sources' && call.method === 'PUT');
+  const saved = JSON.parse(sourcePuts.at(-1).body);
+  assert.equal(saved.ontology, 'repo:b');
+  assert.equal(saved.database, 'db:b');
+  const chat = calls.find((call) => call.url === '/api/chat');
+  assert.equal(JSON.parse(chat.body).session_id, saved.session_id);
+  assert.notEqual(saved.session_id, 'agentkit-history');
+
+  document.querySelector('button.ak-new').click();
+  await typeAndSend(window, '新会话沿用默认源');
+  await waitFor(() => calls.filter((call) => call.url === '/api/chat').length === 2);
+  const nextSource = calls.filter((call) => call.url === '/api/sources' && call.method === 'PUT').at(-1);
+  const nextChat = calls.filter((call) => call.url === '/api/chat').at(-1);
+  assert.equal(JSON.parse(nextSource.body).ontology, 'repo:b');
+  assert.equal(JSON.parse(nextChat.body).session_id, JSON.parse(nextSource.body).session_id);
+  assert.notEqual(JSON.parse(nextChat.body).session_id, saved.session_id);
+  assert.ok(calls.indexOf(nextSource) < calls.indexOf(nextChat), 'bind the source before sending the question');
 });
 
 test('answering a clarification resumes the same turn with the new request id', async () => {

@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -117,6 +118,32 @@ if __name__ == "__main__":
 
 class SavePreservesLegacyTests(unittest.TestCase):
     """An AgentKit save must not blank the Pro UI snapshots of the same record."""
+
+    def test_new_agentkit_record_saves_the_server_session_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ConversationStore(tmp)
+            session = FakeSession()
+            session.messages = [{"role": "user", "content": "来源验证"}]
+            session_source = SimpleNamespace(
+                remote_ontology=SimpleNamespace(repository_id="test-repo"),
+                use_doris=True, db_path="", retrieval_mode="graph", graph_path="",
+                doris_api_url="http://fixture.invalid", doris_jdbc_url="", doris_driver="", doris_username="fixture-user",
+                doris_database="test_schema",
+            )
+            with mock.patch.object(web_app, "_require_conversation_store", return_value=store), \
+                 mock.patch.object(web_app, "_session_for_mode", return_value=session), \
+                 mock.patch.object(web_app, "_source_for_session", return_value=session_source) as source:
+                response = TestClient(web_app.app).post("/api/conversations/save", json={
+                    "session_id": "agentkit-source-binding", "agentkit": AGENTKIT_SNAPSHOT,
+                })
+            self.assertEqual(response.status_code, 200)
+            record = store.get(response.json()["id"])
+            self.assertEqual(record["source_config"]["ontology"], "__metaerp_repository__:test-repo")
+            self.assertEqual(record["source_config"]["database"], "__doris_repository__:test-repo")
+            self.assertEqual(record["source_config"]["retrieval_mode"], "graph")
+            self.assertNotIn("doris_api_url", record["source_config"])
+            self.assertNotIn("doris_username", record["source_config"])
+            source.assert_called_once_with("agentkit-source-binding")
 
     def test_agentkit_save_keeps_messages_html_and_sop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

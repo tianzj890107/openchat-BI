@@ -2,6 +2,7 @@ import React, {useCallback, useRef, useState} from "react";
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@radix-ui/react-collapsible";
 import {ChevronDownIcon, LoaderIcon} from "lucide-react";
 import {useScrollLock} from "@assistant-ui/react";
+import {toolOntologyHits} from "../results.js";
 
 // Adapted from AgentKit `tool-group.aui.tsx`
 // (agentkit-ui/src/components/assistant-ui/elements/tool-group.aui.tsx at the
@@ -64,19 +65,58 @@ export function ToolGroupContent({children}) {
   );
 }
 
-function ToolItem({tool}) {
+function ToolValue({label, value}) {
+  if (value == null || value === "") return null;
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return (
-    <li className="ak-tool" data-status={tool.status} data-slot="tool-group-item">
-      <span className="ak-tool-name">{tool.name}</span>
-      <span className="ak-tool-state">
-        {tool.status === "running" ? "执行中…" : tool.output ? "已完成" : "已调用"}
-      </span>
-      {tool.input ? <code className="ak-tool-input">{tool.input}</code> : null}
+    <div className="ak-tool-value">
+      <strong>{label}</strong>
+      <pre>{text}</pre>
+    </div>
+  );
+}
+
+function ToolItem({tool, onOpenOntology}) {
+  const hits = toolOntologyHits(tool);
+  const failed = Boolean(tool.errorCode || /FAIL|ERROR/i.test(tool.executionStatus || ""));
+  const state = failed ? "失败" : tool.status === "running" ? "执行中…" : "已完成";
+  return (
+    <li className="ak-tool" data-status={failed ? "error" : tool.status} data-slot="tool-group-item">
+      <details>
+        <summary className="ak-tool-summary">
+          <strong className="ak-tool-name">{tool.name}</strong>
+          <span className="ak-tool-state">
+            {state}{Number.isFinite(tool.durationMs) ? ` · ${tool.durationMs} ms` : ""}
+            {hits.length ? ` · 命中 ${hits.length} 个本体` : ""}
+          </span>
+        </summary>
+        <div className="ak-tool-detail">
+          {tool.errorCode ? <p className="ak-tool-error">错误代码 {tool.errorCode}</p> : null}
+          {tool.attempt ? <p className="ak-tool-state">第 {tool.attempt} 次执行</p> : null}
+          <ToolValue label="调用入参" value={tool.input} />
+          <ToolValue label="返回内容" value={tool.output} />
+          {hits.length ? (
+            <section aria-label="本体命中">
+              <h4 className="ak-section-title">本体命中</h4>
+              <ul className="ak-hits">
+                {hits.map((hit) => (
+                  <li key={`${hit.repositoryId}:${hit.code}`}>
+                    <button type="button" className="ak-hit" data-ontology-code={hit.code} onClick={() => onOpenOntology(hit)}>
+                      <span className="ak-hit-name">{hit.name}</span>
+                      <span className="ak-hit-code">{hit.code}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      </details>
     </li>
   );
 }
 
-export default function ToolGroup({tools}) {
+export default function ToolGroup({tools, onOpenOntology}) {
   const running = tools.some((tool) => tool.status === "running");
   return (
     <ToolGroupRoot defaultOpen={running}>
@@ -84,7 +124,7 @@ export default function ToolGroup({tools}) {
       <ToolGroupContent>
         <ol className="ak-tool-list">
           {tools.map((tool) => (
-            <ToolItem key={tool.id} tool={tool} />
+            <ToolItem key={tool.id} tool={tool} onOpenOntology={onOpenOntology} />
           ))}
         </ol>
       </ToolGroupContent>

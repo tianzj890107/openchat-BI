@@ -20,12 +20,14 @@ export default function OntologyGraph({hit, sessionId, onClose}) {
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("正在加载本体子图…");
   const [selected, setSelected] = useState(null);
+  const [query, setQuery] = useState({strategy: "context"});
+  const [loadedStrategy, setLoadedStrategy] = useState("");
 
   useEffect(() => {
-    const request = subgraphRequest(hit, sessionId);
+    const request = subgraphRequest(hit, sessionId, query.strategy);
     if (!request) {
       setStatus("error");
-      setMessage("该本体编码无法定位子图，请从命中列表重新选择。");
+      setMessage("该本体编码无法定位子图，请从工具命中中重新选择。");
       return undefined;
     }
     const controller = new AbortController();
@@ -35,6 +37,8 @@ export default function OntologyGraph({hit, sessionId, onClose}) {
     setSelected(null);
     fetchSubgraph(request, controller.signal)
       .then((data) => {
+        if (controller.signal.aborted) return;
+        setLoadedStrategy(query.strategy);
         const nodes = Array.isArray(data.nodes) ? data.nodes : [];
         const links = Array.isArray(data.links) ? data.links : [];
         if (!nodes.length) {
@@ -44,15 +48,16 @@ export default function OntologyGraph({hit, sessionId, onClose}) {
         }
         setPayload(data);
         setStatus("ready");
-        setMessage(`${nodes.length} 个节点 · ${links.length} 条关系 · 点击节点查看定义`);
+        setMessage(data.relation_error || `${nodes.length} 个节点 · ${links.length} 条关系 · 点击节点查看定义`);
       })
       .catch((error) => {
-        if (error?.name === "AbortError") return;
+        if (controller.signal.aborted) return;
+        setLoadedStrategy("");
         setStatus("error");
         setMessage(`子图加载失败：${error.message}`);
       });
     return () => controller.abort();
-  }, [hit, sessionId]);
+  }, [hit, sessionId, query]);
 
   useEffect(() => {
     if (status !== "ready" || !payload || !canvasRef.current) return undefined;
@@ -77,7 +82,7 @@ export default function OntologyGraph({hit, sessionId, onClose}) {
   }, [status, payload]);
 
   return (
-    <div className="ak-graph" role="dialog" aria-label="本体子图">
+    <div className="ak-graph" role="dialog" aria-modal="true" aria-label="本体子图">
       <div className="ak-graph-panel">
         <header className="ak-graph-head">
           <div>
@@ -85,6 +90,22 @@ export default function OntologyGraph({hit, sessionId, onClose}) {
             <p className="ak-graph-sub">{hit?.code} · {message}</p>
           </div>
           <div className="ak-graph-actions">
+            <button
+              type="button"
+              className="ak-ghost"
+              disabled={status === "loading" || loadedStrategy === "context"}
+              onClick={() => setQuery({strategy: "context"})}
+            >
+              子图检索
+            </button>
+            <button
+              type="button"
+              className="ak-ghost"
+              disabled={status === "loading" || loadedStrategy === "expand"}
+              onClick={() => setQuery({strategy: "expand"})}
+            >
+              关系扩散
+            </button>
             <button
               type="button"
               className="ak-ghost"
@@ -107,9 +128,9 @@ export default function OntologyGraph({hit, sessionId, onClose}) {
               <dl>
                 <dt>编码</dt><dd>{selected.code || selected.id}</dd>
                 <dt>类型</dt><dd>{selected.type || "unknown"}</dd>
-                {selected.properties?.description ? (
+                {selected.properties?.definition || selected.properties?.description ? (
                   <>
-                    <dt>说明</dt><dd>{selected.properties.description}</dd>
+                    <dt>说明</dt><dd>{selected.properties.definition || selected.properties.description}</dd>
                   </>
                 ) : null}
               </dl>

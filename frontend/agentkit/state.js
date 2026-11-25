@@ -123,8 +123,8 @@ export function buildHandoffUrl(card = {}, basePath = "") {
 
 /**
  * Rebuild display turns from a stored conversation record (history restore).
- * Only text and tool_use blocks are displayed; a second assistant message in
- * the same stored turn is appended to the same assistant bubble.
+ * A second assistant message in the same stored turn is appended to the same
+ * assistant bubble. Tool results from user-role messages attach by call ID.
  */
 export function hydrateTurns(messages) {
   const turns = [];
@@ -146,8 +146,8 @@ export function hydrateTurns(messages) {
         input: JSON.stringify(block.input ?? {}),
         output: null,
       }));
+    const last = turns[turns.length - 1];
     if (message?.role === 'assistant') {
-      const last = turns[turns.length - 1];
       if (last) {
         last.assistant = {
           text: [last.assistant.text, text].filter(Boolean).join('\n'),
@@ -155,13 +155,25 @@ export function hydrateTurns(messages) {
           tools: [...last.assistant.tools, ...tools],
         };
       }
-    } else if (text) {
-      turns.push({
-        id: `history-${turns.length}`,
-        user: text,
-        status: 'done',
-        assistant: {text: '', thinking: '', tools},
-      });
+    } else {
+      for (const block of blocks) {
+        if (block?.type !== 'tool_result') continue;
+        const tool = last?.assistant.tools.find((item) => item.id === block.tool_use_id);
+        if (tool) {
+          tool.output = Array.isArray(block.content)
+            ? block.content.filter((part) => part?.type === 'text').map((part) => part.text).join('\n')
+            : block.content ?? null;
+          if (block.is_error) tool.errorCode = 'TOOL_FAILED';
+        }
+      }
+      if (text) {
+        turns.push({
+          id: `history-${turns.length}`,
+          user: text,
+          status: 'done',
+          assistant: {text: '', thinking: '', tools},
+        });
+      }
     }
   }
   return turns;
@@ -366,11 +378,7 @@ export function applyEvent(state, event) {
     case 'tool_input_delta': {
       const id = event.id || event.tool_use_id;
       if (!id) return state;
-      const incoming = typeof event.input === 'string'
-        ? event.input
-        : typeof event.partial_json === 'string'
-          ? event.partial_json
-          : '';
+      const incoming = event.input ?? event.partial_json ?? '';
       return updateTools(state, (tools) => {
         if (!tools.some((tool) => tool.id === id)) {
           return [...tools, {id, name: event.name || 'tool', status: 'running', input: incoming, output: null}];
@@ -391,17 +399,19 @@ export function applyEvent(state, event) {
         const merged = {
           ...(existing || {id, name: event.name || 'tool', input: ''}),
           status: 'done',
-          input: typeof event.input === 'string' ? event.input : existing?.input ?? '',
+          input: event.input ?? existing?.input ?? '',
           output: event.output ?? existing?.output ?? null,
           entities: Array.isArray(event.ontology_entities) ? event.ontology_entities : existing?.entities ?? [],
           table: event.table ?? existing?.table ?? null,
           chart: event.chart ?? existing?.chart ?? null,
           multiChart: event.multi_chart ?? existing?.multiChart ?? null,
-          durationMs: Number(event.duration_ms) || existing?.durationMs || 0,
+          durationMs: event.duration_ms ?? existing?.durationMs,
+          executionStatus: event.execution_status || existing?.executionStatus || '',
+          attempt: event.attempt ?? existing?.attempt,
           errorCode: event.error_code || existing?.errorCode || '',
         };
         // A result can arrive without a preceding tool_start: append it once.
-        return [...tools.filter((tool) => tool.id !== id), merged];
+        return existing ? tools.map((tool) => tool.id === id ? merged : tool) : [...tools, merged];
       });
       return duplicate ? state : next;
     }
