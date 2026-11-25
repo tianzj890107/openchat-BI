@@ -472,6 +472,15 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 8766 预览更新到 c1a29b8（去掉输入区 Enter 提示）
+
+- 代码：`c1a29b8`，`git archive` 到 `agentkit-c1a29b8-20261125-1738`，`RELEASE_COMMIT=c1a29b8`。
+- 复用：`preview.env`、`dataset-local` 本体、`.venv` 软链、`dataset` → 原预览 `dataset-preview`。
+- 运行：PID `3372828`，端口 `8766`。
+- 验证：`/healthz`、`/workbench`（AgentKit）、`/workbench-agentkit`、`/workbench-legacy`、`/api/sources` 均 200；
+  `/workbench` 页面与其 bundle 中已无 `Enter 发送` 文案。
+- 回滚：停 `3372828`，在 `agentkit-d2c67af-20261125-1622` 重新启动 8766。
+
 ### 2026-11-25 8766 预览更新到 d2c67af（/workbench-legacy 与输入区精简）
 
 - 代码：`d2c67af`（含 `5289869` 恢复 demo2 时代的 `/workbench-legacy` 页面），`git archive` 到

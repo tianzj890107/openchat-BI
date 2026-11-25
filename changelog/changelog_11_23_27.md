@@ -137,3 +137,10 @@
 - AgentKit（`frontend/agentkit/components/Composer.jsx`）与通用工作台（`frontend/src/ProUiComposer.jsx`）的输入区提示行已移除；
   键盘行为不变（Enter 发送、Shift+Enter 换行、IME 回车不发送），仅不再显示该文案。
 - 两个前端已重建（`static/vendor/agentkit/*`、`static/vendor/antd/workbench.js`）；Node 185 项通过。
+
+### 2026-11-25 8766 预览更新到 c1a29b8
+
+- 部署去掉输入区“Enter 发送 · Shift+Enter 换行”提示的改动（AgentKit 与通用工作台输入组件）；
+  `/workbench` 与其 bundle 已无该文案。未触碰 8765。
+- 验证：`/healthz`、`/workbench`、`/workbench-agentkit`、`/workbench-legacy`、`/api/sources` 均 200。
+- 主要文件：`DEPLOYMENT.md`（§9）。
