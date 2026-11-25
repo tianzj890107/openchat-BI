@@ -1375,22 +1375,13 @@
   --ak-danger: #ff9c97;
 }
 
-.ak-modes, .ak-inline-actions, .ak-session-search {
+.ak-inline-actions, .ak-session-search {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.ak-modes {
-  flex-shrink: 0;
-  margin: 0 10px;
-  padding: 3px;
-  border: 1px solid var(--ak-border);
-  border-radius: var(--ak-radius-sm);
-}
-
-.ak-modes button { flex: 1; padding: 4px; white-space: nowrap; }
-.ak-modes button[aria-pressed="true"], .ak-question-rail button[aria-current] {
+.ak-question-rail button[aria-current] {
   color: var(--ak-accent);
   background: var(--ak-accent-soft);
 }
@@ -1450,10 +1441,7 @@
 .ak-clarify-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ak-clarify-actions input { min-width: 8rem; flex: 1; }
 .ak-choice-confirmed { color: var(--ak-text-muted); font-size: 12px; text-align: right; }
-.ak-report-controls { padding: 6px 12px; border-bottom: 1px solid var(--ak-border); }
 .ak-inline-actions { flex-wrap: wrap; }
-.ak-report-controls .ak-settings-check { margin: 0; }
-.ak-report-attachments { margin: 4px 0; font-size: 12px; color: var(--ak-text-muted); overflow-wrap: anywhere; }
 .ak-report-list { max-height: 40vh; overflow-y: auto; }
 .ak-report-item { padding: 6px 0; border-bottom: 1px solid var(--ak-border); }
 .ak-report-item small { color: var(--ak-text-muted); }
@@ -1471,9 +1459,46 @@
   }
 }
 @media (max-width: 960px) {
-  .ak-main { grid-template-rows: auto auto minmax(0, 1fr) auto; }
-  .ak-modes { grid-row: 2; margin-block: 4px; }
-  .ak-session-pane, .ak-thread, .ak-board { grid-row: 3; }
-  .ak-nav-footer { grid-row: 4; }
   .ak-divider { display: none; }
 }
+
+.ak-add-attachment { position: relative; flex-shrink: 0; }
+.ak-add-attachment > button { display: grid; place-items: center; padding: 4px; }
+.ak-attachment-menu {
+  position: absolute;
+  z-index: 8;
+  inset: auto auto calc(100% + 8px) 0;
+  display: grid;
+  gap: 3px;
+  min-width: 168px;
+  padding: 5px;
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius);
+  background: var(--ak-panel);
+  box-shadow: var(--ak-shadow);
+}
+.ak-attachment-menu button { text-align: left; white-space: nowrap; }
+.ak-attachment-menu .ak-settings-check { margin: 0; padding: 4px 8px; white-space: nowrap; }
+.ak-composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+.ak-composer-attachments li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius-sm);
+  font-size: 12px;
+}
+.ak-composer-attachments li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ak-composer-attachments svg { flex-shrink: 0; }
+.ak-composer-attachments .ak-attachment-remove { display: grid; place-items: center; padding: 2px; }
+.ak-attachment-notice, .ak-user .ak-turn-attachments { margin: 0 0 4px; font-size: 12px; color: var(--ak-text-muted); }

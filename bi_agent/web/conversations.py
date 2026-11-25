@@ -77,6 +77,8 @@ def bounded_agentkit(value: Any) -> dict[str, Any]:
         snapshot["handoff"] = value["handoff"]
     if isinstance(value.get("reportContext"), dict):
         snapshot["reportContext"] = value["reportContext"]
+    if value.get("runtimeMode") in ("data", "report"):
+        snapshot["runtimeMode"] = value["runtimeMode"]
     if isinstance(value.get("pendingChoice"), dict):
         snapshot["pendingChoice"] = value["pendingChoice"]
     if len(json.dumps(snapshot, ensure_ascii=False).encode("utf-8")) > MAX_AGENTKIT_BYTES:

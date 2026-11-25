@@ -258,6 +258,7 @@ export function turnsFromSnapshot(snapshot) {
   return usable.map((turn, index) => ({
     id: String(turn.id || `restored-${index}`),
     user: String(turn.user || ''),
+    attachments: Array.isArray(turn.attachments) ? turn.attachments.filter((name) => typeof name === 'string') : [],
     status: ['done', 'error', 'interrupted', 'paused'].includes(turn.status) ? turn.status : 'done',
     resolvedChoices: Array.isArray(turn.resolvedChoices) ? turn.resolvedChoices : [],
     delivery: Array.isArray(turn.delivery) ? turn.delivery : [],
@@ -289,7 +290,7 @@ export function nextTurnId(turns) {
 }
 
 /** Begin a turn: user text lands immediately, the assistant bubble streams in. */
-export function startTurn(state, {text, sessionId} = {}) {
+export function startTurn(state, {text, sessionId, attachments = []} = {}) {
   const userText = String(text || '').trim();
   return {
     ...state,
@@ -303,6 +304,7 @@ export function startTurn(state, {text, sessionId} = {}) {
       {
         id: nextTurnId(state.turns),
         user: userText,
+        ...(attachments.length ? {attachments} : {}),
         status: 'streaming',
         assistant: {text: '', thinking: '', tools: []},
       },

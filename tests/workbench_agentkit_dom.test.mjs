@@ -603,7 +603,7 @@ test('refreshing a V6.1 card reopens the conversation it already produced', asyn
 
   const activateCall = calls.find((call) => call.url.includes('/activate'));
   assert.ok(activateCall, 'the card conversation is reopened on load');
-  assert.match(activateCall.url, /conversations\/conv-7\/activate\?session_id=agentkit-h-7-abc/);
+  assert.match(activateCall.url, /conversations\/conv-7\/activate\?unified=true&session_id=agentkit-h-7-abc/);
   assert.match(window.document.body.textContent, /已恢复到该卡的会话/);
   assert.doesNotMatch(window.document.body.textContent, /从一个经营问题开始/, 'no empty state');
   assert.equal(
@@ -613,12 +613,14 @@ test('refreshing a V6.1 card reopens the conversation it already produced', asyn
   );
 });
 
-test('default entry submits an incoming question once and offers both analysis modes', async () => {
+test('default entry submits an incoming question once in the unified workspace', async () => {
   const {window, calls} = await boot({url: 'http://localhost/workbench?prompt=%E8%BF%9B%E5%85%A5%E9%97%AE%E9%A2%98'});
   try {
     assert.equal(calls.filter(({url}) => url === '/api/chat').length, 1);
     assert.equal(new window.URL(window.location.href).searchParams.has('prompt'), false);
-    assert.ok([...window.document.querySelectorAll('button')].some(({textContent}) => textContent === '报表分析'));
+    assert.equal(Boolean(window.document.querySelector('[aria-label="分析模式"]')), false);
+    assert.ok(window.document.querySelector('.ak-composer [aria-label="添加附件"]'));
+    assert.ok(calls.some(({url}) => url === '/api/conversations'));
   } finally {
     window.close();
   }
@@ -659,49 +661,66 @@ test('legacy assets appear in the new history, and a board question locates the 
   } finally { window.close(); }
 });
 
-test('report attachment and question use a separate session and keyboard resizing persists', async () => {
+test('upload adds context to the current conversation and removal resumes ordinary questions', async () => {
   const {window, calls} = await boot({
     url: 'http://localhost/workbench',
     endpoints: {
-      '/api/report/list': () => ({body: {items: [{id: 'pdf-1', filename: '经营简报.pdf'}]}}),
-      '/api/report/activate': () => ({body: {active_reports: [{id: 'pdf-1', filename: '经营简报.pdf'}], with_db: true}}),
+      '/api/conversations/save': () => ({body: {id: 'saved-1'}}),
+      '/api/report/upload': () => ({body: {id: 'pdf-1', filename: '经营简报.pdf'}}),
+      '/api/report/attachments': ({body}) => {
+        const {report_ids} = JSON.parse(body);
+        return {body: {active_reports: report_ids.map((id) => ({id, filename: '经营简报.pdf'})),
+          has_session: report_ids.length > 0, with_db: true}};
+      },
     },
   });
   try {
     const {document} = window;
-    const button = (title) => [...document.querySelectorAll('button')].find((node) => node.textContent === title);
-    document.querySelector('.ak-suggestions button').click();
-    await new Promise((done) => setTimeout(done, 80));
-    assert.match(document.querySelector('textarea').value, /PACK 未签单商机/);
-    button('报表分析').click();
-    await new Promise((done) => setTimeout(done, 80));
-    button('选择或上传报表').click();
-    await new Promise((done) => setTimeout(done, 80));
-    document.querySelector('.ak-report-list input').click();
-    await new Promise((done) => setTimeout(done, 80));
-    button('启用报表（1/5）').click();
-    await new Promise((done) => setTimeout(done, 100));
-    assert.match(document.querySelector('.ak-report-controls').textContent, /经营简报.pdf/);
-    assert.ok(calls.some(({url}) => url === '/api/conversations?mode=report'));
-    const attach = calls.find(({url}) => url === '/api/report/activate');
-    assert.deepEqual(JSON.parse(attach.body).report_ids, ['pdf-1']);
+    await typeAndSend(window, '先看经营数据');
+    await waitFor(() => calls.some(({url}) => url === '/api/conversations/save'));
+    document.querySelector('.ak-composer [aria-label="添加附件"]').click();
+    await waitFor(() => [...document.querySelectorAll('button')].some((node) => node.textContent === '上传文件'));
+    [...document.querySelectorAll('button')].find((node) => node.textContent === '上传文件').click();
+    const input = document.querySelector('.ak-composer input[type=file]');
+    Object.defineProperty(input, 'files', {value: [new window.File(['fixture'], '经营简报.pdf', {type: 'application/pdf'})]});
+    input.dispatchEvent(new window.Event('change', {bubbles: true}));
+    await waitFor(() => document.querySelector('[aria-label="移除经营简报.pdf"]'));
+    assert.equal(document.querySelector('textarea').value, '请分析上传的附件。');
+    assert.equal(calls.filter(({url}) => url === '/api/report/chat').length, 0);
+    const attach = JSON.parse(calls.find(({url}) => url === '/api/report/attachments').body);
+    assert.deepEqual(attach.report_ids, ['pdf-1']);
+    assert.equal(attach.from_mode, 'data');
+    assert.equal(attach.session_id, JSON.parse(calls.find(({url}) => url === '/api/chat').body).session_id);
     await typeAndSend(window, '核对报表金额');
-    await new Promise((done) => setTimeout(done, 180));
-    const question = calls.find(({url}) => url === '/api/report/chat');
-    assert.equal(JSON.parse(question.body).session_id, JSON.parse(attach.body).session_id);
+    await waitFor(() => calls.some(({url}) => url === '/api/report/chat'));
+    assert.equal(JSON.parse(calls.find(({url}) => url === '/api/report/chat').body).session_id, attach.session_id);
+    await waitFor(() => calls.some(({url, body}) => url === '/api/conversations/save' &&
+      JSON.parse(body).agentkit.turns.some(({user}) => user === '核对报表金额')));
+    const savedReport = calls.filter(({url, body}) => url === '/api/conversations/save' && JSON.parse(body).runtime_mode === 'report').at(-1);
+    assert.equal(JSON.parse(savedReport.body).cid, 'saved-1');
+    assert.equal(JSON.parse(savedReport.body).mode, 'data');
+    assert.deepEqual(JSON.parse(savedReport.body).agentkit.turns.at(-1).attachments, ['经营简报.pdf']);
+    document.querySelector('[aria-label="移除经营简报.pdf"]').click();
+    await waitFor(() => !document.querySelector('[aria-label="移除经营简报.pdf"]'));
+    await typeAndSend(window, '继续看经营数据');
+    await waitFor(() => calls.filter(({url}) => url === '/api/chat').length === 2);
+    await waitFor(() => document.querySelector('.ak-transcript')?.textContent.includes('继续看经营数据'));
+    assert.deepEqual(window.__agentkitErrors || [], []);
+    assert.match(document.querySelector('.ak-transcript').textContent, /先看经营数据.*经营简报.pdf.*核对报表金额.*继续看经营数据/s);
     const separator = document.querySelector('.ak-divider--thread');
     separator.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
-    await new Promise((done) => setTimeout(done, 80));
-    assert.equal(separator.getAttribute('aria-valuenow'), '44');
+    await waitFor(() => separator.getAttribute('aria-valuenow') === '44');
     assert.equal(window.localStorage.getItem('agentkit.layout.threadPercent'), '44');
   } finally { window.close(); }
 });
 
-test('standard report wizard sends its configuration to a fresh report generator', async () => {
+test('standard report wizard is available in the attachment menu and uses the current conversation', async () => {
   const {window, calls} = await boot({url: 'http://localhost/workbench?mode=report'});
   try {
     const {document} = window;
     const button = (label) => [...document.querySelectorAll('button')].find((node) => node.textContent === label);
+    document.querySelector('[aria-label="添加附件"]').click();
+    await waitFor(() => button('标准报表生成'));
     button('标准报表生成').click();
     await waitFor(() => button('确认生成'));
     button('确认生成').click();
@@ -713,5 +732,38 @@ test('standard report wizard sends its configuration to a fresh report generator
     assert.equal(new window.URL(generator.url, window.location.href).searchParams.get('session_id'), question.session_id);
     assert.match(question.message, /标准报表生成任务.*报表期间.*模板.*配图/s);
     assert.equal(question.visible_user_text, '生成标准报表');
+  } finally { window.close(); }
+});
+
+test('reopened report history shares the session list and keeps attachments and the draft on upload failure', async () => {
+  const {window, calls} = await boot({
+    url: 'http://localhost/workbench',
+    activatePayload: {
+      session_id: 'restored-report', mode: 'report', runtime_mode: 'report',
+      report_context: {active_reports: [{id: 'old', filename: '既有报表.pdf'}], has_session: true, with_db: false},
+      messages: [{role: 'user', content: '上次报表问题'}],
+    },
+    endpoints: {
+      '/api/report/upload': () => ({status: 400, body: {detail: '文档无法解析'}}),
+    },
+  });
+  try {
+    const {document} = window;
+    document.querySelector('.ak-session').click();
+    assert.ok(await waitFor(() => document.querySelector('[aria-label="移除既有报表.pdf"]')));
+    assert.ok(document.querySelector('.ak-transcript').textContent.includes('上次报表问题'));
+    const textarea = document.querySelector('textarea');
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, '保留这条草稿');
+    textarea.dispatchEvent(new window.Event('input', {bubbles: true}));
+    const input = document.querySelector('.ak-composer input[type=file]');
+    Object.defineProperty(input, 'files', {value: [new window.File(['fixture'], '坏文件.pdf')]});
+    input.dispatchEvent(new window.Event('change', {bubbles: true}));
+    assert.ok(await waitFor(() => document.querySelector('.ak-attachment-notice')?.textContent.includes('坏文件.pdf · 文档无法解析')));
+    assert.equal(textarea.value, '保留这条草稿');
+    assert.ok(document.querySelector('[aria-label="移除既有报表.pdf"]'));
+    assert.ok(!calls.some(({url}) => url === '/api/report/attachments' || url === '/api/conversations/save'));
+    await typeAndSend(window, '继续问原报表');
+    assert.ok(await waitFor(() => calls.some(({url}) => url === '/api/report/chat')));
+    assert.equal(JSON.parse(calls.find(({url}) => url === '/api/report/chat').body).session_id, 'restored-report');
   } finally { window.close(); }
 });

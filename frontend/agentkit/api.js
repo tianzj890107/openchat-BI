@@ -70,14 +70,17 @@ export async function listConversations(mode) {
  * both the text messages and the AgentKit snapshot (boards/evidence/hits).
  */
 export async function openConversation(cid, sessionId = "") {
-  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
-  const payload = await requestJson(`api/conversations/${encodeURIComponent(cid)}/activate${query}`, {
+  const query = new URLSearchParams({unified: "true"});
+  if (sessionId) query.set("session_id", sessionId);
+  const payload = await requestJson(`api/conversations/${encodeURIComponent(cid)}/activate?${query}`, {
     method: "POST",
     body: {},
   });
   return {
     sessionId: payload.session_id || sessionId || "",
     mode: payload.mode || "data",
+    runtimeMode: payload.runtime_mode || payload.mode || "data",
+    reportContext: payload.report_context,
     messages: Array.isArray(payload.messages) ? payload.messages : [],
     agentkit: payload.agentkit && typeof payload.agentkit === "object" ? payload.agentkit : null,
     sourceRestoreError: payload.source_restore_error || "",
@@ -117,14 +120,15 @@ export function uploadReport(file) {
   return requestJson("api/report/upload", {method: "POST", body});
 }
 
-export function activateReports(sessionId, ids, withDb, resumeId = "") {
-  return requestJson("api/report/activate", {method: "POST", body: {
-    session_id: sessionId, report_ids: ids, with_db: withDb, preserve_context: true, resume_conversation_id: resumeId || undefined,
+export function updateReportAttachments(sessionId, ids, withDb, fromMode) {
+  return requestJson("api/report/attachments", {method: "PUT", body: {
+    session_id: sessionId, report_ids: ids, with_db: withDb, from_mode: fromMode,
   }});
 }
 
-export function startReportGenerator(sessionId) {
-  return requestJson(`api/report/generate?session_id=${encodeURIComponent(sessionId)}`, {method: "POST"});
+export function startReportGenerator(sessionId, fromMode) {
+  const query = new URLSearchParams({session_id: sessionId, from_mode: fromMode});
+  return requestJson(`api/report/generate?${query}`, {method: "POST"});
 }
 
 export function updateReportConfig(sessionId, withDb) {
@@ -132,11 +136,12 @@ export function updateReportConfig(sessionId, withDb) {
 }
 
 /** Persist the current turns so the conversation can be reopened later. */
-export async function saveConversation({sessionId, cid, title, turns, handoff, mode = "data", generation, pendingChoice}) {
+export async function saveConversation({sessionId, cid, title, turns, handoff, mode = "data", runtimeMode, generation, pendingChoice}) {
   const payload = await requestJson("api/conversations/save", {
     method: "POST",
     body: {
       mode,
+      runtime_mode: runtimeMode,
       session_id: sessionId || "",
       cid: cid || undefined,
       title: title || "",

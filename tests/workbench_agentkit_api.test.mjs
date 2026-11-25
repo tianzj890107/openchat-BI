@@ -57,7 +57,7 @@ test('opening a conversation passes the session and returns the snapshot', async
   try {
     const restored = await openConversation('conv-1', 'agentkit-old');
     assert.equal(calls.length, 1);
-    assert.match(calls[0].url, /\/api\/conversations\/conv-1\/activate\?session_id=agentkit-old$/);
+    assert.match(calls[0].url, /\/api\/conversations\/conv-1\/activate\?unified=true&session_id=agentkit-old$/);
     assert.equal(calls[0].method, 'POST');
     assert.equal(restored.sessionId, 'agentkit-restore');
     assert.equal(restored.messages.length, 1);

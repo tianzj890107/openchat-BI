@@ -1,8 +1,9 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {AssistantRuntimeProvider} from "@assistant-ui/react";
 
-import {activateReports, chooseOption, historyAssets, listConversations, openConversation, reportStatus,
-  requestJson, saveConversation, startReportGenerator, streamChat, updateReportConfig, updateSources} from "./api.js";
+import {chooseOption, historyAssets, listConversations, openConversation, reportStatus,
+  requestJson, saveConversation, startReportGenerator, streamChat, updateReportAttachments, updateReportConfig, updateSources,
+  uploadReport} from "./api.js";
 import {
   applyEvent,
   createWorkbenchState,
@@ -21,7 +22,6 @@ import Composer from "./components/Composer.jsx";
 import HandoffBanner from "./components/HandoffBanner.jsx";
 import OntologyGraph from "./components/OntologyGraph.jsx";
 import PanelDivider from "./components/PanelDivider.jsx";
-import ReportControls from "./components/ReportControls.jsx";
 import SessionList from "./components/SessionList.jsx";
 import {SourceSettings} from "./components/Settings.jsx";
 import SopBar from "./components/SopBar.jsx";
@@ -32,7 +32,6 @@ import {restoreTurns} from "./history.js";
 import {readPreferences, writePreferences} from "./preferences.js";
 
 const emptyReport = {active_reports: [], with_db: true, has_session: false};
-const initialMode = () => new URLSearchParams(window.location.search).get("mode") === "report" ? "report" : "data";
 
 function panelPreference(key, defaultValue, min, max) {
   try {
@@ -58,8 +57,10 @@ export default function App({version}) {
   const handoff = useMemo(() => parseHandoff(window.location.search), []);
   const scope = useMemo(() => scopeFromHandoff(handoff), [handoff]);
   const [handoffVisible, setHandoffVisible] = useState(handoff.active);
-  const [mode, setMode] = useState(initialMode);
+  const [recordMode, setRecordMode] = useState("data");
   const [report, setReport] = useState(emptyReport);
+  const runtimeMode = report.has_session ? "report" : "data";
+  const [reportChanging, setReportChanging] = useState(false);
   const [reportRevision, setReportRevision] = useState(0);
   const [opening, setOpening] = useState(false);
   const [preferences, setPreferences] = useState(readPreferences);
@@ -74,14 +75,13 @@ export default function App({version}) {
   const [workbench, setWorkbench] = useState(() => createWorkbenchState());
   // A card handoff keeps one session across refreshes; free entry gets a new one.
   const [sessionId, setSessionId] = useState(
-    () => (mode === "data" && resolveHandoffSession(handoff, safeSessionStorage())) || newSessionId(mode === "data" ? handoff : null),
+    () => resolveHandoffSession(handoff, safeSessionStorage()) || newSessionId(handoff),
   );
   const [sourcePreference, setSourcePreference] = useState(readSourcePreference);
   const [notice, setNotice] = useState("");
   const controllerRef = useRef(null);
   const openingRef = useRef(false);
   const contextVersion = useRef(0);
-  const modeContexts = useRef({});
   const listVersion = useRef(0);
   const boundSourceSession = useRef("");
   const boundRoles = useRef(new Set());
@@ -108,12 +108,12 @@ export default function App({version}) {
   const refreshConversations = useCallback(async () => {
     const version = ++listVersion.current;
     try {
-      const items = await listConversations(mode);
+      const items = await listConversations();
       if (version === listVersion.current) setConversations(items);
     } catch (error) {
       if (version === listVersion.current) setNotice(`会话列表加载失败：${error.message}`);
     }
-  }, [mode]);
+  }, []);
 
   useEffect(() => {
     refreshConversations();
@@ -154,23 +154,21 @@ export default function App({version}) {
   }, [sourcePreference, preferences.user_role, preferences.agent_pref]);
 
   const send = useCallback(
-    (text, {target = sessionId, message = text, reportReady = report.has_session} = {}) => {
+    (text, {message = text, context = report} = {}) => {
       const value = String(text || "").trim();
-      if (!value || controllerRef.current || stateRef.current.status === "paused" || openingRef.current) return;
-      if (mode === "report" && !reportReady) {
-        setNotice("请先启用报表附件，或开启标准报表生成。");
-        return;
-      }
+      if (!value || controllerRef.current || stateRef.current.status === "paused" || openingRef.current || settingsSaving.current) return;
+      const mode = context.has_session ? "report" : "data";
+      const attachments = (context.active_reports || []).map((file) => file.filename || file.id);
       setNotice("");
-      setWorkbench((previous) => startTurn(previous, {text: value, sessionId: target}));
-      runStream(target, async (options) => {
-        await ensureSettings(target, options.signal);
+      setWorkbench((previous) => startTurn(previous, {text: value, sessionId, attachments}));
+      runStream(sessionId, async (options) => {
+        await ensureSettings(sessionId, options.signal);
         if (options.signal.aborted) return;
         dirtyRef.current = true;
         await streamChat({...options, message, visibleText: value, scope, mode});
       });
     },
-    [ensureSettings, mode, report.has_session, runStream, scope, sessionId],
+    [ensureSettings, report, runStream, scope, sessionId],
   );
 
   const choose = useCallback(
@@ -185,9 +183,9 @@ export default function App({version}) {
       // the continuation is not filtered out as stale.
       dirtyRef.current = true;
       setWorkbench((previous) => resumeTurn(previous, chosen.map((_, index) => ({id: ids[index], label: labels[index]}))));
-      runStream(sessionId, (options) => chooseOption({...options, ids, labels, mode}), true);
+      runStream(sessionId, (options) => chooseOption({...options, ids, labels, mode: runtimeMode}), true);
     },
-    [mode, runStream, sessionId],
+    [runStream, runtimeMode, sessionId],
   );
 
   const stop = useCallback(() => {
@@ -202,8 +200,8 @@ export default function App({version}) {
     controllerRef.current = null;
     dirtyRef.current = false;
     savedSnapshotRef.current = "";
-    const storageKey = mode === "data" && handoffSessionStorageKey(handoff);
-    const conversationKey = mode === "data" && handoffConversationStorageKey(handoff);
+    const storageKey = handoffSessionStorageKey(handoff);
+    const conversationKey = handoffConversationStorageKey(handoff);
     try {
       if (storageKey) safeSessionStorage()?.setItem(storageKey, next);
       if (conversationKey) safeSessionStorage()?.removeItem(conversationKey);
@@ -212,79 +210,80 @@ export default function App({version}) {
     }
     setSessionId(next);
     setActiveConversation("");
+    setRecordMode("data");
     setGraphHit(null);
     setWorkbench(createWorkbenchState());
     setReport(emptyReport);
     setJump(null);
     setNotice("");
-  }, [handoff, mode]);
+  }, [handoff]);
 
-  const startNew = useCallback(() => resetSession(newSessionId(mode === "data" ? handoff : null)), [handoff, mode, resetSession]);
+  const startNew = useCallback(() => resetSession(newSessionId(handoff)), [handoff, resetSession]);
 
-  const switchMode = (nextMode) => {
-    if (nextMode === mode || controllerRef.current || opening || settingsSaving.current) return;
-    modeContexts.current[mode] = {sessionId, activeConversation, workbench, report, draft: runtime.thread.composer.getState().text,
-      savedSnapshot: savedSnapshotRef.current,
-      dirty: dirtyRef.current, boundSource: boundSourceSession.current};
-    const next = modeContexts.current[nextMode];
-    contextVersion.current += 1;
-    listVersion.current += 1;
-    setMode(nextMode);
-    setConversations([]);
-    setView("thread");
-    setJump(null);
-    setGraphHit(null);
-    setNotice("");
-    setSessionId(next?.sessionId || newSessionId(null));
-    setActiveConversation(next?.activeConversation || savedIds.current.get(next?.sessionId) || "");
-    setWorkbench(next?.workbench || createWorkbenchState());
-    setReport(next?.report || emptyReport);
-    runtime.thread.composer.setText(next?.draft || "");
-    savedSnapshotRef.current = next?.savedSnapshot || "";
-    dirtyRef.current = next?.dirty || false;
-    boundSourceSession.current = next?.boundSource || "";
-    const url = new URL(window.location.href);
-    if (nextMode === "report") url.searchParams.set("mode", "report");
-    else url.searchParams.delete("mode");
-    window.history.replaceState(window.history.state, "", url);
+  const changeReportContext = async (operation) => {
+    if (settingsSaving.current || openingRef.current || controllerRef.current || stateRef.current.status === "paused") {
+      throw new Error("请在当前分析结束后变更附件。");
+    }
+    settingsSaving.current = true;
+    setReportChanging(true);
+    try {
+      // A saved round belongs to the executor that produced it. Wait before
+      // replacing that executor and invalidating its generation.
+      await savingSnapshots.current.get(sessionId)?.catch(() => {});
+      await ensureSettings(sessionId);
+      const context = await operation();
+      setReport(context);
+      if (stateRef.current.turns.length) {
+        dirtyRef.current = true;
+        setWorkbench((previous) => ({...previous, generation: undefined}));
+        setReportRevision((revision) => revision + 1);
+      }
+      return context;
+    } finally {
+      settingsSaving.current = false;
+      setReportChanging(false);
+    }
   };
 
-  const activateReport = async (ids, withDb) => {
-    await ensureSettings(sessionId);
-    const restored = await activateReports(sessionId, ids, withDb, activeConversation && !report.has_session ? activeConversation : "");
-    setReport({...restored, has_session: true});
-    if (activeConversation && stateRef.current.turns.length) {
-      dirtyRef.current = true;
-      setReportRevision((revision) => revision + 1);
-    }
+  const setAttachments = (ids) => changeReportContext(
+    () => updateReportAttachments(sessionId, ids, report.with_db, runtimeMode),
+  );
+
+  const uploadAttachments = async (files) => {
+    const ids = (report.active_reports || []).map((file) => file.id);
+    if (ids.length + files.length > 5) throw new Error("最多同时使用五份附件，请先移除部分文件。");
+    const failures = [];
+    await changeReportContext(async () => {
+      const uploaded = [];
+      for (const file of files) {
+        try { uploaded.push((await uploadReport(file)).id); }
+        catch (error) { failures.push(`${file.name} · ${error.message}`); }
+      }
+      if (!uploaded.length) throw new Error(failures.join("；"));
+      return updateReportAttachments(sessionId, [...new Set([...ids, ...uploaded])], report.with_db, runtimeMode);
+    });
+    return failures.join("；");
   };
 
   const generateReport = async (prompt) => {
-    const target = newSessionId(null);
-    await ensureSettings(target);
-    await startReportGenerator(target);
-    resetSession(target);
-    setReport({...emptyReport, has_session: true});
-    send("生成标准报表", {target, message: prompt, reportReady: true});
+    const context = await changeReportContext(async () => ({
+      ...emptyReport,
+      ...await startReportGenerator(sessionId, runtimeMode),
+      has_session: true,
+    }));
+    send("生成标准报表", {message: prompt, context});
   };
 
-  const setReportDatabase = async (withDb) => {
-    const version = contextVersion.current;
-    if (report.has_session) await updateReportConfig(sessionId, withDb);
-    if (contextVersion.current !== version) return;
-    setReport((previous) => ({...previous, with_db: withDb}));
-    if (report.has_session && activeConversation && stateRef.current.turns.length) {
-      dirtyRef.current = true;
-      setReportRevision((revision) => revision + 1);
-    }
-  };
+  const setReportDatabase = (withDb) => changeReportContext(async () => {
+    await updateReportConfig(sessionId, withDb);
+    return {...report, with_db: withDb};
+  });
 
   const applyPreferences = async (values) => {
     const saved = await requestJson("api/roles", {method: "PUT", body: {
       session_id: sessionId, user_role: values.user_role || "", agent_pref: values.agent_pref || "",
     }});
     const next = {...values, user_role: saved.user_role || "", agent_pref: saved.agent_pref || ""};
-    // Other open mode contexts pick up the new defaults at their next turn.
     boundRoles.current = new Set([sessionId]);
     writePreferences(next);
     const url = new URL(window.location.href);
@@ -301,7 +300,7 @@ export default function App({version}) {
     }
     settingsSaving.current = true;
     const version = contextVersion.current;
-    const next = newSessionId(mode === "data" ? handoff : null);
+    const next = newSessionId(handoff);
     try {
       const response = await updateSources(next, changes);
       if (contextVersion.current !== version || ["streaming", "paused"].includes(stateRef.current.status)) {
@@ -321,7 +320,7 @@ export default function App({version}) {
     } finally {
       settingsSaving.current = false;
     }
-  }, [handoff, mode, resetSession, sourcePreference]);
+  }, [handoff, resetSession, sourcePreference]);
 
   const selectConversation = useCallback(async (cid, targetSession = newSessionId(null)) => {
     const version = ++contextVersion.current;
@@ -339,14 +338,16 @@ export default function App({version}) {
       ]);
       if (contextVersion.current !== version) return;
       const nextSession = restored.sessionId || targetSession;
-      const reportContext = restored.mode === "report"
-        ? await reportStatus(nextSession).catch((error) => ({...emptyReport, error: error.message})) : emptyReport;
+      const reportContext = restored.runtimeMode === "report"
+        ? (restored.reportContext || await reportStatus(nextSession)
+          .catch((error) => ({...emptyReport, has_session: true, error: error.message}))) : emptyReport;
       if (contextVersion.current !== version) return;
       dirtyRef.current = false;
       savedSnapshotRef.current = "";
       boundSourceSession.current = nextSession;
       setSessionId(nextSession);
       setActiveConversation(cid);
+      setRecordMode(restored.mode);
       setReport(reportContext);
       setJump(null);
       const pendingChoice = restored.awaitingChoice ? restored.agentkit?.pendingChoice : null;
@@ -379,7 +380,7 @@ export default function App({version}) {
   // A refresh of the same card reopens the conversation it already produced
   // instead of showing an empty transcript with a reused session id.
   useEffect(() => {
-    if (mode !== "data" || handoffRestoredRef.current || !handoff.handoffId) return;
+    if (handoffRestoredRef.current || !handoff.handoffId) return;
     handoffRestoredRef.current = true;
     let cid = "";
     try {
@@ -388,17 +389,17 @@ export default function App({version}) {
       cid = "";
     }
     if (cid) void selectConversation(cid, sessionId);
-  }, [handoff, mode, selectConversation, sessionId]);
+  }, [handoff, selectConversation, sessionId]);
 
   useEffect(() => {
-    if (openingRef.current || controllerRef.current || (mode === "report" && !report.has_session)) return;
+    if (openingRef.current || controllerRef.current || settingsSaving.current) return;
     const url = new URL(window.location.href);
     const prompt = url.searchParams.get("prompt")?.trim();
     if (!prompt) return;
     url.searchParams.delete("prompt");
     window.history.replaceState(window.history.state, "", url);
     send(prompt);
-  }, [mode, opening, report.has_session, send]);
+  }, [opening, send]);
 
   // Persist every completed turn so the conversation can be reopened with its
   // boards, evidence and ontology hits. Legacy (message-only) records keep
@@ -422,8 +423,9 @@ export default function App({version}) {
       turns: snapshot.turns,
       pendingChoice: workbench.pendingChoice,
       generation: workbench.generation,
-      handoff: mode === "data" ? scope : null,
-      mode,
+      handoff: scope,
+      mode: recordMode,
+      runtimeMode,
     }));
     savingSnapshots.current.set(sessionId, saving);
     saving
@@ -434,7 +436,7 @@ export default function App({version}) {
         if (saved.cid && saved.cid !== activeConversation) setActiveConversation(saved.cid);
         // Keep the card's conversation so a refresh reopens it instead of
         // showing an empty page with a reused session id.
-        const conversationKey = mode === "data" && handoffConversationStorageKey(handoff);
+        const conversationKey = handoffConversationStorageKey(handoff);
         if (conversationKey && saved.cid) {
           try {
             safeSessionStorage()?.setItem(conversationKey, saved.cid);
@@ -452,7 +454,7 @@ export default function App({version}) {
       .finally(() => {
         if (savingSnapshots.current.get(sessionId) === saving) savingSnapshots.current.delete(sessionId);
       });
-  }, [activeConversation, handoff, mode, refreshConversations, scope, sessionId, workbench.status, workbench.turns,
+  }, [activeConversation, handoff, recordMode, runtimeMode, refreshConversations, scope, sessionId, workbench.status, workbench.turns,
     workbench.pendingChoice, workbench.generation, reportRevision]);
 
   const restartWithoutHandoff = useCallback(() => {
@@ -471,12 +473,12 @@ export default function App({version}) {
   const runtime = useAgentkitRuntime({
     turns: workbench.turns,
     running: workbench.status === "streaming",
-    paused: workbench.status === "paused",
+    paused: workbench.status === "paused" || opening || reportChanging,
     onNew: send,
     onCancel: stop,
   });
   const busy = ["streaming", "paused"].includes(workbench.status);
-  const blocked = busy || opening;
+  const blocked = busy || opening || reportChanging;
   const jumpTo = (id) => {
     setView("thread");
     setJump({id});
@@ -498,14 +500,8 @@ export default function App({version}) {
             <span className="ak-brand-name">智能分析</span>
             {version ? <span className="ak-brand-chip">{version}</span> : null}
           </header>
-          <nav className="ak-modes" aria-label="分析模式">
-            {[["data", "智能分析"], ["report", "报表分析"]].map(([key, label]) =>
-              <button key={key} type="button" className="ak-ghost" aria-pressed={mode === key}
-                disabled={blocked} onClick={() => switchMode(key)}>{label}</button>)}
-          </nav>
           <div className="ak-session-pane">
             <SessionList
-              key={mode}
               conversations={conversations}
               activeId={activeConversation}
               busy={blocked || Boolean(activeConversation && savingSnapshots.current.get(sessionId))}
@@ -535,9 +531,7 @@ export default function App({version}) {
               aria-label={`第 ${index + 1} 轮：${turn.user}`}
               onClick={() => jumpTo(turn.id)}>{index + 1}. {turn.user}</button>)}
           </nav> : null}
-          {mode === "report" ? <ReportControls key={`report:${sessionId}`} context={report} busy={blocked}
-            onActivate={activateReport} onWithDb={setReportDatabase} onGenerate={generateReport} onDetach={startNew} /> : null}
-          {handoffVisible && mode === "data" ? (
+          {handoffVisible ? (
             <HandoffBanner
               handoff={handoff}
               confirmed={workbench.scopeConfirmed}
@@ -559,7 +553,7 @@ export default function App({version}) {
             status={workbench.status}
             error={workbench.error}
             pendingChoice={workbench.pendingChoice}
-            mode={mode}
+            mode={runtimeMode}
             name={preferences.name}
             jump={jump}
             onPrefill={prefill}
@@ -571,12 +565,17 @@ export default function App({version}) {
               if (lastUser) send(lastUser.user);
             }}
           />
-          <Composer busy={blocked} mode={mode} sessionId={sessionId} onSavePreferences={applyPreferences} />
+          <Composer key={`composer:${sessionId}`} busy={blocked} mode={runtimeMode} sessionId={sessionId} onSavePreferences={applyPreferences}
+            report={report} reportChanging={reportChanging} onAttachments={setAttachments} onUpload={uploadAttachments}
+            onWithDb={setReportDatabase} onGenerate={generateReport}
+            onPrefillIfEmpty={(value) => {
+              if (!runtime.thread.composer.getState().text.trim()) runtime.thread.composer.setText(value);
+            }} />
         </section>
 
         <section className="ak-board" data-agentkit-board aria-label="分析结果">
           <Board turns={workbench.turns} status={workbench.status} onJump={jumpTo}
-            onInsight={mode === "data" || (report.with_db && report.has_session) ? send : null}
+            onInsight={runtimeMode === "data" || report.with_db ? send : null}
             onPrefill={prefill} busy={blocked} />
         </section>
         <PanelDivider name="调整导航栏宽度" kind="sidebar" value={sidebarWidth} min={176} max={320} onChange={setSidebarWidth} />

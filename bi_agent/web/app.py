@@ -16,7 +16,7 @@ from urllib.request import Request as UpstreamRequest
 from urllib.request import urlopen
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Literal, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -2619,6 +2619,7 @@ class ConversationSaveRequest(BaseModel):
     # Structured AgentKit turns (text, tool runs, boards, evidence, hits) so a
     # reopened conversation can rebuild the AgentKit page, not just text.
     agentkit: Optional[dict[str, Any]] = None
+    runtime_mode: Optional[Literal["data", "report"]] = None
     # Concurrency stamp: the turn_id / generation of the turn this snapshot
     # belongs to (emitted by the server in `done`).  When present, saves from
     # a superseded (reset/restore/activate) generation are rejected.
@@ -2847,12 +2848,17 @@ def _activate_conversation_record(
     rec: dict[str, Any],
     requested_id: str,
     session_id: Optional[str] = None,
+    *,
+    unified: bool = False,
 ) -> dict[str, Any]:
     """Restore only server-side context; HTML is deliberately not touched here."""
     mode = rec.get("mode") if rec.get("mode") in ("data", "report") else "data"
     # A restore replaces the session context: cancel any running turn first so
     # the old request can never commit into (or after) the restored state.
-    _supersede_session(mode, _session_key(session_id))
+    runtime_mode = (rec.get("agentkit") or {}).get("runtimeMode") if unified else None
+    if runtime_mode not in ("data", "report"):
+        runtime_mode = mode
+    _supersede_session(runtime_mode, _session_key(session_id))
     messages = rec.get("messages") if isinstance(rec.get("messages"), list) else []
     source_restore_error = ""
     source_config = _resolved_history_source(rec)
@@ -2879,7 +2885,7 @@ def _activate_conversation_record(
 
     context_restored = False
     report_restore_error = ""
-    if mode == "report":
+    if runtime_mode == "report":
         report_context = (rec.get("agentkit") or {}).get("reportContext") or {}
         report_ids = report_context.get("reportIds") or []
         try:
@@ -2895,25 +2901,18 @@ def _activate_conversation_record(
         except Exception as exc:
             report_restore_error = str(getattr(exc, "detail", None) or exc)
         session = _session_for_mode("report", session_id)
-        if session is not None:
-            session.messages = list(messages)
-            session.first_user_question = str(rec.get("first_user_question") or "")
-            session.pending_tool_use_id = None
-            session.pending_choice_spec = None
-            session._pending_sibling_results = []
-            context_restored = True
-    else:
+        if unified and session is None:
+            if not report_restore_error:
+                report_restore_error = "旧会话没有可恢复的报表附件，可重新添加原文件。"
+            runtime_mode = "data"
+    if runtime_mode == "data":
         if _session_key(session_id) or STATE.session is None:
             session = _ensure_session(session_id)
         else:
             session = STATE.session
-        if session is not None:
-            session.messages = list(messages)
-            session.first_user_question = str(rec.get("first_user_question") or "")
-            session.pending_tool_use_id = None
-            session.pending_choice_spec = None
-            session._pending_sibling_results = []
-            context_restored = True
+    if session is not None:
+        _restore_session_transcript(session, messages, rec.get("first_user_question"))
+        context_restored = True
 
     # Lightweight Recovery is restored only into real WebSessions (legacy
     # SimpleNamespace fakes never carry the state machine).  A missing or
@@ -2925,10 +2924,11 @@ def _activate_conversation_record(
     # snapshot also reinstates the pending AskUser handle so
     # continue_with_choice can resume the same recovery turn.
     restored = None
+    recovery_state = rec.get("recovery_state") if runtime_mode == "report" or not report_restore_error else None
     if hasattr(session, "restore_recovery_state"):
-        restored = session.restore_recovery_state(rec.get("recovery_state"))
+        restored = session.restore_recovery_state(recovery_state)
     elif hasattr(session, "recovery") and getattr(session, "recovery", None) is not None:
-        session.recovery = RecoveryState(rec.get("recovery_state"))
+        session.recovery = RecoveryState(recovery_state)
         restored = session.recovery_state
     if restored and restored.get("status") == WAITING_USER:
         pending = restored.get("pending_user") or {}
@@ -2942,7 +2942,7 @@ def _activate_conversation_record(
 
     # New snapshots already contain rendered ontology HTML. Only old records
     # need the compatibility scan/migration, which can be noticeably costly.
-    active_session = _session_for_mode(mode, session_id)
+    active_session = _session_for_mode(runtime_mode, session_id)
     if active_session is not None and not str(rec.get("ontology_html") or "").strip():
         migrated_entities = _history_ontology_entities(active_session, messages)
         if migrated_entities:
@@ -2954,6 +2954,7 @@ def _activate_conversation_record(
     return {
         "id": rec.get("id") or requested_id,
         "mode": mode,
+        "runtime_mode": runtime_mode,
         "title": ConversationStore._metadata(rec).get("title") or "未命名对话",
         "first_user_question": ConversationStore._metadata(rec).get("first_user_question") or "",
         "source_config": source_config,
@@ -2962,6 +2963,14 @@ def _activate_conversation_record(
         "awaiting_choice": bool(restored and restored.get("status") == WAITING_USER and getattr(session, "pending_tool_use_id", None)),
         "context_restored": context_restored,
     }
+
+
+def _restore_session_transcript(session: WebSession, messages: list, first_question: Any) -> None:
+    session.messages = list(messages)
+    session.first_user_question = str(first_question or "")
+    session.pending_tool_use_id = None
+    session.pending_choice_spec = None
+    session._pending_sibling_results = []
 
 
 @app.get("/api/conversations")
@@ -2979,14 +2988,15 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
     client-rendered chat/dashboard HTML, so it can be relisted and restored."""
     store = _require_conversation_store()
     mode = req.mode if req.mode in ("data", "report") else "data"
+    runtime_mode = (req.runtime_mode or mode) if req.agentkit else mode
     key = _session_key(req.session_id)
     # A stale turn (one that finished before a reset/restore/activate) must
     # never overwrite the newer session snapshot.
     if req.generation is not None:
-        slot = STATE.session_slots.get(_slot_key(mode, key))
+        slot = STATE.session_slots.get(_slot_key(runtime_mode, key))
         if slot is not None and slot.generation != req.generation:
             return _superseded_response(str(req.session_id or ""))
-    session = _session_for_mode(mode, req.session_id)
+    session = _session_for_mode(runtime_mode, req.session_id)
     safe_source_config = sanitize_source_config(req.source_config)
     if req.agentkit and not req.cid and key and session is not None:
         binding = _current_source_config(_source_for_session(key))
@@ -2999,7 +3009,9 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
     agentkit = req.agentkit
     if agentkit:
         agentkit = {name: agentkit[name] for name in ("version", "turns", "handoff", "pendingChoice") if name in agentkit}
-        if mode == "report" and session is not None:
+        if req.runtime_mode:
+            agentkit["runtimeMode"] = runtime_mode
+        if runtime_mode == "report" and session is not None:
             _, report_ids, with_db = _report_context_state(req.session_id)
             agentkit["reportContext"] = {"reportIds": report_ids, "withDb": with_db, "generated": not report_ids}
         try:
@@ -3095,7 +3107,7 @@ def conversation_assets(cid: str) -> JSONResponse:
 
 
 @app.post("/api/conversations/{cid}/activate")
-def activate_conversation(cid: str, session_id: str = "") -> JSONResponse:
+def activate_conversation(cid: str, session_id: str = "", unified: bool = False) -> JSONResponse:
     """Restore messages/source/session after the preview is visible.
 
     A supplied session_id is materialised first so the restore lands in the
@@ -3109,12 +3121,14 @@ def activate_conversation(cid: str, session_id: str = "") -> JSONResponse:
     key = _session_key(session_id)
     if key:
         _ensure_session(key)
-    payload = _activate_conversation_record(store, rec, cid, key or None)
+    payload = _activate_conversation_record(store, rec, cid, key or None, unified=unified)
     payload["session_id"] = key
     # One round trip restores both the text history and the AgentKit snapshot
     # (boards/evidence/hits), so the client needs no second record fetch.
     payload["messages"] = rec.get("messages") or []
     payload["agentkit"] = rec.get("agentkit") or {}
+    if unified and payload["runtime_mode"] == "report":
+        payload["report_context"] = _report_status_payload(key)
     return JSONResponse(payload)
 
 
@@ -3718,6 +3732,13 @@ class ReportConfigUpdate(BaseModel):
     session_id: Optional[str] = None
 
 
+class ReportAttachments(BaseModel):
+    session_id: str
+    report_ids: list[str]
+    with_db: bool = True
+    from_mode: Literal["data", "report"]
+
+
 def _report_context_state(session_id: Optional[str]) -> tuple[Optional[WebSession], list[str], bool]:
     key = _session_key(session_id)
     if not key:
@@ -3829,6 +3850,10 @@ def _record_to_summary(rec: dict) -> dict:
 
 @app.get("/api/report/status")
 def report_status(session_id: str = "") -> JSONResponse:
+    return JSONResponse(_report_status_payload(session_id))
+
+
+def _report_status_payload(session_id: str) -> dict[str, Any]:
     session, active_ids, with_db = _report_context_state(session_id)
     actives: list[dict] = []
     if STATE.report_store:
@@ -3839,12 +3864,12 @@ def report_status(session_id: str = "") -> JSONResponse:
     # Backward-compat: keep `active_report` as the first one so older
     # clients don't break; new clients should read `active_reports`.
     legacy_active = actives[0] if actives else None
-    return JSONResponse({
+    return {
         "active_reports": actives,
         "active_report": legacy_active,
         "with_db": with_db,
         "has_session": session is not None,
-    })
+    }
 
 
 @app.post("/api/report/activate")
@@ -3893,6 +3918,67 @@ def report_activate(req: ReportActivate) -> JSONResponse:
         "active_report": actives[0] if actives else None,
         "with_db": req.with_db,
     })
+
+
+def _switch_workbench_report_context(
+    key: str,
+    from_mode: Literal["data", "report"],
+    report_ids: list[str],
+    with_db: bool,
+    build_report: Optional[Callable[[], WebSession]],
+    active_reports: list[dict],
+) -> JSONResponse:
+    """Switch executors for the same conversation while retaining its messages."""
+    if not key:
+        raise HTTPException(400, "会话标识不能为空")
+    data_lease = _guard_mutation("data", key)
+    if data_lease is None:
+        return _busy_response(key)
+    report_lease = _guard_mutation("report", key)
+    if report_lease is None:
+        _release_guard("data", key, data_lease)
+        return _busy_response(key)
+    try:
+        report_session, _, _ = _report_context_state(key)
+        if (from_mode == "report") != (report_session is not None):
+            raise HTTPException(409, "附件上下文已变化，请重新打开会话。")
+        previous = _session_for_mode(from_mode, key)
+        target = build_report() if build_report else _ensure_session(key)
+        if previous is not None and target is not previous:
+            _restore_session_transcript(target, previous.messages, previous.first_user_question)
+            if hasattr(target, "restore_recovery_state"):
+                target.restore_recovery_state(None)
+        _set_report_context(key, target if build_report else None, report_ids, with_db)
+        _supersede_session("report", key)
+        _supersede_session("data", key)
+        return JSONResponse({
+            "ok": True,
+            "active_reports": active_reports,
+            "with_db": with_db,
+            "has_session": build_report is not None,
+        })
+    finally:
+        _release_guard("report", key, report_lease)
+        _release_guard("data", key, data_lease)
+
+
+@app.put("/api/report/attachments")
+def update_report_attachments(req: ReportAttachments) -> JSONResponse:
+    key = _session_key(req.session_id)
+    ids = list(dict.fromkeys(req.report_ids))
+    if len(ids) > MAX_ACTIVE_REPORTS:
+        raise HTTPException(400, f"一次最多激活 {MAX_ACTIVE_REPORTS} 份报表")
+    active_reports = []
+    build_report = None
+    if ids:
+        store = _require_report_store()
+        for rid in ids:
+            record = store.get(rid)
+            if not record:
+                raise HTTPException(404, f"report not found: {rid}")
+            active_reports.append(_record_to_summary(record))
+        build_report = lambda: _build_report_session(ids, req.with_db, _source_for_session(key), key)
+    return _switch_workbench_report_context(key, req.from_mode, ids, req.with_db, build_report, active_reports)
 
 
 @app.put("/api/report/config")
@@ -3947,12 +4033,22 @@ def report_session_reset(session_id: str = "", clear_reports: bool = False) -> J
 
 
 @app.post("/api/report/generate")
-def report_generate(session_id: str = "") -> JSONResponse:
+def report_generate(session_id: str = "", from_mode: Optional[Literal["data", "report"]] = None) -> JSONResponse:
     """Start a report-GENERATION session — runs IN report mode on the
     report-generator agent (ontology + DB tools), not bound to any
     uploaded report. The wizard sends the report config as the first
     chat message; the agent searches data and assembles the report.
     """
+    if from_mode is not None:
+        key = _session_key(session_id)
+        return _switch_workbench_report_context(key, from_mode, [], True, lambda: _build_report_generator(key), [])
+    session = _build_report_generator(session_id)
+    _supersede_session("report", _session_key(session_id))
+    _set_report_context(session_id, session, [], True)
+    return JSONResponse({"ok": True})
+
+
+def _build_report_generator(session_id: str) -> WebSession:
     source = _source_for_session(session_id)
     if source.ontology_store is None:
         raise HTTPException(500, "Server not configured; call configure() first.")
@@ -3966,7 +4062,7 @@ def report_generate(session_id: str = "") -> JSONResponse:
         )
     doris = _doris_http_conn(source.doris_api_url, source.doris_database, source.remote_ontology) if source.use_doris else None
     executors = build_source_executors(source.ontology_store, source.db_path, doris=doris, remote_ontology=source.remote_ontology)
-    session = WebSession(
+    return WebSession(
         cwd=STATE.cwd,
         agent_def=gen_agent,
         ontology_store=source.ontology_store,
@@ -3977,9 +4073,6 @@ def report_generate(session_id: str = "") -> JSONResponse:
         ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
         tool_executors=executors,
     )
-    _supersede_session("report", _session_key(session_id))
-    _set_report_context(session_id, session, [], True)
-    return JSONResponse({"ok": True})
 
 
 def _llm_complete(

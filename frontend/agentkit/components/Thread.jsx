@@ -71,7 +71,10 @@ function Turn({turn, error, onRetry, onOpenOntology}) {
   const stage = active ? stageNote(turn) : "";
   return (
     <article className="ak-turn">
-      {turn.user ? <div className="ak-user" tabIndex={-1} data-question-anchor={turn.id}><p>{turn.user}</p></div> : null}
+      {turn.user ? <div className="ak-user" tabIndex={-1} data-question-anchor={turn.id}>
+        {turn.attachments?.length ? <p className="ak-turn-attachments">{turn.attachments.join(" · ")}</p> : null}
+        <p>{turn.user}</p>
+      </div> : null}
       {(turn.resolvedChoices || []).map((choice, index) => (
         <p key={index} className="ak-choice-confirmed">已确认：{choice.labels.join("、")}</p>
       ))}
@@ -133,7 +136,7 @@ export default function Thread({turns, status, error, pendingChoice, onChoose, o
     return (
       <div className="ak-transcript" ref={transcriptRef} onScroll={trackScroll}>
         <div className="ak-empty" role="status">
-          <h2 className="ak-empty-title">{name ? `${name}，你好。 ` : ""}{mode === "report" ? "从一份报表开始" : "从一个经营问题开始"}</h2>
+          <h2 className="ak-empty-title">{name ? `${name}，你好。 ` : ""}从一个经营问题开始</h2>
           <p className="ak-empty-text">
             展开工具调用可查看查询证据和本体命中。生成的明细和图表会出现在结果看板。
           </p>

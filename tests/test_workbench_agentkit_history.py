@@ -254,3 +254,74 @@ def test_report_upload_parses_pdf_and_word_into_the_recent_list(tmp_path, monkey
         assert upload.json()["text_length"] > 0
     files = client.get("/api/report/list").json()["items"]
     assert {item["filename"] for item in files} == {"summary.pdf", "detail.docx"}
+
+
+def test_unified_attachments_keep_conversation_identity_and_engine_messages(tmp_path, monkeypatch):
+    store = ConversationStore(tmp_path)
+    key = "unified-attachment-test"
+    initial = FakeSession()
+    original_messages = [{"role": "user", "content": "先看经营数据"}]
+    initial.messages = list(original_messages)
+    initial.first_user_question = "先看经营数据"
+    ordinary = {key: initial}
+    reports = {}
+    records = {"r1": {"id": "r1", "filename": "经营简报.pdf"}}
+    monkeypatch.setattr(web_app.STATE, "report_store", records)
+    source = SimpleNamespace(
+        remote_ontology=None, ontology_path="", use_doris=False, db_path="",
+        retrieval_mode="semantic", graph_path="", doris_api_url="", doris_jdbc_url="",
+        doris_driver="", doris_username="", doris_database="",
+    )
+    monkeypatch.setattr(web_app, "_require_conversation_store", lambda: store)
+    monkeypatch.setattr(web_app, "_require_report_store", lambda: records)
+    monkeypatch.setattr(web_app, "_build_report_session", lambda *_: FakeSession())
+    monkeypatch.setattr(web_app, "_ensure_session", lambda key: ordinary.setdefault(key, FakeSession()))
+    monkeypatch.setattr(web_app, "_source_for_session", lambda _: source)
+    monkeypatch.setattr(web_app, "_history_ontology_entities", lambda *_: [])
+    monkeypatch.setattr(web_app, "_set_report_context", lambda key, session, ids, with_db: reports.update({
+        key: (session, ids, with_db),
+    }))
+    monkeypatch.setattr(web_app, "_report_context_state", lambda key: reports.get(key, (None, [], True)))
+    monkeypatch.setattr(web_app, "_session_for_mode", lambda mode, key:
+        reports.get(key, (None,))[0] if mode == "report" else ordinary.get(key))
+    client = TestClient(web_app.app)
+    saved = client.post("/api/conversations/save", json={"session_id": key, "agentkit": AGENTKIT_SNAPSHOT})
+    assert saved.status_code == 200
+    cid = saved.json()["id"]
+    attach = client.put("/api/report/attachments", json={
+        "session_id": key, "report_ids": ["r1"], "with_db": False, "from_mode": "data",
+    })
+    assert attach.status_code == 200, attach.text
+    assert attach.json()["has_session"]
+    report_session, ids, with_db = reports[key]
+    assert report_session.messages == original_messages
+    assert (ids, with_db) == (["r1"], False)
+    stale = client.put("/api/report/attachments", json={
+        "session_id": key, "report_ids": [], "with_db": True, "from_mode": "data",
+    })
+    assert stale.status_code == 409
+    assert reports[key] == (report_session, ["r1"], False)
+    report_session.messages.append({"role": "assistant", "content": "报表核对结果"})
+    saved = client.post("/api/conversations/save", json={
+        "session_id": key, "cid": cid, "mode": "data", "runtime_mode": "report", "agentkit": AGENTKIT_SNAPSHOT,
+    })
+    assert saved.json()["id"] == cid
+    assert store.get(cid)["messages"] == report_session.messages
+    assert store.get(cid)["agentkit"]["runtimeMode"] == "report"
+    opened = client.post(f"/api/conversations/{cid}/activate?session_id=attachment-restore&unified=true")
+    assert opened.status_code == 200
+    assert opened.json()["runtime_mode"] == "report"
+    assert opened.json()["report_context"]["active_reports"][0]["filename"] == "经营简报.pdf"
+    assert reports["attachment-restore"][1:] == (["r1"], False)
+    detach = client.put("/api/report/attachments", json={
+        "session_id": key, "report_ids": [], "with_db": False, "from_mode": "report",
+    })
+    assert detach.status_code == 200
+    assert not detach.json()["has_session"]
+    assert ordinary[key].messages == report_session.messages
+    saved_again = client.post("/api/conversations/save", json={
+        "session_id": key, "cid": cid, "mode": "data", "runtime_mode": "data", "agentkit": AGENTKIT_SNAPSHOT,
+    })
+    assert saved_again.json()["id"] == cid
+    assert "reportContext" not in store.get(cid)["agentkit"]
+    assert len(client.get("/api/conversations").json()["conversations"]) == 1

@@ -1,6 +1,7 @@
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 
-import {listReports, uploadReport} from "../api.js";
+import {Paperclip, Plus, X} from "lucide-react";
+import {listReports} from "../api.js";
 import reportPlan from "../reportPlan.json";
 import {SettingsDialog} from "./Settings.jsx";
 
@@ -26,7 +27,7 @@ function planText(values) {
   });
 }
 
-function ReportWizard({onGenerate, onClose}) {
+export function ReportWizard({onGenerate, onClose}) {
   const [step, setStep] = useState(0);
   const [plan, setPlan] = useState(initialPlan);
   const [notice, setNotice] = useState("");
@@ -88,7 +89,7 @@ function ReportWizard({onGenerate, onClose}) {
   );
 }
 
-function AttachmentPicker({active, withDb, onActivate, onDetach, onClose}) {
+export function AttachmentPicker({active, onChange, onClose}) {
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(() => active.map((report) => report.id));
   const [status, setStatus] = useState("正在加载报表…");
@@ -102,43 +103,20 @@ function AttachmentPicker({active, withDb, onActivate, onDetach, onClose}) {
     }, (error) => { if (!ignore) setStatus(error.message); });
     return () => { ignore = true; };
   }, []);
-  const upload = async (event) => {
-    const files = Array.from(event.target.files || []);
-    event.target.value = "";
-    if (!files.length) return;
-    if (files.length + selected.length > maxReports) {
-      setStatus(`一次最多选取 ${maxReports} 份报表`);
-      return;
-    }
-    setBusy(true);
-    const uploaded = [];
-    const errors = [];
-    for (const file of files) {
-      try { uploaded.push(await uploadReport(file)); }
-      catch (error) { errors.push(`${file.name} · ${error.message}`); }
-    }
-    setReports((current) => [...uploaded, ...current.filter((item) => !uploaded.some((report) => report.id === item.id))]);
-    setSelected((current) => [...new Set([...current, ...uploaded.map((report) => report.id)])]);
-    setStatus(errors.length ? errors.join("；") : "上传完成，请确认启用");
-    setBusy(false);
-  };
   const useReports = async (ids) => {
     setBusy(true);
-    try { await onActivate(ids, withDb); onClose(); }
+    try { await onChange(ids); onClose(); }
     catch (error) { setStatus(error.message); }
     finally { setBusy(false); }
   };
   return (
-    <SettingsDialog title="选择或上传报表" onClose={onClose}>
+    <SettingsDialog title="最近报表" onClose={onClose}>
       <form className="ak-settings-form" onSubmit={async (event) => {
         event.preventDefault();
         await useReports(selected);
       }}>
         <fieldset disabled={busy}>
           <legend>最近上传</legend>
-          <label className="ak-settings-field">上传 PDF 或 Word
-            <input type="file" multiple accept=".pdf,.docx" onChange={upload} />
-          </label>
           {reports.length > 1 ? <div className="ak-inline-actions">
             <button type="button" className="ak-ghost" onClick={() => setSelected(reports.slice(0, maxReports)
               .map((report) => report.id))}>选择最近报表</button>
@@ -162,9 +140,9 @@ function AttachmentPicker({active, withDb, onActivate, onDetach, onClose}) {
           </div>
           {status ? <p role="status">{status}</p> : null}
           <div className="ak-inline-actions">
-            <button className="ak-primary" type="submit" disabled={!selected.length}>{busy ? "处理中…" : `启用报表（${selected.length}/${maxReports}）`}</button>
+            <button className="ak-primary" type="submit" disabled={!selected.length}>{busy ? "处理中…" : `添加所选（${selected.length}/${maxReports}）`}</button>
             {active.length && !selected.length ? <button type="button" className="ak-ghost"
-              onClick={() => { onDetach(); onClose(); }}>移除全部当前附件</button> : null}
+              onClick={() => useReports([])}>移除全部当前附件</button> : null}
           </div>
         </fieldset>
       </form>
@@ -172,32 +150,74 @@ function AttachmentPicker({active, withDb, onActivate, onDetach, onClose}) {
   );
 }
 
-export default function ReportControls({context, busy, onActivate, onWithDb, onGenerate, onDetach}) {
-  const [dialog, setDialog] = useState("");
-  const [updating, setUpdating] = useState(false);
-  const [error, setError] = useState("");
+export function AttachmentList({reports, busy, onRemove}) {
+  if (!reports.length) return null;
+  return <ul className="ak-composer-attachments" aria-label="当前附件">
+    {reports.map(({id, filename}) => <li key={id} title={filename || id}>
+      <Paperclip size={14} aria-hidden="true" />
+      <span>{filename || id}</span>
+      <button type="button" className="ak-ghost ak-attachment-remove" disabled={busy}
+        aria-label={`移除${filename || id}`} onClick={() => onRemove(id)}><X size={14} aria-hidden="true" /></button>
+    </li>)}
+  </ul>;
+}
+
+export default function ReportControls({context, busy, onUpload, onWithDb, onClearContext, onOpenDialog,
+  onNotice, onPrefillIfEmpty}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const fileInput = useRef(null);
+  const trigger = useRef(null);
   const active = context.active_reports || [];
   const withDb = context.with_db !== false;
+  const upload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length) return;
+    onNotice("");
+    try {
+      onNotice(await onUpload(files));
+      onPrefillIfEmpty("请分析上传的附件。");
+    } catch (error) { onNotice(error.message); }
+  };
+  const openDialog = (name) => {
+    onNotice("");
+    setMenuOpen(false);
+    onOpenDialog(name);
+  };
   return (
-    <div className="ak-report-controls">
-      <div className="ak-inline-actions">
-        <button type="button" className="ak-ghost" disabled={busy} onClick={() => setDialog("attach")}>选择或上传报表</button>
-        <button type="button" className="ak-ghost" disabled={busy} onClick={() => setDialog("generate")}>标准报表生成</button>
-        <label className="ak-settings-check"><input type="checkbox" checked={withDb} disabled={busy || updating}
-          onChange={async (event) => {
-            setUpdating(true); setError("");
+    <div className="ak-add-attachment"
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false); }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && menuOpen) {
+          event.stopPropagation();
+          setMenuOpen(false);
+          trigger.current?.focus();
+        }
+      }}>
+      <input type="file" ref={fileInput} hidden multiple accept=".pdf,.docx" onChange={upload} />
+      <button type="button" className="ak-ghost" ref={trigger} aria-label="添加附件" aria-expanded={menuOpen}
+        title="添加附件" disabled={busy} onClick={() => setMenuOpen(!menuOpen)}>
+        <Plus size={18} aria-hidden="true" />
+      </button>
+      {menuOpen && !busy ? <div className="ak-attachment-menu" aria-label="附件选项">
+        <button type="button" className="ak-ghost" onClick={() => { setMenuOpen(false); fileInput.current?.click(); }}>上传文件</button>
+        <button type="button" className="ak-ghost" onClick={() => openDialog("recent")}>最近报表</button>
+        <button type="button" className="ak-ghost" onClick={() => openDialog("generate")}>标准报表生成</button>
+        {active.length ? <label className="ak-settings-check">
+          <input type="checkbox" checked={withDb} onChange={async (event) => {
+            setMenuOpen(false);
+            onNotice("");
             try { await onWithDb(event.target.checked); }
-            catch (failure) { setError(failure.message); }
-            finally { setUpdating(false); }
-          }} />启用数据库查询</label>
-        {context.has_session ? <button type="button" className="ak-ghost" disabled={busy}
-          onClick={onDetach}>结束当前报表分析</button> : null}
-      </div>
-      {active.length ? <p className="ak-report-attachments">{active.map((report) => report.filename || report.id).join(" · ")}</p> : null}
-      {error ? <p role="alert">{error}</p> : null}
-      {dialog === "attach" ? <AttachmentPicker active={active} withDb={withDb} onActivate={onActivate}
-        onDetach={onDetach} onClose={() => setDialog("")} /> : null}
-      {dialog === "generate" ? <ReportWizard onGenerate={onGenerate} onClose={() => setDialog("")} /> : null}
+            catch (error) { onNotice(error.message); }
+          }} />启用数据库查询
+        </label> : null}
+        {context.has_session && !active.length ? <button type="button" className="ak-ghost" onClick={async () => {
+          setMenuOpen(false);
+          onNotice("");
+          try { await onClearContext(); }
+          catch (error) { onNotice(error.message); }
+        }}>结束报表生成上下文</button> : null}
+      </div> : null}
     </div>
   );
 }
