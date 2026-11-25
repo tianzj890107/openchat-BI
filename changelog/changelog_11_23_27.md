@@ -131,3 +131,9 @@
   新增 `/workbench-legacy`（demo2 时代页面）、输入区与侧栏交互精简；未触碰 8765。
 - 验证：`/healthz`、`/workbench-agentkit`、`/workbench-legacy`、`/api/sources` 均 200；bundle 与本地一致。
 - 主要文件：`DEPLOYMENT.md`（§9）。
+
+### 2026-11-25 工作台：去掉“Enter 发送 · Shift+Enter 换行”提示
+
+- AgentKit（`frontend/agentkit/components/Composer.jsx`）与通用工作台（`frontend/src/ProUiComposer.jsx`）的输入区提示行已移除；
+  键盘行为不变（Enter 发送、Shift+Enter 换行、IME 回车不发送），仅不再显示该文案。
+- 两个前端已重建（`static/vendor/agentkit/*`、`static/vendor/antd/workbench.js`）；Node 185 项通过。

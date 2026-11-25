@@ -246,7 +246,6 @@ export default function ProUiComposer({ dispatchRuntime }) {
             切换报表
           </ProXButton>
         ) : null}
-        Enter 发送 · Shift + Enter 换行
       </span>
     </div>
   );

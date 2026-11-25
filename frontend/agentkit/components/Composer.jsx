@@ -57,7 +57,6 @@ export default function Composer({busy, mode, sessionId, onSavePreferences, repo
           title={label} onClick={() => setOpen(true)}>
           <span>{shortLabel}</span><ChevronDown size={13} aria-hidden="true" />
         </button>
-        <span className="ak-composer-hint">Enter 发送 · Shift+Enter 换行</span>
         <AuiIf condition={(state) => state.thread.isRunning}>
           <ComposerPrimitive.Cancel className="ak-stop">停止</ComposerPrimitive.Cancel>
         </AuiIf>
