@@ -472,6 +472,17 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 8766 预览更新到 dcc3dff（含 AgentKit 布局与进度优化）
+
+- 代码：`dcc3dff`（分支 `feature/agentkit-ontology-workbench-spec`，含 `8f24dfe` 的 AgentKit 布局与分析进度优化），
+  `git archive` 导出到 `agentkit-dcc3dff-20261125-1345`，`RELEASE_COMMIT=dcc3dff`。
+- 复用：`preview.env`（含 Workbench 本地 Excel + PG 源）、`dataset-local` workbook、`.venv` 软链、
+  `dataset` → 原预览 `dataset-preview`；旧实例 `agentkit-5dc0e5d-20261125-1101` 保留可回滚。
+- 运行：PID `2396451`，端口 `8766`，日志 `app-8766.log`。
+- 验证：`/healthz` 200；`/workbench-agentkit` 200（内外网）；`workbench-agentkit.js` 742161 字节与本地一致；
+  `/api/sources` 仍列出 `dataset-local/亿纬锂能_流程360本体元模型_V3.1_本地PG版.xlsx` 与 `PostgreSQL · ywln_crm`。
+- 回滚：停 `2396451`，在 `agentkit-5dc0e5d-20261125-1101` 重新启动 8766。
+
 ### 2026-11-25 8766 预览补齐 Workbench「本地 Excel + PG」源
 
 - 背景：AgentKit 设置页只列出 `/api/sources` 的项；cockpit 的 AP 数据源是独立适配器，不会出现在该清单里。

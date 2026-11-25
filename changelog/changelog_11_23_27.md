@@ -78,3 +78,11 @@
 - `.env.example` 增补 `WORKBENCH_PG_*` 与 `WORKBENCH_LOCAL_ONTOLOGY_PATH` 说明（独立只读账号、独立 workbook，
   不继承 Process360 凭据）；补上后 `/api/sources` 会把该 workbook 列为可选源。
 - `DEPLOYMENT.md` §9 记录预览实例的独立 `preview.env` 与回滚方式，未改动 8765 共用 `.env`。
+
+### 2026-11-25 8766 预览更新到 dcc3dff
+
+- 按用户当次授权，只更新 172.16.10.34 的 8766 预览：`git archive dcc3dff`（含 8f24dfe 的 AgentKit
+  布局与分析进度优化）到 `agentkit-dcc3dff-20261125-1345`，复用 `preview.env`、`dataset-local` 本体与旧
+  `dataset-preview`；未触碰 8765。
+- 验证：`/healthz`、`/workbench-agentkit`、`workbench-agentkit.js`、`/api/sources` 均 200；新 PID 2396451。
+- 主要文件：`DEPLOYMENT.md`（§9 发布记录）。
