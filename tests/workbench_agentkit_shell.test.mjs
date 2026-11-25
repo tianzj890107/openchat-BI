@@ -106,6 +106,10 @@ test('the workbench limits scrolling to the transcript and keeps the composer in
   assert.match(css, /\.ak-shell\s*\{[^}]*height:\s*100dvh/);
   assert.match(css, /\.ak-transcript\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(css, /\.ak-composer\s*\{[^}]*flex-shrink:\s*0/);
+  assert.match(css, /\.ak-composer-entry\s*\{[^}]*display:\s*flex/);
+  assert.match(css, /\.ak-session-search\s*\{[^}]*width:\s*100%/);
+  assert.match(css, /\.ak-suggestions button\s*\{[^}]*border:\s*0/);
+  assert.match(css, /button:hover:not\(:disabled\)[^{]*\{\s*background:\s*var\(--ak-hover\);\s*\}/);
   const app = await read('frontend/agentkit/App.jsx');
   assert.match(app, /data-agentkit-thread[\s\S]*<Thread[\s\S]*<Composer\b/);
 });

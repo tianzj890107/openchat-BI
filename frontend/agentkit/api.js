@@ -93,17 +93,8 @@ export function historyAssets(cid) {
   return requestJson(`api/conversations/${encodeURIComponent(cid)}/assets`);
 }
 
-export function loadTrash() {
-  return requestJson("api/conversations/trash");
-}
-
-export function changeTrash(action, cid) {
-  const key = encodeURIComponent(cid || "");
-  if (action === "remove") return requestJson(`api/conversations/${key}`, {method: "DELETE"});
-  if (action === "restore") return requestJson(`api/conversations/trash/${key}/restore`, {method: "POST"});
-  if (action === "purge") return requestJson(`api/conversations/trash/${key}`, {method: "DELETE"});
-  if (action === "empty") return requestJson("api/conversations/trash?confirm=1", {method: "DELETE"});
-  throw new Error("未知回收站操作");
+export function removeConversation(cid) {
+  return requestJson(`api/conversations/${encodeURIComponent(cid)}`, {method: "DELETE"});
 }
 
 export function reportStatus(sessionId, signal) {

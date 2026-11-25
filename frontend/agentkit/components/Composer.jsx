@@ -41,16 +41,18 @@ export default function Composer({busy, mode, sessionId, onSavePreferences, repo
         }} />
       {reportChanging ? <p className="ak-attachment-notice" role="status">正在更新附件或报表配置…</p> : null}
       {attachmentNotice ? <p className="ak-attachment-notice" role="status">{attachmentNotice}</p> : null}
-      <ComposerPrimitive.Input
-        className="ak-composer-input"
-        rows={2}
-        placeholder={mode === "report" ? "输入要分析的报表问题" : "描述你的经营问题，例如：PACK 未签单商机主要涉及哪些客户和产品部？"}
-        aria-label="输入问题"
-      />
-      <div className="ak-composer-actions">
+      <div className="ak-composer-entry">
         <ReportControls context={report} busy={busy} onUpload={onUpload} onWithDb={onWithDb}
           onClearContext={() => onAttachments([])}
           onOpenDialog={setAttachmentDialog} onNotice={setAttachmentNotice} onPrefillIfEmpty={onPrefillIfEmpty} />
+        <ComposerPrimitive.Input
+          className="ak-composer-input"
+          rows={2}
+          placeholder={mode === "report" ? "输入要分析的报表问题" : "描述你的经营问题，例如：PACK 未签单商机主要涉及哪些客户和产品部？"}
+          aria-label="输入问题"
+        />
+      </div>
+      <div className="ak-composer-actions">
         <button type="button" className="ak-model-select" aria-label={`模型设置：${label}`} aria-haspopup="dialog"
           title={label} onClick={() => setOpen(true)}>
           <span>{shortLabel}</span><ChevronDown size={13} aria-hidden="true" />

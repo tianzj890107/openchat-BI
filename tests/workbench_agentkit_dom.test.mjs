@@ -138,9 +138,15 @@ test('the shipped bundle mounts the AgentKit shell with the handoff context', as
   assert.equal(root.getAttribute('data-agentkit-runtime'), 'agentkit-runtime:assistant-ui');
   assert.ok(document.querySelector('.ak-shell'), 'AgentKit shell mounted');
   assert.ok(document.querySelector('[data-agentkit-sessions]'), 'session list region');
+  const search = document.querySelector('input[aria-label="搜索会话"]');
+  assert.equal(search.previousElementSibling?.textContent, '新建会话');
+  assert.equal(Boolean(document.querySelector('button[aria-label="刷新会话"]')), false);
+  assert.equal(Array.from(document.querySelectorAll('button')).some((button) => button.textContent === '回收站'), false);
 
   // assistant-ui composer input is rendered, not the first-paint skeleton.
   assert.ok(document.querySelector('textarea'), 'composer textarea');
+  const attachment = document.querySelector('button[aria-label="添加附件"]');
+  assert.equal(attachment?.closest('.ak-composer-entry')?.querySelector('textarea'), document.querySelector('textarea'));
   assert.doesNotMatch(document.body.textContent, /正在加载本体消费展示工作台/);
 
   // Empty-state copy and the invited question are visible.
