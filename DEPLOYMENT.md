@@ -472,6 +472,16 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 8766 预览更新到 3c9a100（报告附件与 AgentKit 统一入口）
+
+- 代码：`3c9a100`（含 `b8ce31e` 把分析入口切到 AgentKit、报告与历史对齐），`git archive` 到
+  `agentkit-3c9a100-20261125-1546`，`RELEASE_COMMIT=3c9a100`。
+- 复用：`preview.env`、`dataset-local` 本体、`.venv` 软链、`dataset` → 原预览 `dataset-preview`。
+- 运行：PID `2921727`，端口 `8766`。
+- 验证：`/healthz` 200、`/workbench-agentkit` 200（内外网）；服务端 `workbench-agentkit.js`
+  787701 字节与本地一致；`/api/sources` 仍列出本地 workbook 与 `PostgreSQL · ywln_crm`。
+- 回滚：停 `2921727`，在 `agentkit-4c90a1d-20261125-1410` 重新启动 8766。
+
 ### 2026-11-25 8766 预览更新到 4c90a1d（模型名/关闭按钮/阶段提示）
 
 - 代码：`4c90a1d`（`feature/agentkit-ontology-workbench-spec`），`git archive` 到
