@@ -472,6 +472,17 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 8766 预览补齐 Workbench「本地 Excel + PG」源
+
+- 背景：AgentKit 设置页只列出 `/api/sources` 的项；cockpit 的 AP 数据源是独立适配器，不会出现在该清单里。
+  为在预览实例中直接选用 PG 口径，本次为预览单独补 Workbench 源配置（不改 8765 与其他 release 共用的 `.env`）。
+- 配置：在 `<release>/preview.env` 中设置 `WORKBENCH_PG_HOST=172.16.5.181`、
+  `WORKBENCH_PG_PORT=32444`、`WORKBENCH_PG_DATABASE=ywln_gov`、`WORKBENCH_PG_USER=postgres`、
+  `WORKBENCH_PG_SCHEMA=ded_public`、`WORKBENCH_LOCAL_ONTOLOGY_PATH=dataset-local/<workbook>.xlsx`；
+  release 内放一份真实的 workbook 文件（不走 `dataset/` 软链，避免解析到 release 之外被拒绝）。
+- 生效：`/api/sources` 的 `ontology.options` 增加该 workbook，设置页可选择「PostgreSQL · ywln_crm」源。
+- 回滚：删除 `<release>/preview.env`、改回 `.env` 软链并重启 8766。
+
 ### 2026-11-25 AgentKit 工作台预览更新到 5dc0e5d（8766）
 
 - 授权：用户当次要求「提交推送mr当前变化并且重新部署34」，确认范围仅更新 8766 预览实例。

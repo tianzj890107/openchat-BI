@@ -72,3 +72,9 @@
 - 验证：`/healthz`、`/workbench-agentkit`、`/static/vendor/agentkit/*`、`/api/conversations` 均 200；
   旧进程已停止，新 PID 1767209。
 - 主要文件：`DEPLOYMENT.md`（§9 发布记录）。
+
+### 2026-11-25 8766 预览补齐 Workbench 本地 Excel + PG 数据源
+
+- `.env.example` 增补 `WORKBENCH_PG_*` 与 `WORKBENCH_LOCAL_ONTOLOGY_PATH` 说明（独立只读账号、独立 workbook，
+  不继承 Process360 凭据）；补上后 `/api/sources` 会把该 workbook 列为可选源。
+- `DEPLOYMENT.md` §9 记录预览实例的独立 `preview.env` 与回滚方式，未改动 8765 共用 `.env`。
