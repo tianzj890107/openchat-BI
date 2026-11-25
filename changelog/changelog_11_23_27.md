@@ -62,3 +62,12 @@
 - 点击单条本体命中，以其编码、类型、库和分析会话查询子图。「关系扩散」沿用同一锚点向本体平台查询，展示对应接口返回的关系，可切回初始子图。
 - 顶部「设置」提供本体库、配对业务数据源、检索模式、本地图库和模型参数。数据源保存后开启使用新绑定的会话，历史保留原有绑定。新会话保存逻辑源标识，后续恢复可重新绑定。模型保存沿用分析服务现有全局配置。
 - 规格和验收条件见 [本体消费展示工作台规格](../docs/specs/workbench-agentkit-ontology-consumption.md)。主要变更在 `frontend/agentkit/`、`bi_agent/web/app.py` 及 AgentKit 回归测试。
+
+### 2026-11-25 AgentKit 工作台预览实例更新到 5dc0e5d（8766）
+
+- 按用户当次授权，只更新 172.16.10.34 的 8766 AgentKit 预览实例：`git archive 5dc0e5d` 到
+  `agentkit-5dc0e5d-20261125-1101`，复用既有 `.env`/`.venv` 软链，`dataset` 指向原预览
+  `dataset-preview`，未触碰 8765 冻结驾驶舱。
+- 验证：`/healthz`、`/workbench-agentkit`、`/static/vendor/agentkit/*`、`/api/conversations` 均 200；
+  旧进程已停止，新 PID 1767209。
+- 主要文件：`DEPLOYMENT.md`（§9 发布记录）。

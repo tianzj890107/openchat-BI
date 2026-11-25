@@ -472,6 +472,18 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 AgentKit 工作台预览更新到 5dc0e5d（8766）
+
+- 授权：用户当次要求「提交推送mr当前变化并且重新部署34」，确认范围仅更新 8766 预览实例。
+- 代码：`5dc0e5d`（`feature/agentkit-ontology-workbench-spec`），`git archive` 导出到
+  `agentkit-5dc0e5d-20261125-1101`，`RELEASE_COMMIT=5dc0e5d`。
+- 运行：`.env`、`.venv` 软链复用既有 release；`dataset` 指向原预览 `dataset-preview`（保留会话/产物）；
+  PID `1767209`，监听 `8766`，日志 `app-8766.log`。
+- 验证：`/healthz` 200；`/workbench-agentkit` 200（内外网）；
+  `/static/vendor/agentkit/workbench-agentkit.js?v=1795573139` 200；`/api/conversations` 200。
+- 回滚：停 `1767209`，在 `agentkit-d074326-20261125-0941` 重新启动
+  `APP_ROOT_PATH='' .venv/bin/python -m bi_agent.web --host 0.0.0.0 --port 8766`。
+
 ### 2026-11-25 AgentKit 工作台预览实例（8766）
 
 - 授权：用户当次明确要求「部署到 34，让我看一下现在的样子」。仅新增预览实例；未停止、重启或修改 8765 上正在运行的 `serve-frozen.py` 冻结驾驶舱。
