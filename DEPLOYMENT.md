@@ -472,6 +472,15 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 8766 预览更新到 31a9b08（发送按钮靠右）
+
+- 代码：`31a9b08`，`git archive` 到 `agentkit-31a9b08-20261125-1748`，`RELEASE_COMMIT=31a9b08`。
+- 复用：`preview.env`、`dataset-local` 本体、`.venv` 软链、`dataset` → 原预览 `dataset-preview`。
+- 运行：PID `3396219`，端口 `8766`。
+- 验证：`/healthz`、`/workbench`、`/workbench-agentkit`、`/workbench-legacy` 均 200；
+  `workbench-agentkit.css` 含发送/停止按钮的 `margin-inline-start:auto` 规则。
+- 回滚：停 `3396219`，在 `agentkit-c1a29b8-20261125-1738` 重新启动 8766。
+
 ### 2026-11-25 8766 预览更新到 c1a29b8（去掉输入区 Enter 提示）
 
 - 代码：`c1a29b8`，`git archive` 到 `agentkit-c1a29b8-20261125-1738`，`RELEASE_COMMIT=c1a29b8`。

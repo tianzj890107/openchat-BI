@@ -150,3 +150,8 @@
 - 去掉提示行后发送按钮仍跟随模型选择靠左；`.ak-composer-actions > .ak-send/.ak-stop` 增加 `margin-inline-start:auto`，
   无论是否有提示文字，发送/停止按钮都固定在输入区右边缘。
 - 重建 `static/vendor/agentkit/*`；Node 185 项通过。
+
+### 2026-11-25 8766 预览更新到 31a9b08
+
+- 部署发送/停止按钮靠右的修复；`/workbench` 等页面与 CSS 规则验证通过，未触碰 8765。
+- 主要文件：`DEPLOYMENT.md`（§9）。
