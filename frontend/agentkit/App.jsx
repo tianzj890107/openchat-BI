@@ -324,7 +324,7 @@ export default function App({version}) {
               ))}
             </div>
             <button type="button" className="ak-ghost ak-source-trigger" aria-haspopup="dialog"
-              onClick={() => setSettingsOpen(true)}>数据源</button>
+              onClick={() => setSettingsOpen(true)}>切换本体库/数据源</button>
           </nav>
         </aside>
 

@@ -1319,3 +1319,42 @@
   color: var(--ak-accent) !important;
   font-size: 12px !important;
 }
+
+/* Live stage narration while a turn is running (before/inside tool calls). */
+.ak-stage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 2px 0 10px;
+  color: var(--ak-muted, #6b756f);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ak-stage-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ak-accent, #36745c);
+  animation: ak-stage-pulse 1.4s ease-in-out infinite;
+}
+.ak-stage-text { color: var(--ak-ink, #27332d); }
+.ak-thinking { flex-basis: 100%; }
+.ak-thinking > summary {
+  cursor: pointer;
+  color: var(--ak-muted, #6b756f);
+  font-size: 12px;
+}
+.ak-thinking > p {
+  margin: 6px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--ak-muted, #6b756f);
+  font-size: 12px;
+  line-height: 1.7;
+}
+@keyframes ak-stage-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .ak-stage-dot { animation: none; } }
+.ak-close { font-size: 18px; line-height: 1; padding: 0 6px; }

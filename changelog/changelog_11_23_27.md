@@ -86,3 +86,13 @@
   `dataset-preview`；未触碰 8765。
 - 验证：`/healthz`、`/workbench-agentkit`、`workbench-agentkit.js`、`/api/sources` 均 200；新 PID 2396451。
 - 主要文件：`DEPLOYMENT.md`（§9 发布记录）。
+
+### 2026-11-25 AgentKit 工作台：模型名、关闭按钮与阶段提示
+
+- 模型列表标签改为真实模型名（`bi_agent/llm/registry.py` 去掉“团队 API · …”前缀），AgentKit 与工作台设置都显示实际模型 id。
+- 设置弹窗的关闭按钮由“关闭模型 / 关闭数据源”文字改为叉号（带 `aria-label`）；入口与弹窗标题的“数据源”改为
+  “切换本体库/数据源”，保存按钮改为“保存本体库与数据源”。
+- 会话区新增阶段提示：本轮执行中显示当前 SOP 阶段或“正在调用 <工具>”，并可在“思考过程”里展开模型 thinking；
+  工具调用开始后不再是无输出的空白等待。
+- 重新构建 `static/vendor/agentkit/workbench-agentkit.{js,css}`；`tests/workbench_agentkit_dom.test.mjs` 同步新文案，
+  Node 套件 177 项通过。

@@ -48,14 +48,36 @@ function Clarification({choice, onChoose}) {
   );
 }
 
+function stageNote(turn) {
+  const step = (turn.sop?.todos || []).find((item) => item.status === "in_progress");
+  if (step) return step.detail || step.content || step.text || "";
+  const running = (turn.assistant.tools || []).find((tool) => tool.status === "running");
+  if (running) return `正在调用 ${running.name}`;
+  return "";
+}
+
 function Turn({turn, error, onRetry, onOpenOntology}) {
   const {text, tools} = turn.assistant;
+  const thinking = String(turn.assistant.thinking || "").trim();
   const hasAnswer = Boolean(text.trim());
   const showError = turn.status === "error";
   const active = turn.status === "streaming" || turn.status === "paused";
+  const stage = active ? stageNote(turn) : "";
   return (
     <article className="ak-turn">
       {turn.user ? <div className="ak-user"><p>{turn.user}</p></div> : null}
+      {active ? (
+        <div className="ak-stage" role="status" aria-live="polite">
+          <span className="ak-stage-dot" aria-hidden="true" />
+          <span className="ak-stage-text">{stage || "准备分析…"}</span>
+          {thinking ? (
+            <details className="ak-thinking">
+              <summary>思考过程</summary>
+              <p>{thinking}</p>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
       {hasAnswer || tools.length || showError ? (
         <div className="ak-assistant">
           {hasAnswer ? <MarkdownText text={text} /> : null}

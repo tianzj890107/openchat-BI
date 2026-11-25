@@ -416,7 +416,7 @@ test('workbench settings save paired sources and models and keep history on its 
   await waitFor(() => document.querySelector('.ak-turn')?.textContent.includes('旧会话问题'));
   assert.ok(!document.querySelector('.ak-topbar'), 'the page has no shared top bar');
   assert.match(document.querySelector('.ak-sessions').textContent, /智能分析.*ontology-v0\.0\.0/);
-  const settings = findButton(document, '数据源');
+  const settings = findButton(document, '切换本体库/数据源');
   assert.ok(settings?.closest('.ak-nav-footer'), 'source settings are in the navigation footer');
   settings.click();
   const ontology = await waitFor(() => document.querySelector('select[name="ontology"]'));
@@ -426,15 +426,15 @@ test('workbench settings save paired sources and models and keep history on its 
   const database = document.querySelector('select[name="database"]');
   await waitFor(() => database.value === 'db:b');
   assert.equal(database.value, 'db:b');
-  findButton(document, '保存数据源').click();
+  findButton(document, '保存本体库与数据源').click();
   assert.ok(await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes('源暂不可用')));
   assert.match(document.querySelector('.ak-turn').textContent, /旧会话问题/);
-  findButton(document, '保存数据源').click();
+  findButton(document, '保存本体库与数据源').click();
   assert.ok(await waitFor(() => [...document.querySelectorAll('[role="status"]')].some((item) => item.textContent.includes('数据源已保存'))));
   assert.equal(document.querySelector('.ak-turn'), null, 'save opens a new conversation');
 
   assert.equal(document.querySelector('input[name="thinking"]'), null);
-  findButton(document, '关闭数据源').click();
+  document.querySelector('button.ak-close[aria-label="关闭切换本体库/数据源"]').click();
   const modelButton = await waitFor(() => findButton(document, '样例模型'));
   assert.ok(modelButton?.closest('.ak-composer'), 'the current model is displayed inside the composer');
   assert.ok(document.querySelector('.ak-send')?.closest('.ak-composer'));
@@ -447,7 +447,7 @@ test('workbench settings save paired sources and models and keep history on its 
   const modelPut = calls.find((call) => call.url === '/api/config' && call.method === 'PUT');
   assert.deepEqual(JSON.parse(modelPut.body), {...config.current, thinking: true});
 
-  findButton(document, '关闭模型').click();
+  document.querySelector('button.ak-close[aria-label="关闭模型"]').click();
   await typeAndSend(window, '用新配置分析');
   await waitFor(() => calls.some((call) => call.url === '/api/chat'));
   const sourcePuts = calls.filter((call) => call.url === '/api/sources' && call.method === 'PUT');

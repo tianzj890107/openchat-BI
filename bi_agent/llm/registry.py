@@ -51,9 +51,8 @@ def team_model_supports_thinking(model_id: str) -> bool:
 MODELS: list[dict[str, Any]] = [
     {
         "key": "team-configured",
-        "label": "团队 API（环境配置） · " + (
-            os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash"
-        ),
+        # The UI shows the real model name, not the provider banner.
+        "label": os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash",
         "provider": "team",
         "model_id": os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash",
         "default_max_tokens": 8192,
@@ -256,7 +255,7 @@ def _load_team_catalog_from_env() -> None:
             continue
         MODELS.append({
             "key": _team_model_key(model_id),
-            "label": f"团队 API · {model_id}",
+            "label": model_id,
             "provider": "team",
             "model_id": model_id,
             "default_max_tokens": 8192,

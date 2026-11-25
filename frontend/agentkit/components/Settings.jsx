@@ -116,7 +116,7 @@ function SourcesForm({data, preference, hasConversation, busy, onSave}) {
         {hasConversation ? <p className="ak-settings-hint">保存后开启新会话，已有对话可从历史打开。</p> : null}
         {status ? <p role={status.error ? "alert" : "status"}>{status.text}</p> : null}
         <button type="submit" className="ak-primary" disabled={busy || !values.ontology || !values.database}>
-          {saving ? "保存中…" : "保存数据源"}
+          {saving ? "保存中…" : "保存本体库与数据源"}
         </button>
       </fieldset>
     </form>
@@ -220,7 +220,7 @@ function SettingsDialog({name, busy, onClose, children}) {
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <header className="ak-settings-head">
         <h2 id={title}>{name}设置</h2>
-        <button type="button" className="ak-ghost" onClick={onClose}>关闭{name}</button>
+        <button type="button" className="ak-ghost ak-close" aria-label={`关闭${name}`} title={`关闭${name}`} onClick={onClose}>×</button>
       </header>
       {busy ? <p className="ak-settings-hint">当前分析结束后可以保存设置。</p> : null}
       {children}
@@ -239,8 +239,8 @@ export function SourceSettings({sessionId, preference, hasConversation, busy, on
     return () => controller.abort();
   }, [sessionId]);
   return (
-    <SettingsDialog name="数据源" busy={busy} onClose={onClose}>
-      <SettingsContent result={sources} label="数据源">
+    <SettingsDialog name="切换本体库/数据源" busy={busy} onClose={onClose}>
+      <SettingsContent result={sources} label="切换本体库/数据源">
         {(data) => <SourcesForm data={data} preference={preference}
           hasConversation={hasConversation} busy={busy} onSave={onSaveSources} />}
       </SettingsContent>
