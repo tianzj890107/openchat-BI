@@ -472,6 +472,21 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 AgentKit 工作台预览实例（8766）
+
+- 授权：用户当次明确要求「部署到 34，让我看一下现在的样子」。仅新增预览实例；未停止、重启或修改 8765 上正在运行的 `serve-frozen.py` 冻结驾驶舱。
+- 代码：提交 `d074326`（`feature/agentkit-ontology-workbench-spec`），用 `git archive` 导出到 release 目录
+  `agentkit-d074326-20261125-0941`，并写入 `RELEASE_COMMIT=d074326…`。
+- 运行：`.venv`、`.env` 指向既有 release 的共享资源；`dataset` 改为本 release 内的 `dataset-preview`
+  （仅仓库自带样本文件，`conversations` 为空），不读写生产会话、上传、图表。
+  启动命令：`APP_ROOT_PATH='' .venv/bin/python -m bi_agent.web --host 0.0.0.0 --port 8766`；
+  PID 写入 `APP-8766.pid`，日志 `app-8766.log`。当前 PID `1451716`。
+- 访问：`http://172.16.10.34:8766/workbench-agentkit`；
+  带交接示例：`http://172.16.10.34:8766/workbench-agentkit?source=v61-cockpit&anchor=PACK_OPP_COVERAGE&period=2026Q3&handoff=h-7`。
+- 验证：`/healthz` 200；页面与 `workbench-agentkit.js/css` 200（mtime 版本号）；`/api/conversations` 返回空库；
+  真实 `/api/chat` 返回 200 且 83 帧 SSE 以 `done` 结束。
+- 回滚/清理：`kill $(cat APP-8766.pid)` 即可下线预览，release 目录可整体删除；8765 与其他 release 不受影响。
+
 ### 历史记录：Cockpit 三页看板（8876 已停止维护；当前统一使用 8765）
 
 > 本节保留 2026-10-26 的历史发布过程，其中的 `8876`、`18765`、`8877` 地址和目录均不再维护。
