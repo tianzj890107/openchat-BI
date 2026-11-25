@@ -144,3 +144,9 @@
   `/workbench` 与其 bundle 已无该文案。未触碰 8765。
 - 验证：`/healthz`、`/workbench`、`/workbench-agentkit`、`/workbench-legacy`、`/api/sources` 均 200。
 - 主要文件：`DEPLOYMENT.md`（§9）。
+
+### 2026-11-25 工作台：发送/停止按钮固定靠右
+
+- 去掉提示行后发送按钮仍跟随模型选择靠左；`.ak-composer-actions > .ak-send/.ak-stop` 增加 `margin-inline-start:auto`，
+  无论是否有提示文字，发送/停止按钮都固定在输入区右边缘。
+- 重建 `static/vendor/agentkit/*`；Node 185 项通过。

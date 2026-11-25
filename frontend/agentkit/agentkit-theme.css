@@ -629,6 +629,13 @@
   line-height: 1.35;
 }
 
+/* The send/stop control always sits at the right edge of the composer row,
+   whether or not any hint text is present. */
+.ak-composer-actions > .ak-send,
+.ak-composer-actions > .ak-stop {
+  margin-inline-start: auto;
+}
+
 .ak-shell .ak-model-select {
   display: flex;
   align-items: center;
