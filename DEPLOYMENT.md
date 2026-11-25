@@ -472,6 +472,17 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 8766 预览更新到 4c90a1d（模型名/关闭按钮/阶段提示）
+
+- 代码：`4c90a1d`（`feature/agentkit-ontology-workbench-spec`），`git archive` 到
+  `agentkit-4c90a1d-20261125-1410`，`RELEASE_COMMIT=4c90a1d`。
+- 复用：`preview.env`、`dataset-local` 本体、`.venv` 软链、`dataset` → 原预览 `dataset-preview`。
+- 运行：PID `2485285`，端口 `8766`。
+- 验证：`/healthz` 200、`/workbench-agentkit` 200；页面 bundle 含 `ak-stage` 与“切换本体库/数据源”；
+  `/api/config` 的 models 标签为真实模型名（`direct-deepseek-v4-flash`、`mimo-v2.5`…）；
+  `/api/sources` 仍列出 `dataset-local/亿纬锂能_流程360本体元模型_V3.1_本地PG版.xlsx` 与 `PostgreSQL · ywln_crm`。
+- 回滚：停 `2485285`，在 `agentkit-dcc3dff-20261125-1345` 重新启动 8766。
+
 ### 2026-11-25 8766 预览更新到 dcc3dff（含 AgentKit 布局与进度优化）
 
 - 代码：`dcc3dff`（分支 `feature/agentkit-ontology-workbench-spec`，含 `8f24dfe` 的 AgentKit 布局与分析进度优化），

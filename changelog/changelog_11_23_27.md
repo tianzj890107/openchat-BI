@@ -96,3 +96,10 @@
   工具调用开始后不再是无输出的空白等待。
 - 重新构建 `static/vendor/agentkit/workbench-agentkit.{js,css}`；`tests/workbench_agentkit_dom.test.mjs` 同步新文案，
   Node 套件 177 项通过。
+
+### 2026-11-25 8766 预览更新到 4c90a1d
+
+- 按用户当次授权把模型名、叉号关闭按钮、阶段提示三项改动部署到 172.16.10.34 的 8766 预览：
+  release `agentkit-4c90a1d-20261125-1410`，复用 preview.env 与 dataset-local 本体，未触碰 8765。
+- 验证：`/healthz` 200、页面 200、bundle 含 `ak-stage`、`/api/config` 返回真实模型名、`/api/sources` 源不变。
+- 主要文件：`DEPLOYMENT.md`（§9 发布记录）。
