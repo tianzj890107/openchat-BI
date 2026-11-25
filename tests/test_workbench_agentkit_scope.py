@@ -66,27 +66,44 @@ class ScopeUnitTests(unittest.TestCase):
     def test_no_scope_yields_no_prefix(self) -> None:
         self.assertEqual(web_app._handoff_scope_text(None), "")
 
+    def test_malformed_scope_fields_are_rejected(self) -> None:
+        cases = [
+            {"anchor": "bad anchor!", "period": "2026Q3"},
+            {"anchor": "PACK_OPP_COVERAGE", "period": "Q3"},
+            {"anchor": "PACK_OPP_COVERAGE", "period": "2026Q3", "filters": ["customer=宁德时代"]},
+            {"anchor": "PACK_OPP_COVERAGE", "period": "2026Q3", "evidence": "ev-11"},
+            {"anchor": "PACK_OPP_COVERAGE", "period": "2026Q3", "evidence": ["ev-11", ""]},
+            {"anchor": "PACK_OPP_COVERAGE", "period": "2026Q3", "evidence": [f"e{i}" for i in range(21)]},
+        ]
+        for scope in cases:
+            with self.subTest(scope=scope):
+                with self.assertRaises(web_app.HTTPException) as raised:
+                    web_app._handoff_scope_text(scope)
+                self.assertEqual(raised.exception.status_code, 400)
+
 
 class ScopeRouteTests(unittest.TestCase):
     def setUp(self) -> None:
         self.session = FakeSession()
         self.client = TestClient(web_app.app)
 
-    def _patch(self):
+    def _patch(self, captured=None):
+        def run(session, gen, *args, **kwargs):
+            if captured is not None:
+                captured["events"] = list(gen)
+            return web_app.StreamingResponse(
+                iter([b"data: {}\n\n"]), media_type="text/event-stream"
+            )
+
         return (
             mock.patch.object(web_app, "_ensure_session", return_value=self.session),
             mock.patch.object(web_app, "_begin_turn", return_value=(None, None, "t-test", None, None)),
-            mock.patch.object(
-                web_app,
-                "_run_turn_stream",
-                side_effect=lambda session, gen, *args, **kwargs: web_app.StreamingResponse(
-                    iter([b"data: {}\n\n"]), media_type="text/event-stream"
-                ),
-            ),
+            mock.patch.object(web_app, "_run_turn_stream", side_effect=run),
         )
 
     def test_chat_carries_scope_into_the_turn_and_keeps_visible_text(self) -> None:
-        ensure, begin, run = self._patch()
+        captured = {}
+        ensure, begin, run = self._patch(captured)
         with ensure, begin, run:
             response = self.client.post("/api/chat", json={
                 "message": "PACK 未签单商机主要涉及哪些客户？",
@@ -100,6 +117,12 @@ class ScopeRouteTests(unittest.TestCase):
         self.assertIn("PACK_OPP_COVERAGE", prompt)
         self.assertIn("2026Q3", prompt)
         self.assertEqual(visible, "PACK 未签单商机主要涉及哪些客户？")
+        # The stream starts by acknowledging the accepted range.
+        ack = captured["events"][0]
+        self.assertEqual(ack["type"], "scope_accepted")
+        self.assertEqual(ack["scope"]["anchor"], "PACK_OPP_COVERAGE")
+        self.assertEqual(ack["scope"]["period"], "2026Q3")
+        self.assertEqual(ack["scope"]["filters"], {"customer": "宁德时代", "region": "华东"})
 
     def test_chat_rejects_an_incomplete_scope(self) -> None:
         ensure, begin, run = self._patch()

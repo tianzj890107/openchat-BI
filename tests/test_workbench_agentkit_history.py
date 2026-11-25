@@ -113,3 +113,45 @@ class ActivateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SavePreservesLegacyTests(unittest.TestCase):
+    """An AgentKit save must not blank the Pro UI snapshots of the same record."""
+
+    def test_agentkit_save_keeps_messages_html_and_sop(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ConversationStore(tmp)
+            session = FakeSession()
+            session.messages = [{"role": "user", "content": [{"type": "text", "text": "旧问题"}]}]
+            summary = store.save(
+                mode="data",
+                title="旧会话",
+                messages=session.messages,
+                chat_html="<div id='chat'/>",
+                dashboard_html="<div id='dash'/>",
+                ontology_html="<div id='onto'/>",
+                tools_html="<div id='tools'/>",
+                llm_html="<div id='llm'/>",
+                sop_steps=[{"content": "旧步骤", "status": "done"}],
+            )
+            cid = summary["id"]
+            client = TestClient(web_app.app)
+            with mock.patch.object(web_app, "_require_conversation_store", return_value=store), \
+                 mock.patch.object(web_app, "_session_for_mode", return_value=session):
+                response = client.post("/api/conversations/save", json={
+                    "mode": "data",
+                    "title": "旧会话",
+                    "cid": cid,
+                    "session_id": "agentkit-legacy-1",
+                    "agentkit": AGENTKIT_SNAPSHOT,
+                })
+            self.assertEqual(response.status_code, 200)
+            record = store.get(cid)
+            self.assertEqual(record["chat_html"], "<div id='chat'/>")
+            self.assertEqual(record["dashboard_html"], "<div id='dash'/>")
+            self.assertEqual(record["ontology_html"], "<div id='onto'/>")
+            self.assertEqual(record["tools_html"], "<div id='tools'/>")
+            self.assertEqual(record["llm_html"], "<div id='llm'/>")
+            self.assertEqual(record["sop_steps"][0]["content"], "旧步骤")
+            self.assertTrue(record["messages"], "stored messages are not blanked")
+            self.assertEqual(record["agentkit"]["turns"][0]["id"], "turn-1")

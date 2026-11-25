@@ -190,6 +190,11 @@ export function handoffSessionStorageKey(handoff) {
   return handoff?.handoffId ? `agentkit.handoff-session.${handoff.handoffId}` : "";
 }
 
+/** The conversation a handoff card already produced, so a refresh can reopen it. */
+export function handoffConversationStorageKey(handoff) {
+  return handoff?.handoffId ? `agentkit.handoff-conversation.${handoff.handoffId}` : "";
+}
+
 export function resolveHandoffSession(handoff, storage = null) {
   const key = handoffSessionStorageKey(handoff);
   if (!key) return "";
@@ -250,11 +255,22 @@ export function turnsFromSnapshot(snapshot) {
   }));
 }
 
-let turnSeq = 0;
+/**
+ * Turn ids must stay unique across restored history and new turns: a repeated
+ * `turn-1` breaks React keys and assistant-ui message ids (duplicate ids made
+ * the page blank after a follow-up on a restored conversation).
+ */
+export function nextTurnId(turns) {
+  let max = 0;
+  for (const turn of turns || []) {
+    const match = /^turn-(\d+)$/.exec(String(turn?.id || ''));
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return `turn-${max + 1}`;
+}
 
 /** Begin a turn: user text lands immediately, the assistant bubble streams in. */
 export function startTurn(state, {text, sessionId} = {}) {
-  turnSeq += 1;
   const userText = String(text || '').trim();
   return {
     ...state,
@@ -266,7 +282,7 @@ export function startTurn(state, {text, sessionId} = {}) {
     turns: [
       ...state.turns,
       {
-        id: `turn-${turnSeq}`,
+        id: nextTurnId(state.turns),
         user: userText,
         status: 'streaming',
         assistant: {text: '', thinking: '', tools: []},
@@ -388,6 +404,11 @@ export function applyEvent(state, event) {
         return [...tools.filter((tool) => tool.id !== id), merged];
       });
       return duplicate ? state : next;
+    }
+    case 'scope_accepted': {
+      // The analysis service echoed the range it accepted; show it as
+      // confirmed instead of trusting the browser-only banner.
+      return {...state, scopeConfirmed: event.scope || null};
     }
     case 'user_choice_requested': {
       const pendingChoice = {

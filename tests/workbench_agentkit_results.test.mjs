@@ -13,6 +13,7 @@ import {
   ontologyHits,
   subgraphRequest,
   tableModel,
+  turnBoardItems,
 } from '../frontend/agentkit/results.js';
 import {applyEvent, boardItems, createWorkbenchState, startTurn} from '../frontend/agentkit/state.js';
 
@@ -148,4 +149,40 @@ test('subgraph requests are built only for valid ontology codes', () => {
   });
   assert.equal(subgraphRequest({code: 'bad code!'}, 's-1'), null);
   assert.equal(subgraphRequest({code: ''}, 's-1'), null);
+});
+
+test('missing chart values stay missing instead of rendering as zero', () => {
+  const model = chartModel({
+    title: '缺口',
+    chart_type: 'bar',
+    option: {
+      xAxis: {data: ['宁德时代', '比亚迪', '未识别']},
+      series: [{name: '缺口', data: [3, null, undefined]}],
+    },
+  });
+  assert.deepEqual(model.series[0].values, [3, null, null]);
+
+  const pie = chartModel({
+    title: '构成',
+    chart_type: 'pie',
+    option: {series: [{name: '占比', data: [{name: 'PACK', value: 62}, {name: '储能', value: null}]}]},
+  });
+  assert.deepEqual(pie.slices, [{name: 'PACK', value: 62}, {name: '储能', value: null}]);
+});
+
+test('each turn keeps its own board items', () => {
+  let state = startTurn(createWorkbenchState(), {text: '第一轮', sessionId: 's-1'});
+  state = applyEvent(state, {type: 'tool_start', turn_id: 't-1', id: 'tool-1', name: 'TableGenerate'});
+  state = applyEvent(state, {type: 'tool_result', turn_id: 't-1', id: 'tool-1', name: 'TableGenerate',
+    table: {title: '第一轮明细', columns: [{key: 'a', label: 'A'}], rows: [[1]]}});
+  state = applyEvent(state, {type: 'done', turn_id: 't-1'});
+
+  state = startTurn(state, {text: '第二轮', sessionId: 's-1'});
+  state = applyEvent(state, {type: 'tool_start', turn_id: 't-2', id: 'tool-2', name: 'ChartGenerate'});
+  state = applyEvent(state, {type: 'tool_result', turn_id: 't-2', id: 'tool-2', name: 'ChartGenerate',
+    chart: {title: '第二轮图', chart_type: 'bar', option: {xAxis: {data: ['A']}, series: [{name: 'S', data: [2]}]}}});
+  state = applyEvent(state, {type: 'done', turn_id: 't-2'});
+
+  assert.deepEqual(turnBoardItems(state.turns[0]).map((item) => item.title), ['第一轮明细']);
+  assert.deepEqual(turnBoardItems(state.turns[1]).map((item) => item.title), ['第二轮图']);
 });

@@ -1151,3 +1151,79 @@
   border-left: 3px solid var(--ak-border-strong);
   color: var(--ak-text-muted);
 }
+
+/* per-turn result groups */
+
+.ak-turn-results {
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius);
+  background: var(--ak-panel);
+  overflow: hidden;
+}
+
+.ak-turn-results-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  background: var(--ak-panel-muted);
+  border-bottom: 1px solid transparent;
+  list-style: none;
+}
+
+.ak-turn-results[open] > .ak-turn-results-head {
+  border-bottom-color: var(--ak-border);
+}
+
+.ak-turn-results-head::-webkit-details-marker {
+  display: none;
+}
+
+.ak-turn-index {
+  flex: 0 0 auto;
+  color: var(--ak-accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ak-turn-question {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.ak-turn-results-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 14px;
+}
+
+.ak-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ak-subsection-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ak-text-muted);
+}
+
+.ak-bar[data-missing="1"] .ak-bar-track {
+  background: transparent;
+  border: 1px dashed var(--ak-border-strong);
+}
+
+.ak-handoff-confirmed {
+  margin: 6px 0 0 !important;
+  padding: 4px 8px;
+  border-radius: var(--ak-radius-sm);
+  background: var(--ak-accent-soft);
+  color: var(--ak-accent) !important;
+  font-size: 12px !important;
+}

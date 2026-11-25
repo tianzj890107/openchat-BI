@@ -217,8 +217,11 @@ test('the card scope travels with the request and the session survives a refresh
   const url = 'http://localhost/workbench-agentkit?source=v61-cockpit'
     + '&anchor=PACK_OPP_COVERAGE&period=2026Q3'
     + '&filters=customer%3D%E5%AE%81%E5%BE%B7%E6%97%B6%E4%BB%A3&evidence=ev-11&handoff=h-7';
-  const first = await boot({url, chatFrames: [{type: 'text_delta', turn_id: 't1', text: '按范围分析'},
-    {type: 'done', turn_id: 't1'}]});
+  const first = await boot({url, chatFrames: [
+    {type: 'scope_accepted', turn_id: 't1', scope: {anchor: 'PACK_OPP_COVERAGE', period: '2026Q3'}},
+    {type: 'text_delta', turn_id: 't1', text: '按范围分析'},
+    {type: 'done', turn_id: 't1'},
+  ]});
   await typeAndSend(first.window, 'PACK 未签单商机主要涉及哪些客户？');
   await new Promise((done) => setTimeout(done, 400));
 
@@ -231,6 +234,7 @@ test('the card scope travels with the request and the session survives a refresh
   assert.deepEqual(firstBody.scope.filters, {customer: '宁德时代'});
   assert.deepEqual(firstBody.scope.evidence, ['ev-11']);
   assert.equal(firstBody.scope.handoff_id, 'h-7');
+  assert.match(first.window.document.body.textContent, /分析服务已核对范围/, 'accepted scope is confirmed in the page');
 
   // Simulate a page refresh: same tab storage, same URL.
   const seed = {};
@@ -291,12 +295,27 @@ test('opening a stored conversation restores the board and keeps the caller sess
   assert.match(document.body.textContent, /宁德时代/, 'restored table row');
   assert.match(document.body.textContent, /TableGenerate/, 'restored tool run');
   assert.match(document.body.textContent, /BO_PACK_OPP_002/, 'restored ontology hit');
+  assert.equal(
+    calls.filter((call) => call.url.includes('api/conversations/save')).length,
+    0,
+    'opening a stored conversation must not write to it',
+  );
 
   // A follow-up must continue in the restored session.
   await typeAndSend(window, '继续追问');
   await new Promise((done) => setTimeout(done, 400));
   const chat = JSON.parse(calls.find((call) => call.url.includes('api/chat')).body);
   assert.equal(chat.session_id, 'agentkit-restore', 'follow-up reuses the activated session');
+
+  const saves = calls.filter((call) => call.url.includes('api/conversations/save'));
+  assert.equal(saves.length, 1, 'only the produced turn is saved');
+  const savedTurns = JSON.parse(saves[0].body).agentkit.turns;
+  assert.equal(savedTurns.length, 2, 'history and the new turn are saved together');
+  assert.notEqual(savedTurns[0].id, savedTurns[1].id, 'turn ids stay unique after restore');
+  assert.ok(
+    calls.filter((call) => call.url.includes('api/conversations') && !call.url.includes('save')).length >= 2,
+    'conversation list refreshes after saving',
+  );
 });
 
 test('answering a clarification resumes the same turn with the new request id', async () => {
@@ -331,4 +350,78 @@ test('answering a clarification resumes the same turn with the new request id', 
   assert.ok(document.querySelector('button.ak-send'), 'composer returns to send state');
   assert.doesNotMatch(document.body.textContent, /正在执行本轮分析/, 'no stuck streaming state');
   assert.deepEqual(window.__agentkitErrors || [], []);
+});
+
+test('a restored conversation keeps each turn board separate and never invents zeros', async () => {
+  const activatePayload = {
+    session_id: 'agentkit-restore-2',
+    messages: [],
+    agentkit: {
+      version: 1,
+      turns: [
+        {
+          id: 'turn-1', user: '第一轮：客户明细', status: 'done',
+          assistant: {text: '第一轮结论', tools: [{
+            id: 'tool-1', name: 'TableGenerate', status: 'done', input: '{}',
+            table: {title: '第一轮明细', columns: [{key: 'customer', label: '客户'}], rows: [['宁德时代']]},
+          }]},
+        },
+        {
+          id: 'turn-2', user: '第二轮：缺口图', status: 'done',
+          assistant: {text: '第二轮结论', tools: [{
+            id: 'tool-2', name: 'ChartGenerate', status: 'done', input: '{}',
+            chart: {
+              title: '第二轮缺口图', chart_type: 'bar',
+              option: {xAxis: {data: ['宁德时代', '比亚迪']}, series: [{name: '缺口', data: [3, null]}]},
+            },
+          }]},
+        },
+      ],
+    },
+  };
+  const {window} = await boot({activatePayload});
+  window.document.querySelector('button.ak-session').click();
+  await new Promise((done) => setTimeout(done, 400));
+
+  const groups = [...window.document.querySelectorAll('details.ak-turn-results')];
+  assert.equal(groups.length, 2, 'one board group per turn');
+  assert.match(groups[0].textContent, /第一轮明细/);
+  assert.doesNotMatch(groups[0].textContent, /第二轮缺口图/);
+  assert.match(groups[1].textContent, /第二轮缺口图/);
+  assert.match(groups[1].textContent, /—/, 'missing chart value renders as a dash');
+  assert.doesNotMatch(groups[1].textContent, /缺口\s*0/, 'missing value is never rendered as zero');
+});
+
+test('refreshing a V6.1 card reopens the conversation it already produced', async () => {
+  const url = 'http://localhost/workbench-agentkit?source=v61-cockpit'
+    + '&anchor=PACK_OPP_COVERAGE&period=2026Q3&handoff=h-7';
+  const activatePayload = {
+    session_id: 'agentkit-h-7-abc',
+    messages: [],
+    agentkit: {version: 1, turns: [{
+      id: 'turn-1', user: 'PACK 未签单商机', status: 'done',
+      assistant: {text: '已恢复到该卡的会话', tools: []},
+    }]},
+  };
+  const {window, calls} = await boot({
+    url,
+    activatePayload,
+    sessionStorageSeed: {
+      'agentkit.handoff-session.h-7': 'agentkit-h-7-abc',
+      'agentkit.handoff-conversation.h-7': 'conv-7',
+    },
+    chatFrames: [{type: 'done', turn_id: 't9'}],
+  });
+  await new Promise((done) => setTimeout(done, 500));
+
+  const activateCall = calls.find((call) => call.url.includes('/activate'));
+  assert.ok(activateCall, 'the card conversation is reopened on load');
+  assert.match(activateCall.url, /conversations\/conv-7\/activate\?session_id=agentkit-h-7-abc/);
+  assert.match(window.document.body.textContent, /已恢复到该卡的会话/);
+  assert.doesNotMatch(window.document.body.textContent, /从一个经营问题开始/, 'no empty state');
+  assert.equal(
+    calls.filter((call) => call.url.includes('api/conversations/save')).length,
+    0,
+    'reopening the card conversation writes nothing',
+  );
 });

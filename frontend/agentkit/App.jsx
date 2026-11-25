@@ -6,6 +6,7 @@ import {
   applyEvent,
   boardItems,
   createWorkbenchState,
+  handoffConversationStorageKey,
   handoffSessionStorageKey,
   hydrateTurns,
   parseHandoff,
@@ -53,6 +54,10 @@ export default function App() {
   const controllerRef = useRef(null);
   const stateRef = useRef(workbench);
   const savedSnapshotRef = useRef("");
+  const handoffRestoredRef = useRef(false);
+  // Opening a stored conversation must never write: only a turn produced in
+  // this page marks the conversation dirty (spec §6.1 打开旧会话).
+  const dirtyRef = useRef(false);
   stateRef.current = workbench;
 
   const refreshConversations = useCallback(async () => {
@@ -87,6 +92,7 @@ export default function App() {
       const value = String(text || "").trim();
       if (!value || stateRef.current.status === "streaming") return;
       setNotice("");
+      dirtyRef.current = true;
       setWorkbench((previous) => startTurn(previous, {text: value, sessionId}));
       runStream(sessionId, (options) => streamChat({...options, message: value, scope}));
     },
@@ -103,6 +109,7 @@ export default function App() {
       const labels = chosen.map((option) => String(option.label ?? option.id ?? ""));
       // /api/choice resumes with a NEW request turn_id; release the old one so
       // the continuation is not filtered out as stale.
+      dirtyRef.current = true;
       setWorkbench((previous) => resumeTurn(previous));
       runStream(sessionId, (options) => chooseOption({...options, ids, labels}));
     },
@@ -120,12 +127,12 @@ export default function App() {
     controllerRef.current = null;
     const next = newSessionId(handoff);
     const storageKey = handoffSessionStorageKey(handoff);
-    if (storageKey) {
-      try {
-        safeSessionStorage()?.setItem(storageKey, next);
-      } catch (_) {
-        /* storage can be unavailable in hardened browsers */
-      }
+    const conversationKey = handoffConversationStorageKey(handoff);
+    try {
+      if (storageKey) safeSessionStorage()?.setItem(storageKey, next);
+      if (conversationKey) safeSessionStorage()?.removeItem(conversationKey);
+    } catch (_) {
+      /* storage can be unavailable in hardened browsers */
     }
     setSessionId(next);
     setActiveConversation("");
@@ -141,6 +148,8 @@ export default function App() {
       // in the analysis context this conversation was reopened into.
       const restored = await openConversation(cid, sessionId);
       const nextSession = restored.sessionId || sessionId || cid;
+      dirtyRef.current = false;
+      savedSnapshotRef.current = "";
       setSessionId(nextSession);
       setActiveConversation(cid);
       setWorkbench({
@@ -156,10 +165,25 @@ export default function App() {
     }
   }, []);
 
+  // A refresh of the same card reopens the conversation it already produced
+  // instead of showing an empty transcript with a reused session id.
+  useEffect(() => {
+    if (handoffRestoredRef.current || !handoff.handoffId) return;
+    handoffRestoredRef.current = true;
+    let cid = "";
+    try {
+      cid = safeSessionStorage()?.getItem(handoffConversationStorageKey(handoff)) || "";
+    } catch (_) {
+      cid = "";
+    }
+    if (cid) void selectConversation(cid);
+  }, [handoff, selectConversation]);
+
   // Persist every completed turn so the conversation can be reopened with its
   // boards, evidence and ontology hits. Legacy (message-only) records keep
   // working through the messages fallback.
   useEffect(() => {
+    if (!dirtyRef.current) return;
     if (!["idle", "error", "interrupted"].includes(workbench.status)) return;
     if (!workbench.turns.length || !sessionId) return;
     const snapshot = snapshotFromState(workbench);
@@ -175,12 +199,26 @@ export default function App() {
       handoff: scope,
     })
       .then((saved) => {
+        dirtyRef.current = false;
         if (saved.cid && saved.cid !== activeConversation) setActiveConversation(saved.cid);
+        // Keep the card's conversation so a refresh reopens it instead of
+        // showing an empty page with a reused session id.
+        const conversationKey = handoffConversationStorageKey(handoff);
+        if (conversationKey && saved.cid) {
+          try {
+            safeSessionStorage()?.setItem(conversationKey, saved.cid);
+          } catch (_) {
+            /* storage can be unavailable in hardened browsers */
+          }
+        }
+        // The left list is server-driven: refresh so the new conversation shows
+        // without a manual reload.
+        void refreshConversations();
       })
       .catch(() => {
         /* saving history must never break the conversation */
       });
-  }, [activeConversation, scope, sessionId, workbench.status, workbench.turns]);
+  }, [activeConversation, refreshConversations, scope, sessionId, workbench.status, workbench.turns]);
 
   const restartWithoutHandoff = useCallback(() => {
     const url = new URL(window.location.href);
@@ -228,6 +266,7 @@ export default function App() {
       {handoffVisible ? (
         <HandoffBanner
           handoff={handoff}
+          confirmed={workbench.scopeConfirmed}
           onDismiss={() => setHandoffVisible(false)}
           onBack={goBackToSource}
           onRestart={restartWithoutHandoff}

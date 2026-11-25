@@ -45,3 +45,13 @@
 - 本机真实服务复验（未改线上）：带 `scope` 的 `/api/chat` 返回 124 个 SSE 事件，`user_message` 事件中可见「[来源卡带入的分析范围]…锚点=PACK_OPP_COVERAGE；期间=2026Q3…」，随后因采购域无商机数据进入澄清；缺锚点的 `scope` 返回 400「交接范围缺少风险或指标锚点」。保存会话后带新 `session_id` 调 `activate`，回传该 `session_id`、20 条消息和含表格的 `agentkit` 快照，确认保存/恢复契约生效。
 - 验证：Node 165 项通过（含 6 项 jsdom 端到端：挂载、发送、停止、交接范围与刷新会话、历史恢复、澄清续流）；后端专项 21 项通过（路由、范围校验、历史存取、入口/base-path），会话存储回归 24 项通过。产物约 721 KB（gzip 210 KB）。
 - 主要文件：`frontend/agentkit/{App.jsx,api.js,state.js,messageAdapter.js}`、`bi_agent/web/{app.py,conversations.py}`、`tests/workbench_agentkit_{dom,api,state}.test.mjs`、`tests/test_workbench_agentkit_{scope,history,route}.py`。
+
+### 2026-11-25 验收阻断项修复：历史覆盖、恢复后追问、按轮看板与交接范围确认
+
+- 打开旧会话不再写入：自动保存只在页面真的产生新一轮后触发；`/api/conversations/save` 的 AgentKit 保存只写结构化轮次，服务端保留原有 `chat_html`/`dashboard_html`/`ontology_html`/`tools_html`/`llm_html`、`sop_steps` 与消息，不再清空旧快照（`preserve_legacy`）。
+- 恢复后追问白屏：新增 `nextTurnId()`，新轮次在历史轮次之后继续编号（`turn-1`/`turn-2` → `turn-3`），避免 React key 与 assistant-ui 消息 ID 重复；jsdom 覆盖「恢复后追问」不报错且历史与新轮次同存。
+- 看板按轮分组：右栏改为「分析结果 · 按轮」，每轮一个可折叠分组，各自保留表格/图表、证据与本体命中；两轮图表不再混在一个「本轮结果」里。每轮完成后刷新左栏会话列表，无需手动刷新。
+- 缺失值不再显示为 0：图表数值保留 `null`（柱状显示「—」且不画条、饼图图例「—」、折线跳过缺失点），避免把缺失误读为 0。
+- 交接范围：`scope` 校验加强（锚点编码、期间格式、筛选项与证据引用的类型和数量上限）；`/api/chat` 首帧新增 `scope_accepted`，页面在横幅显示「分析服务已核对范围：锚点…期间…」。同一卡片的会话记录存入 sessionStorage，刷新自动重开该会话（打开不写入）。
+- 验证：Node 171 项通过（8 项 jsdom 端到端：挂载、发送、停止、范围与刷新会话、恢复、澄清续流、按轮看板、卡片刷新重开）；后端专项 47 项通过（路由、范围、历史、入口/base-path、会话存储）。产物约 723 KB（gzip 211 KB）。
+- 未闭环：PACK 销售本体的真实取证出表出图与 V6.1 真机宿主联调仍需目标环境；工作区的 V6.1 原型为仓外文件，本次未改动。

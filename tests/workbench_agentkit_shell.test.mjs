@@ -80,8 +80,10 @@ test('the upstream import keeps the pinned commit and file list on record', asyn
 
 test('the right pane exposes results, evidence and the ontology subgraph', async () => {
   const board = await read('frontend/agentkit/components/Board.jsx');
-  assert.match(board, /evidenceItems/);
-  assert.match(board, /ontologyHits/);
+  // Boards are grouped per turn; each group carries its own evidence and hits.
+  assert.match(board, /turnEvidence/);
+  assert.match(board, /turnHits/);
+  assert.match(board, /ak-turn-results/);
   assert.match(board, /OntologyGraph/);
 
   const graph = await read('frontend/agentkit/components/OntologyGraph.jsx');

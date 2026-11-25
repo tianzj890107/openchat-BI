@@ -18,7 +18,7 @@ function FilterChips({filters}) {
  * V6.1 handoff banner: shows the carried context, and turns an unusable
  * handoff into an explicit choice instead of an empty page (spec §3.2).
  */
-export default function HandoffBanner({handoff, onDismiss, onBack, onRestart}) {
+export default function HandoffBanner({handoff, confirmed, onDismiss, onBack, onRestart}) {
   if (!handoff?.active) return null;
 
   if (handoff.invalid) {
@@ -48,6 +48,11 @@ export default function HandoffBanner({handoff, onDismiss, onBack, onRestart}) {
         <FilterChips filters={handoff.filters} />
         {handoff.evidence.length ? (
           <p className="ak-handoff-evidence">证据引用：{handoff.evidence.join("、")}</p>
+        ) : null}
+        {confirmed ? (
+          <p className="ak-handoff-confirmed" role="status">
+            分析服务已核对范围：锚点 {confirmed.anchor || "—"} · 期间 {confirmed.period || "—"}
+          </p>
         ) : null}
         <p className="ak-handoff-note">以下分析会按当前期间与筛选重新核对口径，可在提问中继续补充条件。</p>
       </div>

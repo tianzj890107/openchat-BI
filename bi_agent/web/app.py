@@ -3000,6 +3000,9 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
             else None
         ),
         agentkit=req.agentkit,
+        # An AgentKit save owns the structured turns only; keep the legacy
+        # HTML/SOP/messages snapshots the Pro UI stored for this conversation.
+        preserve_legacy=bool(req.agentkit),
     )
     # Local storage is authoritative. A configured sync URL is intentionally
     # not consulted here: an old mirror must never overwrite the canonical
@@ -3165,11 +3168,28 @@ def _handoff_scope_text(scope: Optional[dict[str, Any]]) -> str:
     period = str(scope.get("period") or "").strip()
     if not anchor:
         raise HTTPException(400, "交接范围缺少风险或指标锚点，无法对齐口径")
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", anchor):
+        raise HTTPException(400, "交接范围的锚点编码无效")
     if not period:
         raise HTTPException(400, "交接范围缺少统计期间")
-    filters = scope.get("filters") if isinstance(scope.get("filters"), dict) else {}
+    if not re.fullmatch(r"[0-9]{4}[A-Za-z0-9_.~:+-]{0,31}", period):
+        raise HTTPException(400, "交接范围的统计期间格式无效")
+    raw_filters = scope.get("filters")
+    if raw_filters is not None and not isinstance(raw_filters, dict):
+        raise HTTPException(400, "交接范围的筛选条件格式无效")
+    filters = raw_filters if isinstance(raw_filters, dict) else {}
+    if len(filters) > 20:
+        raise HTTPException(400, "交接范围的筛选条件过多")
+    raw_evidence = scope.get("evidence")
+    if raw_evidence is not None and (
+        not isinstance(raw_evidence, list)
+        or any(not isinstance(item, str) or not item.strip() for item in raw_evidence)
+    ):
+        raise HTTPException(400, "交接范围的证据引用格式无效")
+    evidence = [str(item) for item in (raw_evidence or [])]
+    if len(evidence) > 20:
+        raise HTTPException(400, "交接范围的证据引用过多")
     filter_text = "；".join(f"{key}={value}" for key, value in filters.items())
-    evidence = [str(item) for item in (scope.get("evidence") or [])]
     parts = [
         "[来源卡带入的分析范围]",
         f"来源={scope.get('source') or '未标注'}",
@@ -3186,6 +3206,34 @@ def _handoff_scope_text(scope: Optional[dict[str, Any]]) -> str:
     return "；".join(parts)
 
 
+def _scope_ack_event(scope: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """First stream frame: the range the turn actually accepted.
+
+    The page echoes this to the user so a handed-over card range is confirmed
+    by the analysis service, not just by the browser.
+    """
+    if not scope:
+        return None
+    return {
+        "type": "scope_accepted",
+        "scope": {
+            "source": str(scope.get("source") or ""),
+            "anchor": str(scope.get("anchor") or ""),
+            "period": str(scope.get("period") or ""),
+            "filters": dict(scope.get("filters") or {}),
+            "evidence": [str(item) for item in (scope.get("evidence") or [])],
+            "handoff_id": str(scope.get("handoff_id") or scope.get("handoffId") or ""),
+        },
+    }
+
+
+def _with_scope_ack(scope: Optional[dict[str, Any]], events):
+    ack = _scope_ack_event(scope)
+    if ack is not None:
+        yield ack
+    yield from events
+
+
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     message = (req.message or "").strip()
@@ -3200,7 +3248,7 @@ def chat(req: ChatRequest):
         return _turn_guard_json_response(exc)
     return _run_turn_stream(
         session,
-        session.generate_turn(prompt, req.visible_user_text),
+        _with_scope_ack(req.scope, session.generate_turn(prompt, req.visible_user_text)),
         slot, lease, turn_id, ticket, cancel,
     )
 

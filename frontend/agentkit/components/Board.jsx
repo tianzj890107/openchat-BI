@@ -1,6 +1,6 @@
 import React, {useState} from "react";
 
-import {evidenceItems, ontologyHits} from "../results.js";
+import {turnBoardItems, turnEvidence, turnHits} from "../results.js";
 import OntologyGraph from "./OntologyGraph.jsx";
 
 function TableCard({item}) {
@@ -38,33 +38,43 @@ function BarChart({item}) {
   const categories = item.categories || [];
   const series = item.series?.[0];
   const values = series?.values || [];
-  const max = Math.max(1, ...values.map((value) => Math.abs(value)));
+  const present = values.filter((value) => typeof value === "number");
+  const max = Math.max(1, ...present.map((value) => Math.abs(value)));
   return (
     <ul className="ak-bars">
-      {categories.map((label, index) => (
-        <li key={label} className="ak-bar">
-          <span className="ak-bar-label">{label}</span>
-          <span className="ak-bar-track">
-            <span
-              className="ak-bar-fill"
-              style={{width: `${Math.round((Math.abs(values[index] || 0) / max) * 100)}%`}}
-            />
-          </span>
-          <span className="ak-bar-value">{String(values[index] ?? "")}</span>
-        </li>
-      ))}
+      {categories.map((label, index) => {
+        const value = values[index];
+        const missing = typeof value !== "number";
+        return (
+          <li key={label} className="ak-bar" data-missing={missing ? "1" : undefined}>
+            <span className="ak-bar-label">{label}</span>
+            <span className="ak-bar-track">
+              <span
+                className="ak-bar-fill"
+                style={{width: missing ? "0%" : `${Math.round((Math.abs(value) / max) * 100)}%`}}
+              />
+            </span>
+            <span className="ak-bar-value">{missing ? "—" : String(value)}</span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 function LineChart({item}) {
   const values = item.series?.[0]?.values || [];
-  const max = Math.max(1, ...values.map((value) => Math.abs(value)));
+  const present = values.filter((value) => typeof value === "number");
+  if (!present.length) return <p className="ak-board-empty">该图没有有效数值。</p>;
+  const max = Math.max(1, ...present.map((value) => Math.abs(value)));
   const width = 280;
   const height = 96;
   const step = values.length > 1 ? width / (values.length - 1) : width;
   const points = values
-    .map((value, index) => `${Math.round(index * step)},${Math.round(height - (Math.abs(value) / max) * height)}`)
+    .map((value, index) => (typeof value === "number"
+      ? `${Math.round(index * step)},${Math.round(height - (Math.abs(value) / max) * height)}`
+      : null))
+    .filter(Boolean)
     .join(" ");
   return (
     <svg className="ak-line" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="趋势图">
@@ -75,14 +85,23 @@ function LineChart({item}) {
 
 function PieChart({item}) {
   const slices = item.slices || [];
-  const total = slices.reduce((sum, slice) => sum + Math.abs(slice.value), 0) || 1;
+  const total = slices.reduce(
+    (sum, slice) => sum + (typeof slice.value === "number" ? Math.abs(slice.value) : 0),
+    0,
+  ) || 1;
   let cursor = 0;
-  const stops = slices.map((slice) => {
+  const stops = slices
+    .filter((slice) => typeof slice.value === "number")
+    .map(() => "");
+  let index = 0;
+  for (const slice of slices) {
+    if (typeof slice.value !== "number") continue;
     const start = (cursor / total) * 360;
     cursor += Math.abs(slice.value);
     const end = (cursor / total) * 360;
-    return `var(--ak-accent) ${start}deg ${end}deg`;
-  });
+    stops[index] = `var(--ak-accent) ${start}deg ${end}deg`;
+    index += 1;
+  }
   return (
     <div className="ak-pie-row">
       <div className="ak-pie" style={{background: `conic-gradient(${stops.join(", ")})`}} />
@@ -90,7 +109,7 @@ function PieChart({item}) {
         {slices.map((slice) => (
           <li key={slice.name}>
             <span>{slice.name}</span>
-            <span>{slice.value}</span>
+            <span>{typeof slice.value === "number" ? slice.value : "—"}</span>
           </li>
         ))}
       </ul>
@@ -142,65 +161,86 @@ function ResultCard({item}) {
   );
 }
 
-export default function Board({items, turns, sessionId, status}) {
+export default function Board({turns, sessionId, status}) {
   const [graphHit, setGraphHit] = useState(null);
-  const evidence = evidenceItems({turns});
-  const hits = ontologyHits({turns});
+  const groups = (turns || [])
+    .map((turn, index) => ({
+      turn,
+      index,
+      items: turnBoardItems(turn),
+      evidence: turnEvidence(turn),
+      hits: turnHits(turn),
+    }))
+    .filter((group) => group.items.length || group.evidence.length || group.hits.length);
+  const totalItems = groups.reduce((sum, group) => sum + group.items.length, 0);
 
   return (
     <div className="ak-board-inner">
       <header className="ak-board-head">
-        <h2>本轮结果</h2>
+        <h2>分析结果 · 按轮</h2>
         <span className="ak-board-status">
-          {status === "streaming" ? "持续更新" : items.length ? `共 ${items.length} 项` : "等待分析"}
+          {status === "streaming" ? "持续更新" : groups.length ? `${groups.length} 轮 · ${totalItems} 项` : "等待分析"}
         </span>
       </header>
 
       <section className="ak-board-section" data-agentkit-results>
-        {items.length === 0 ? (
+        {groups.length === 0 ? (
           <p className="ak-board-empty">
-            结果会随本轮分析出现在这里：结论、指标口径、明细表、图表与证据。切换问题可回看当时的结果。
+            结果会随每一轮分析出现在这里；左侧提问、右侧按轮保留表格、图表、证据与本体命中。
           </p>
         ) : (
-          items.map((item) => <ResultCard key={item.id} item={item} />)
-        )}
-      </section>
-
-      <section className="ak-board-section" data-agentkit-evidence>
-        <h3 className="ak-section-title">证据 · 工具过程</h3>
-        {evidence.length === 0 ? (
-          <p className="ak-board-empty">本轮还没有产生可追溯的工具结果。</p>
-        ) : (
-          <ul className="ak-evidence">
-            {evidence.map((row) => (
-              <li key={row.id} className="ak-evidence-row" data-status={row.status}>
-                <span className="ak-evidence-tool">{row.tool}</span>
-                <span className="ak-evidence-meta">
-                  {row.durationMs ? `${row.durationMs} ms` : "—"}
-                  {row.hitCount ? ` · 命中 ${row.hitCount} 个本体` : ""}
-                  {row.errorCode ? ` · ${row.errorCode}` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="ak-board-section" data-agentkit-ontology>
-        <h3 className="ak-section-title">本体命中 · {hits.length}</h3>
-        {hits.length === 0 ? (
-          <p className="ak-board-empty">本轮还没有命中本体。分析检索到的实体会出现在这里，可打开其关联子图。</p>
-        ) : (
-          <ul className="ak-hits">
-            {hits.map((hit) => (
-              <li key={`${hit.repositoryId}:${hit.code}`}>
-                <button type="button" className="ak-hit" onClick={() => setGraphHit(hit)}>
-                  <span className="ak-hit-name">{hit.name}</span>
-                  <span className="ak-hit-code">{hit.code}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          groups.map((group, position) => {
+            const isLatest = position === groups.length - 1;
+            return (
+              <details key={group.turn.id} className="ak-turn-results" open={isLatest}>
+                <summary className="ak-turn-results-head">
+                  <span className="ak-turn-index">第 {group.index + 1} 轮</span>
+                  <span className="ak-turn-question">{group.turn.user}</span>
+                </summary>
+                <div className="ak-turn-results-body">
+                  {group.items.map((item) => (
+                    <ResultCard key={item.id} item={item} />
+                  ))}
+                  <section className="ak-subsection" data-agentkit-evidence>
+                    <h4 className="ak-subsection-title">证据 · 工具过程</h4>
+                    {group.evidence.length === 0 ? (
+                      <p className="ak-board-empty">该轮没有产生可追溯的工具结果。</p>
+                    ) : (
+                      <ul className="ak-evidence">
+                        {group.evidence.map((row) => (
+                          <li key={row.id} className="ak-evidence-row" data-status={row.status}>
+                            <span className="ak-evidence-tool">{row.tool}</span>
+                            <span className="ak-evidence-meta">
+                              {row.durationMs ? `${row.durationMs} ms` : "—"}
+                              {row.hitCount ? ` · 命中 ${row.hitCount} 个本体` : ""}
+                              {row.errorCode ? ` · ${row.errorCode}` : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                  <section className="ak-subsection" data-agentkit-ontology>
+                    <h4 className="ak-subsection-title">本体命中 · {group.hits.length}</h4>
+                    {group.hits.length === 0 ? (
+                      <p className="ak-board-empty">该轮没有命中本体。</p>
+                    ) : (
+                      <ul className="ak-hits">
+                        {group.hits.map((hit) => (
+                          <li key={`${hit.repositoryId}:${hit.code}`}>
+                            <button type="button" className="ak-hit" onClick={() => setGraphHit(hit)}>
+                              <span className="ak-hit-name">{hit.name}</span>
+                              <span className="ak-hit-code">{hit.code}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                </div>
+              </details>
+            );
+          })
         )}
       </section>
 

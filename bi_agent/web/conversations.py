@@ -61,6 +61,11 @@ MAX_AGENTKIT_BYTES = 200_000
 MAX_AGENTKIT_TURNS = 40
 
 
+def _legacy(existing: dict[str, Any], key: str) -> Any:
+    """Preserve a legacy display field an AgentKit save does not own."""
+    return existing.get(key) if isinstance(existing, dict) else None
+
+
 def bounded_agentkit(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -822,6 +827,7 @@ class ConversationStore:
         first_user_question_override: str = "",
         recovery_state: Optional[dict[str, Any]] = None,
         agentkit: Optional[dict[str, Any]] = None,
+        preserve_legacy: bool = False,
     ) -> dict[str, Any]:
         """Create or update (when `cid` exists) a conversation record."""
         if mode not in VALID_MODES:
@@ -829,6 +835,7 @@ class ConversationStore:
         created = None
         existing_source_config: Optional[dict[str, Any]] = None
         existing_agentkit: Optional[dict[str, Any]] = None
+        existing_legacy: dict[str, Any] = {}
         existing_first_user_question = ""
         if cid:
             existing = self._load(cid)
@@ -838,6 +845,8 @@ class ConversationStore:
                     existing_source_config = existing.get("source_config")
                 if isinstance(existing.get("agentkit"), dict):
                     existing_agentkit = existing.get("agentkit")
+                if preserve_legacy:
+                    existing_legacy = existing
                 existing_first_user_question = record_first_user_question(existing)
             elif existing:
                 # Never mutate a record from the other mode or a migrated
@@ -880,15 +889,21 @@ class ConversationStore:
             ),
             "created_at": created or now,
             "updated_at": now,
-            "messages": messages or [],
+            "messages": (
+                messages
+                or (existing_legacy.get("messages") if preserve_legacy else None)
+                or []
+            ),
             "message_count": len(messages or []),
             "turn_count": self._turn_count(messages or []),
             "preview": self._preview(messages or []),
-            "chat_html": (chat_html or "")[:MAX_HTML_BYTES],
-            "dashboard_html": (dashboard_html or "")[:MAX_HTML_BYTES],
-            "ontology_html": (ontology_html or "")[:MAX_HTML_BYTES],
-            "tools_html": (tools_html or "")[:MAX_HTML_BYTES],
-            "llm_html": (llm_html or "")[:MAX_HTML_BYTES],
+            # The AgentKit page owns the structured turns, not the legacy HTML
+            # snapshots.  Its saves must never blank what the Pro UI page wrote.
+            "chat_html": (chat_html or _legacy(existing_legacy, "chat_html") or "")[:MAX_HTML_BYTES],
+            "dashboard_html": (dashboard_html or _legacy(existing_legacy, "dashboard_html") or "")[:MAX_HTML_BYTES],
+            "ontology_html": (ontology_html or _legacy(existing_legacy, "ontology_html") or "")[:MAX_HTML_BYTES],
+            "tools_html": (tools_html or _legacy(existing_legacy, "tools_html") or "")[:MAX_HTML_BYTES],
+            "llm_html": (llm_html or _legacy(existing_legacy, "llm_html") or "")[:MAX_HTML_BYTES],
             # The SOP is part of the conversation snapshot rather than a
             # process-global UI state. Keep only the small, normalized list
             # supplied by the browser; old records simply omit this field.
@@ -899,7 +914,7 @@ class ConversationStore:
                 }
                 for item in (sop_steps or [])
                 if isinstance(item, dict)
-            ][:32],
+            ][:32] or _legacy(existing_legacy, "sop_steps") or [],
             # Source selection is part of the conversation context. Keep only
             # non-secret values: credentials must remain process/environment
             # state and must never be copied into history JSON or sync payloads.

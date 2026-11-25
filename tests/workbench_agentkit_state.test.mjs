@@ -11,6 +11,7 @@ import {
   buildHandoffUrl,
   createWorkbenchState,
   hydrateTurns,
+  nextTurnId,
   parseHandoff,
   resolveHandoffSession,
   resumeTurn,
@@ -313,4 +314,30 @@ test('a conversation snapshot round-trips turns with boards and evidence', () =>
   assert.deepEqual(boardItems({turns: restored}).length, 1);
   assert.equal(turnsFromSnapshot(null), null);
   assert.equal(turnsFromSnapshot({turns: 'nope'}), null);
+});
+
+test('new turns never reuse a restored turn id', () => {
+  const restored = turnsFromSnapshot({
+    version: 1,
+    turns: [
+      {id: 'turn-1', user: '第一轮', assistant: {text: '旧回答', tools: []}},
+      {id: 'turn-2', user: '第二轮', assistant: {text: '旧回答 2', tools: []}},
+    ],
+  });
+  let state = {...createWorkbenchState(), turns: restored};
+  assert.equal(nextTurnId(state.turns), 'turn-3');
+  state = startTurn(state, {text: '追问', sessionId: 'agentkit-restore'});
+  assert.equal(state.turns[2].id, 'turn-3');
+  const ids = state.turns.map((turn) => turn.id);
+  assert.equal(new Set(ids).size, ids.length, 'turn ids stay unique');
+});
+
+test('an accepted scope is confirmed in the page state', () => {
+  let state = startTurn(createWorkbenchState(), {text: 'PACK 缺口', sessionId: 's-1'});
+  state = applyEvent(state, {
+    type: 'scope_accepted', turn_id: 't-1',
+    scope: {anchor: 'PACK_OPP_COVERAGE', period: '2026Q3', filters: {customer: '宁德时代'}},
+  });
+  assert.equal(state.scopeConfirmed.anchor, 'PACK_OPP_COVERAGE');
+  assert.equal(state.scopeConfirmed.period, '2026Q3');
 });

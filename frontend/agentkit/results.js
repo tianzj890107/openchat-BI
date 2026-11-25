@@ -24,6 +24,13 @@ export function tableModel(spec) {
   };
 }
 
+// Missing values stay missing: rendering them as 0 invents data.
+function numericOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function seriesFromOption(option) {
   return Array.isArray(option?.series) ? option.series : [];
 }
@@ -47,7 +54,7 @@ export function chartModel(spec) {
       title: spec.title || "图表",
       slices: slices.map((point) => ({
         name: String(point.name ?? ""),
-        value: Number(point.value) || 0,
+        value: numericOrNull(point.value),
       })),
     };
   }
@@ -59,7 +66,7 @@ export function chartModel(spec) {
     categories: categoriesFromOption(option).map((value) => String(value)),
     series: series.map((entry) => ({
       name: String(entry?.name ?? ""),
-      values: (Array.isArray(entry?.data) ? entry.data : []).map((value) => Number(value) || 0),
+      values: (Array.isArray(entry?.data) ? entry.data : []).map((value) => numericOrNull(value)),
     })),
   };
 }
@@ -125,6 +132,21 @@ export function turnsBoardItems(turns) {
     }
   }
   return items;
+}
+
+/** One turn's cards, keeping results attached to the question that produced them. */
+export function turnBoardItems(turn) {
+  return turnsBoardItems(turn ? [turn] : []);
+}
+
+/** One turn's evidence rows. */
+export function turnEvidence(turn) {
+  return evidenceItems({turns: turn ? [turn] : []});
+}
+
+/** One turn's ontology hits. */
+export function turnHits(turn) {
+  return ontologyHits({turns: turn ? [turn] : []});
 }
 
 /** Deduped ontology hits; the same code in two repositories stays two hits. */
