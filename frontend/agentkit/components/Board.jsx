@@ -1,6 +1,7 @@
 import React, {useState} from "react";
 
 import {turnBoardItems} from "../results.js";
+import ProBiChart from "./ProBiChart.jsx";
 
 function TableCard({item}) {
   const columns = item.columns?.length ? item.columns : Object.keys(item.rows?.[0] || {});
@@ -33,89 +34,6 @@ function TableCard({item}) {
   );
 }
 
-function BarChart({item}) {
-  const categories = item.categories || [];
-  const series = item.series?.[0];
-  const values = series?.values || [];
-  const present = values.filter((value) => typeof value === "number");
-  const max = Math.max(1, ...present.map((value) => Math.abs(value)));
-  return (
-    <ul className="ak-bars">
-      {categories.map((label, index) => {
-        const value = values[index];
-        const missing = typeof value !== "number";
-        return (
-          <li key={label} className="ak-bar" data-missing={missing ? "1" : undefined}>
-            <span className="ak-bar-label">{label}</span>
-            <span className="ak-bar-track">
-              <span
-                className="ak-bar-fill"
-                style={{width: missing ? "0%" : `${Math.round((Math.abs(value) / max) * 100)}%`}}
-              />
-            </span>
-            <span className="ak-bar-value">{missing ? "—" : String(value)}</span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function LineChart({item}) {
-  const values = item.series?.[0]?.values || [];
-  const present = values.filter((value) => typeof value === "number");
-  if (!present.length) return <p className="ak-board-empty">该图没有有效数值。</p>;
-  const max = Math.max(1, ...present.map((value) => Math.abs(value)));
-  const width = 280;
-  const height = 96;
-  const step = values.length > 1 ? width / (values.length - 1) : width;
-  const points = values
-    .map((value, index) => (typeof value === "number"
-      ? `${Math.round(index * step)},${Math.round(height - (Math.abs(value) / max) * height)}`
-      : null))
-    .filter(Boolean)
-    .join(" ");
-  return (
-    <svg className="ak-line" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="趋势图">
-      <polyline points={points} fill="none" stroke="var(--ak-accent)" strokeWidth="2" />
-    </svg>
-  );
-}
-
-function PieChart({item}) {
-  const slices = item.slices || [];
-  const total = slices.reduce(
-    (sum, slice) => sum + (typeof slice.value === "number" ? Math.abs(slice.value) : 0),
-    0,
-  ) || 1;
-  let cursor = 0;
-  const stops = slices
-    .filter((slice) => typeof slice.value === "number")
-    .map(() => "");
-  let index = 0;
-  for (const slice of slices) {
-    if (typeof slice.value !== "number") continue;
-    const start = (cursor / total) * 360;
-    cursor += Math.abs(slice.value);
-    const end = (cursor / total) * 360;
-    stops[index] = `var(--ak-accent) ${start}deg ${end}deg`;
-    index += 1;
-  }
-  return (
-    <div className="ak-pie-row">
-      <div className="ak-pie" style={{background: `conic-gradient(${stops.join(", ")})`}} />
-      <ul className="ak-pie-legend">
-        {slices.map((slice) => (
-          <li key={slice.name}>
-            <span>{slice.name}</span>
-            <span>{typeof slice.value === "number" ? slice.value : "—"}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function MultiDimCard({item}) {
   const [activeKey, setActiveKey] = useState(item.defaultKey);
   const dimension = item.dimensions.find((dim) => dim.key === activeKey) || item.dimensions[0];
@@ -138,15 +56,9 @@ function MultiDimCard({item}) {
         ))}
       </div>
       <p className="ak-card-note">{dimension.summary || item.summary}</p>
-      <ChartBody item={dimension.chart} />
+      <ProBiChart key={dimension.key} chart={dimension.chart.spec} />
     </section>
   );
-}
-
-function ChartBody({item}) {
-  if (item.chartType === "pie") return <PieChart item={item} />;
-  if (item.chartType === "line") return <LineChart item={item} />;
-  return <BarChart item={item} />;
 }
 
 function ResultCard({item}) {
@@ -155,7 +67,7 @@ function ResultCard({item}) {
     <section className="ak-card" data-kind={item.kind}>
       <h3 className="ak-card-title">{item.title}</h3>
       {item.kind === "table" ? <TableCard item={item} /> : null}
-      {item.kind === "chart" ? <ChartBody item={item} /> : null}
+      {item.kind === "chart" ? <ProBiChart chart={item.spec} /> : null}
     </section>
   );
 }

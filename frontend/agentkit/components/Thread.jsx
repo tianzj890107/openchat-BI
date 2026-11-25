@@ -48,6 +48,33 @@ function Clarification({choice, onChoose}) {
   );
 }
 
+function Turn({turn, error, onRetry, onOpenOntology}) {
+  const {text, tools} = turn.assistant;
+  const hasAnswer = Boolean(text.trim());
+  const showError = turn.status === "error";
+  const active = turn.status === "streaming" || turn.status === "paused";
+  return (
+    <article className="ak-turn">
+      {turn.user ? <div className="ak-user"><p>{turn.user}</p></div> : null}
+      {hasAnswer || tools.length || showError ? (
+        <div className="ak-assistant">
+          {hasAnswer ? <MarkdownText text={text} /> : null}
+          {tools.length ? (
+            <ToolGroup key={active ? "active" : "settled"} active={active}
+              tools={tools} onOpenOntology={onOpenOntology} />
+          ) : null}
+          {showError ? (
+            <div className="ak-inline-error" role="alert">
+              <span>{error || "本轮分析失败"}</span>
+              <button type="button" className="ak-link" onClick={onRetry}>重试本轮</button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 export default function Thread({turns, status, error, pendingChoice, onChoose, onRetry, onOpenOntology}) {
   const transcriptRef = useRef(null);
   const followLatest = useRef(true);
@@ -80,41 +107,11 @@ export default function Thread({turns, status, error, pendingChoice, onChoose, o
   return (
     <div className="ak-transcript" ref={transcriptRef} onScroll={trackScroll} aria-live="polite">
       {turns.map((turn) => (
-        <article key={turn.id} className="ak-turn">
-          <div className="ak-user">
-            <p>{turn.user}</p>
-          </div>
-          <div className="ak-assistant">
-            {turn.assistant.text ? (
-              <MarkdownText text={turn.assistant.text} />
-            ) : (
-              <div className="ak-answer ak-answer--muted">
-                {turn.status === "streaming" ? "正在取证…" : "本轮没有文字结论"}
-              </div>
-            )}
-            {turn.assistant.tools.length ? (
-              <ToolGroup tools={turn.assistant.tools} onOpenOntology={onOpenOntology} />
-            ) : null}
-            {turn.status === "error" ? (
-              <div className="ak-inline-error" role="alert">
-                <span>{error || "本轮分析失败"}</span>
-                <button type="button" className="ak-link" onClick={onRetry}>
-                  重试本轮
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </article>
+        <Turn key={turn.id} turn={turn} error={error} onRetry={onRetry} onOpenOntology={onOpenOntology} />
       ))}
 
       {pendingChoice ? <Clarification choice={pendingChoice} onChoose={onChoose} /> : null}
 
-      {status === "streaming" ? (
-        <div className="ak-progress" role="status">
-          <span className="ak-spinner" aria-hidden="true" />
-          正在执行本轮分析…
-        </div>
-      ) : null}
       {status === "interrupted" ? (
         <div className="ak-progress ak-progress--warn" role="status">
           本轮已停止，已保留当前结论与结果；可继续追问。

@@ -9,5 +9,5 @@ const host = document.getElementById("agentkit-root");
 if (host) {
   host.setAttribute("aria-busy", "false");
   host.dataset.agentkitRuntime = AGENTKIT_RUNTIME;
-  createRoot(host).render(<App />);
+  createRoot(host).render(<App version={host.dataset.appVersion} />);
 }

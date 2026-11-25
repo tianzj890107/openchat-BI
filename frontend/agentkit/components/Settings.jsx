@@ -1,6 +1,6 @@
 import React, {useEffect, useId, useRef, useState} from "react";
 
-import {loadModelConfig, loadSources, updateModelConfig} from "../api.js";
+import {loadSources, updateModelConfig} from "../api.js";
 import {sourceSelection} from "../sourcePreference.js";
 
 const localModes = [
@@ -123,11 +123,11 @@ function SourcesForm({data, preference, hasConversation, busy, onSave}) {
   );
 }
 
-function modelKey(model) {
-  return model.model_key || model.key;
+export function modelKey(model) {
+  return model?.model_key || model?.key || "";
 }
 
-function ModelForm({config, busy}) {
+function ModelForm({config, busy, onSaved}) {
   const models = config.models || [];
   const [values, setValues] = useState(config.current || {});
   const [saving, setSaving] = useState(false);
@@ -151,6 +151,7 @@ function ModelForm({config, busy}) {
         thinking: Boolean(model.supports_thinking && values.thinking),
       });
       setValues(saved.current);
+      onSaved(saved);
       setStatus({text: "模型已保存，下一轮对话生效"});
     } catch (error) {
       setStatus({text: error.message, error: true});
@@ -204,12 +205,9 @@ function SettingsContent({result, label, children}) {
   return children(result.data);
 }
 
-export default function Settings({sessionId, preference, hasConversation, busy, onSaveSources, onClose}) {
+function SettingsDialog({name, busy, onClose, children}) {
   const dialog = useRef(null);
   const title = useId();
-  const [sources, setSources] = useState(null);
-  const [model, setModel] = useState(null);
-
   useEffect(() => {
     const element = dialog.current;
     if (typeof element.showModal === "function") element.showModal();
@@ -217,6 +215,21 @@ export default function Settings({sessionId, preference, hasConversation, busy, 
     return () => element.close?.();
   }, []);
 
+  return (
+    <dialog className="ak-settings" ref={dialog} aria-labelledby={title}
+      onCancel={(event) => { event.preventDefault(); onClose(); }}>
+      <header className="ak-settings-head">
+        <h2 id={title}>{name}设置</h2>
+        <button type="button" className="ak-ghost" onClick={onClose}>关闭{name}</button>
+      </header>
+      {busy ? <p className="ak-settings-hint">当前分析结束后可以保存设置。</p> : null}
+      {children}
+    </dialog>
+  );
+}
+
+export function SourceSettings({sessionId, preference, hasConversation, busy, onSaveSources, onClose}) {
+  const [sources, setSources] = useState(null);
   useEffect(() => {
     const controller = new AbortController();
     loadSources(sessionId, controller.signal).then(
@@ -225,32 +238,22 @@ export default function Settings({sessionId, preference, hasConversation, busy, 
     );
     return () => controller.abort();
   }, [sessionId]);
-  useEffect(() => {
-    const controller = new AbortController();
-    loadModelConfig(controller.signal).then(
-      (data) => { if (!controller.signal.aborted) setModel({data}); },
-      (error) => { if (!controller.signal.aborted) setModel({error: error.message}); },
-    );
-    return () => controller.abort();
-  }, []);
-
   return (
-    <dialog className="ak-settings" ref={dialog} aria-labelledby={title}
-      onCancel={(event) => { event.preventDefault(); onClose(); }}>
-      <header className="ak-settings-head">
-        <h2 id={title}>工作台设置</h2>
-        <button type="button" className="ak-ghost" onClick={onClose}>关闭设置</button>
-      </header>
-      {busy ? <p className="ak-settings-hint">当前分析结束后可以保存设置。</p> : null}
-      <div className="ak-settings-grid">
-        <SettingsContent result={sources} label="数据源">
-          {(data) => <SourcesForm data={data} preference={preference}
-            hasConversation={hasConversation} busy={busy} onSave={onSaveSources} />}
-        </SettingsContent>
-        <SettingsContent result={model} label="模型配置">
-          {(data) => <ModelForm config={data} busy={busy} />}
-        </SettingsContent>
-      </div>
-    </dialog>
+    <SettingsDialog name="数据源" busy={busy} onClose={onClose}>
+      <SettingsContent result={sources} label="数据源">
+        {(data) => <SourcesForm data={data} preference={preference}
+          hasConversation={hasConversation} busy={busy} onSave={onSaveSources} />}
+      </SettingsContent>
+    </SettingsDialog>
+  );
+}
+
+export function ModelSettings({config, busy, onSaved, onClose}) {
+  return (
+    <SettingsDialog name="模型" busy={busy} onClose={onClose}>
+      <SettingsContent result={config} label="模型配置">
+        {(data) => <ModelForm config={data} busy={busy} onSaved={onSaved} />}
+      </SettingsContent>
+    </SettingsDialog>
   );
 }

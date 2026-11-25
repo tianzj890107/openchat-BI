@@ -22,7 +22,8 @@ import Composer from "./components/Composer.jsx";
 import HandoffBanner from "./components/HandoffBanner.jsx";
 import OntologyGraph from "./components/OntologyGraph.jsx";
 import SessionList from "./components/SessionList.jsx";
-import Settings from "./components/Settings.jsx";
+import {SourceSettings} from "./components/Settings.jsx";
+import SopBar from "./components/SopBar.jsx";
 import Thread from "./components/Thread.jsx";
 import {useAgentkitRuntime} from "./runtime.js";
 import {readSourcePreference, sourceSelection, writeSourcePreference} from "./sourcePreference.js";
@@ -40,13 +41,13 @@ function newSessionId(handoff) {
   return handoff?.handoffId ? `agentkit-${handoff.handoffId}-${stamp}` : `agentkit-${stamp}`;
 }
 
-export default function App() {
+export default function App({version}) {
   const handoff = useMemo(() => parseHandoff(window.location.search), []);
   const scope = useMemo(() => scopeFromHandoff(handoff), [handoff]);
   const [handoffVisible, setHandoffVisible] = useState(handoff.active);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState("");
-  const [view, setView] = useState("split");
+  const [view, setView] = useState("thread");
   const [graphHit, setGraphHit] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workbench, setWorkbench] = useState(() => createWorkbenchState());
@@ -295,59 +296,55 @@ export default function App() {
     onNew: send,
     onCancel: stop,
   });
+  const busy = ["streaming", "paused"].includes(workbench.status);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
     <div className="ak-shell" data-agentkit-root="1" data-ak-view={view}>
-      <header className="ak-topbar">
-        <div className="ak-brand">
-          <span className="ak-brand-mark" aria-hidden="true" />
-          <span className="ak-brand-name">本体消费展示工作台</span>
-          <span className="ak-brand-chip">AgentKit</span>
-        </div>
-        <div className="ak-topbar-actions">
-          <button type="button" className="ak-ghost" onClick={() => setSettingsOpen(true)}>设置</button>
-          <button
-            type="button"
-            className="ak-ghost"
-            data-agentkit-layout-toggle
-            onClick={() => setView((current) => (current === "board" ? "thread" : "board"))}
-          >
-            {view === "board" ? "看对话" : "看结果"}
-          </button>
-        </div>
-      </header>
-
-      {handoffVisible ? (
-        <HandoffBanner
-          handoff={handoff}
-          confirmed={workbench.scopeConfirmed}
-          onDismiss={() => setHandoffVisible(false)}
-          onBack={goBackToSource}
-          onRestart={restartWithoutHandoff}
-        />
-      ) : null}
-
-      {notice ? (
-        <div className="ak-notice" role="status">
-          <span>{notice}</span>
-          <button type="button" className="ak-link" onClick={() => setNotice("")}>
-            知道了
-          </button>
-        </div>
-      ) : null}
-
       <div className="ak-main">
-        <aside className="ak-sessions" data-agentkit-sessions aria-label="会话列表">
-          <SessionList
-            conversations={conversations}
-            activeId={activeConversation}
-            onNew={startNew}
-            onSelect={selectConversation}
-          />
+        <aside className="ak-sessions" data-agentkit-sessions aria-label="工作台导航">
+          <header className="ak-brand">
+            <span className="ak-brand-mark" aria-hidden="true">◆</span>
+            <span className="ak-brand-name">智能分析</span>
+            {version ? <span className="ak-brand-chip">{version}</span> : null}
+          </header>
+          <div className="ak-session-pane">
+            <SessionList
+              conversations={conversations}
+              activeId={activeConversation}
+              onNew={() => { startNew(); setView("thread"); }}
+              onSelect={(cid) => { void selectConversation(cid); setView("thread"); }}
+            />
+          </div>
+          <nav className="ak-nav-footer" aria-label="工作台视图">
+            <div className="ak-mobile-nav" data-agentkit-layout-toggle>
+              {[["sessions", "会话"], ["thread", "对话"], ["board", "看板"]].map(([key, label]) => (
+                <button key={key} type="button" className="ak-ghost" aria-pressed={view === key}
+                  onClick={() => setView(key)}>{label}</button>
+              ))}
+            </div>
+            <button type="button" className="ak-ghost ak-source-trigger" aria-haspopup="dialog"
+              onClick={() => setSettingsOpen(true)}>数据源</button>
+          </nav>
         </aside>
 
         <section className="ak-thread" data-agentkit-thread aria-label="对话">
+          <SopBar key={`sop:${sessionId}`} sop={workbench.turns.at(-1)?.sop} status={workbench.status} />
+          {handoffVisible ? (
+            <HandoffBanner
+              handoff={handoff}
+              confirmed={workbench.scopeConfirmed}
+              onDismiss={() => setHandoffVisible(false)}
+              onBack={goBackToSource}
+              onRestart={restartWithoutHandoff}
+            />
+          ) : null}
+          {notice ? (
+            <div className="ak-notice" role="status">
+              <span>{notice}</span>
+              <button type="button" className="ak-link" onClick={() => setNotice("")}>知道了</button>
+            </div>
+          ) : null}
           <Thread
             key={sessionId}
             turns={workbench.turns}
@@ -361,7 +358,7 @@ export default function App() {
               if (lastUser) send(lastUser.user);
             }}
           />
-          <Composer />
+          <Composer busy={busy} />
         </section>
 
         <section className="ak-board" data-agentkit-board aria-label="分析结果">
@@ -372,11 +369,11 @@ export default function App() {
         <OntologyGraph hit={graphHit} sessionId={sessionId} onClose={() => setGraphHit(null)} />
       ) : null}
       {settingsOpen ? (
-        <Settings
+        <SourceSettings
           sessionId={sessionId}
           preference={workbench.turns.length ? null : sourcePreference}
           hasConversation={Boolean(activeConversation || workbench.turns.length)}
-          busy={["streaming", "paused"].includes(workbench.status)}
+          busy={busy}
           onSaveSources={applySourceSettings}
           onClose={() => setSettingsOpen(false)}
         />

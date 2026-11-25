@@ -76,10 +76,10 @@ function ToolValue({label, value}) {
   );
 }
 
-function ToolItem({tool, onOpenOntology}) {
+function ToolItem({tool, active, onOpenOntology}) {
   const hits = toolOntologyHits(tool);
   const failed = Boolean(tool.errorCode || /FAIL|ERROR/i.test(tool.executionStatus || ""));
-  const state = failed ? "失败" : tool.status === "running" ? "执行中…" : "已完成";
+  const state = failed ? "失败" : tool.status === "running" ? (active ? "执行中…" : "未完成") : "已完成";
   return (
     <li className="ak-tool" data-status={failed ? "error" : tool.status} data-slot="tool-group-item">
       <details>
@@ -116,15 +116,15 @@ function ToolItem({tool, onOpenOntology}) {
   );
 }
 
-export default function ToolGroup({tools, onOpenOntology}) {
-  const running = tools.some((tool) => tool.status === "running");
+export default function ToolGroup({tools, active, onOpenOntology}) {
+  const running = active && tools.some((tool) => tool.status === "running");
   return (
     <ToolGroupRoot defaultOpen={running}>
       <ToolGroupTrigger count={tools.length} active={running} />
       <ToolGroupContent>
         <ol className="ak-tool-list">
           {tools.map((tool) => (
-            <ToolItem key={tool.id} tool={tool} onOpenOntology={onOpenOntology} />
+            <ToolItem key={tool.id} tool={tool} active={active} onOpenOntology={onOpenOntology} />
           ))}
         </ol>
       </ToolGroupContent>

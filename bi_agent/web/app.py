@@ -1362,7 +1362,7 @@ def _render_workbench_agentkit_index() -> str:
     deployment invalidates exactly the files that changed (spec §2, §2.1).
     """
     template = (STATIC_DIR / "agentkit" / "index.html").read_text(encoding="utf-8")
-    html = template.replace(_APP_ROOT_PATH_TOKEN, APP_ROOT_PATH)
+    html = template.replace(_APP_ROOT_PATH_TOKEN, APP_ROOT_PATH).replace("@@APP_VERSION@@", APP_VERSION)
     assets = STATIC_DIR / "vendor" / "agentkit"
     html = html.replace(
         "@@AGENTKIT_JS_VERSION@@", _asset_version(assets, "workbench-agentkit.js"),

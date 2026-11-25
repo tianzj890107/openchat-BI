@@ -43,7 +43,8 @@ function categoriesFromOption(option) {
 export function chartModel(spec) {
   const option = spec?.option;
   if (!option || typeof option !== "object") return null;
-  const chartType = spec.chart_type || "bar";
+  const chartType = spec.chart_type || option.series?.[0]?.type || "bar";
+  const chart = {...spec, chart_type: chartType};
   const series = seriesFromOption(option);
   if (chartType === "pie") {
     const slices = (series[0]?.data || []).filter((point) => point && typeof point === "object");
@@ -52,6 +53,7 @@ export function chartModel(spec) {
       kind: "chart",
       chartType,
       title: spec.title || "图表",
+      spec: chart,
       slices: slices.map((point) => ({
         name: String(point.name ?? ""),
         value: numericOrNull(point.value),
@@ -63,6 +65,7 @@ export function chartModel(spec) {
     kind: "chart",
     chartType,
     title: spec.title || "图表",
+    spec: chart,
     categories: categoriesFromOption(option).map((value) => String(value)),
     series: series.map((entry) => ({
       name: String(entry?.name ?? ""),

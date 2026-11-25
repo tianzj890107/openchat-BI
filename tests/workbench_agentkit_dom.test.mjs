@@ -17,11 +17,12 @@ const ROOT = resolve(HERE, '..');
 const frontendRequire = createRequire(resolve(ROOT, 'frontend/package.json'));
 const {JSDOM} = frontendRequire('jsdom');
 const TEMPLATE = resolve(ROOT, 'bi_agent/web/static/agentkit/index.html');
-const BUNDLE = resolve(ROOT, 'bi_agent/web/static/vendor/agentkit/workbench-agentkit.js');
+const BUNDLE = process.env.AGENTKIT_TEST_BUNDLE || resolve(ROOT, 'bi_agent/web/static/vendor/agentkit/workbench-agentkit.js');
 
 function renderTemplate(template) {
   return template
     .replaceAll('@@APP_ROOT_PATH@@', '')
+    .replaceAll('@@APP_VERSION@@', 'ontology-v0.0.0')
     .replaceAll('@@AGENTKIT_CSS_VERSION@@', '1')
     .replaceAll('@@AGENTKIT_JS_VERSION@@', '1')
     // The bundle is injected manually so jsdom never tries to load the URL.
@@ -413,8 +414,10 @@ test('workbench settings save paired sources and models and keep history on its 
   const {document} = window;
   document.querySelector('button.ak-session').click();
   await waitFor(() => document.querySelector('.ak-turn')?.textContent.includes('旧会话问题'));
-  const settings = findButton(document, '设置');
-  assert.ok(settings, 'settings are reachable from the workbench header');
+  assert.ok(!document.querySelector('.ak-topbar'), 'the page has no shared top bar');
+  assert.match(document.querySelector('.ak-sessions').textContent, /智能分析.*ontology-v0\.0\.0/);
+  const settings = findButton(document, '数据源');
+  assert.ok(settings?.closest('.ak-nav-footer'), 'source settings are in the navigation footer');
   settings.click();
   const ontology = await waitFor(() => document.querySelector('select[name="ontology"]'));
   assert.ok(ontology);
@@ -430,14 +433,21 @@ test('workbench settings save paired sources and models and keep history on its 
   assert.ok(await waitFor(() => [...document.querySelectorAll('[role="status"]')].some((item) => item.textContent.includes('数据源已保存'))));
   assert.equal(document.querySelector('.ak-turn'), null, 'save opens a new conversation');
 
-  const thinking = document.querySelector('input[name="thinking"]');
+  assert.equal(document.querySelector('input[name="thinking"]'), null);
+  findButton(document, '关闭数据源').click();
+  const modelButton = await waitFor(() => findButton(document, '样例模型'));
+  assert.ok(modelButton?.closest('.ak-composer'), 'the current model is displayed inside the composer');
+  assert.ok(document.querySelector('.ak-send')?.closest('.ak-composer'));
+  modelButton.click();
+  const thinking = await waitFor(() => document.querySelector('input[name="thinking"]'));
+  assert.ok(thinking, 'model settings open from the composer button');
   thinking.click();
   findButton(document, '保存模型').click();
   assert.ok(await waitFor(() => [...document.querySelectorAll('[role="status"]')].some((item) => item.textContent.includes('模型已保存'))));
   const modelPut = calls.find((call) => call.url === '/api/config' && call.method === 'PUT');
   assert.deepEqual(JSON.parse(modelPut.body), {...config.current, thinking: true});
 
-  findButton(document, '关闭设置').click();
+  findButton(document, '关闭模型').click();
   await typeAndSend(window, '用新配置分析');
   await waitFor(() => calls.some((call) => call.url === '/api/chat'));
   const sourcePuts = calls.filter((call) => call.url === '/api/sources' && call.method === 'PUT');
@@ -457,6 +467,38 @@ test('workbench settings save paired sources and models and keep history on its 
   assert.equal(JSON.parse(nextChat.body).session_id, JSON.parse(nextSource.body).session_id);
   assert.notEqual(JSON.parse(nextChat.body).session_id, saved.session_id);
   assert.ok(calls.indexOf(nextSource) < calls.indexOf(nextChat), 'bind the source before sending the question');
+});
+
+test('the pinned collapsible SOP shows real progress and finished tools can be reopened', async () => {
+  const {window} = await boot({
+    chatDelay: 140,
+    chatFrames: [
+      {type: 'sop_progress', step: 1, detail: '识别经营问题'},
+      {type: 'tool_start', id: 't', name: 'Ontology-SemanticQuery'},
+      {type: 'sop_progress', step: 3, detail: '规划校验'},
+      {type: 'tool_result', id: 't', name: 'Ontology-SemanticQuery', output: '已有证据'},
+      {type: 'text_delta', text: '已完成检查'},
+      {type: 'done'},
+    ],
+  });
+  const {document} = window;
+  const sop = document.querySelector('[data-agentkit-sop]');
+  assert.ok(sop?.closest('.ak-thread'));
+  assert.equal(sop.closest('.ak-transcript'), null, 'SOP stays above the scrollable transcript');
+  await typeAndSend(window, '验证 SOP 和工具');
+  const trigger = await waitFor(() => document.querySelector('[data-slot="tool-group-trigger"]'));
+  assert.ok(trigger);
+  if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+  assert.equal(await waitFor(() => trigger.getAttribute('aria-expanded') === 'true'), true);
+  assert.equal(document.querySelector('.ak-answer--muted'), null);
+  assert.ok(await waitFor(() => document.querySelector('.ak-send')));
+  const finished = document.querySelector('[data-slot="tool-group-trigger"]');
+  assert.equal(finished.getAttribute('aria-expanded'), 'false');
+  finished.click();
+  assert.ok(await waitFor(() => document.querySelector('[data-slot="tool-group-item"]')));
+  assert.match(sop.textContent, /2\/2/);
+  sop.querySelector('summary').click();
+  assert.match(sop.textContent, /本轮无需执行.*本体模型匹配/s);
 });
 
 test('answering a clarification resumes the same turn with the new request id', async () => {
@@ -509,6 +551,7 @@ test('a restored conversation keeps each turn board separate and never invents z
         },
         {
           id: 'turn-2', user: '第二轮：缺口图', status: 'done',
+          sop: {step: 3, visited: [3], todos: [{content: '数据获取和可视化', status: 'completed'}]},
           assistant: {text: '第二轮结论', tools: [{
             id: 'tool-2', name: 'ChartGenerate', status: 'done', input: '{}',
             chart: {
@@ -525,6 +568,9 @@ test('a restored conversation keeps each turn board separate and never invents z
   await new Promise((done) => setTimeout(done, 400));
 
   const groups = [...window.document.querySelectorAll('details.ak-turn-results')];
+  const sopBars = window.document.querySelectorAll('[data-agentkit-sop]');
+  assert.equal(sopBars.length, 1, 'restoring a conversation replaces the empty SOP');
+  assert.match(sopBars[0].querySelector('summary').textContent, /1\/1/);
   assert.equal(groups.length, 2, 'one board group per turn');
   assert.match(groups[0].textContent, /第一轮明细/);
   assert.doesNotMatch(groups[0].textContent, /第二轮缺口图/);

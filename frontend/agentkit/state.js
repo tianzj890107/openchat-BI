@@ -10,6 +10,7 @@
 // module: no DOM, no fetch — unit-tested by tests/workbench_agentkit_state.test.mjs.
 
 import {turnsBoardItems} from './results.js';
+import {applySopStep, SOP_STEPS, sopStatusesForDone} from '../src/sopMachine.js';
 
 const TERMINAL_EVENTS = new Set(['done', 'error', 'session_superseded', 'stream_interrupted']);
 
@@ -257,6 +258,7 @@ export function turnsFromSnapshot(snapshot) {
     id: String(turn.id || `restored-${index}`),
     user: String(turn.user || ''),
     status: 'done',
+    sop: Array.isArray(turn.sop?.todos) ? turn.sop : null,
     assistant: {
       text: String(turn.assistant?.text || ''),
       thinking: String(turn.assistant?.thinking || ''),
@@ -325,6 +327,19 @@ function updateTools(state, mutator) {
   return updateAssistant(state, {tools: mutator(turn.assistant.tools)});
 }
 
+function finishSop(turn, outcome) {
+  if (!turn?.sop) return null;
+  const {todos, visited} = turn.sop;
+  const statuses = outcome === 'done' ? sopStatusesForDone(visited) : null;
+  return {
+    ...turn.sop,
+    todos: todos.map((item, index) => ({
+      ...item,
+      status: statuses?.[index] ?? (item.status === 'in_progress' ? outcome : item.status),
+    })),
+  };
+}
+
 /** Right-pane results: every table/chart a turn produced, with stable ids. */
 export function boardItems(state) {
   return turnsBoardItems(state.turns || []);
@@ -353,6 +368,17 @@ export function applyEvent(state, event) {
   }
 
   switch (type) {
+    case 'sop_progress': {
+      const turn = currentTurn(state);
+      const step = Number(event.step) - 1;
+      if (!turn || state.status !== 'streaming' || !Number.isInteger(step) || step < 0 || step >= SOP_STEPS.length) return state;
+      const current = turn.sop;
+      const detail = event.detail || (!current ? SOP_STEPS[step] : '');
+      const next = applySopStep(current?.visited || [], current?.step ?? 0, step, detail,
+        {allowBackward: event.allow_backward !== false});
+      if (!next) return state;
+      return updateTurn(state, {sop: next});
+    }
     case 'text_delta': {
       const turn = currentTurn(state);
       if (!turn) return state;
@@ -435,15 +461,16 @@ export function applyEvent(state, event) {
       const status = state.pendingChoice ? 'paused' : 'idle';
       return updateTurn({...state, status, pendingChoice: state.pendingChoice}, {
         status: status === 'paused' ? 'paused' : 'done',
+        ...(status === 'idle' ? {sop: finishSop(currentTurn(state), 'done')} : {}),
       });
     }
     case 'error': {
       const message = String(event.message || '分析失败，请重试');
-      return updateTurn({...state, status: 'error', error: message}, {status: 'error'});
+      return updateTurn({...state, status: 'error', error: message}, {status: 'error', sop: finishSop(currentTurn(state), 'failed')});
     }
     case 'session_superseded':
     case 'stream_interrupted': {
-      return updateTurn({...state, status: 'interrupted'}, {status: 'interrupted'});
+      return stopTurn(state);
     }
     default:
       return state;
@@ -452,6 +479,7 @@ export function applyEvent(state, event) {
 
 /** Stop the running turn: partial text and results stay on screen. */
 export function stopTurn(state) {
-  if (state.status !== 'streaming') return state;
-  return updateTurn({...state, status: 'interrupted'}, {status: 'interrupted'});
+  if (!['streaming', 'paused'].includes(state.status)) return state;
+  return updateTurn({...state, status: 'interrupted', pendingChoice: null},
+    {status: 'interrupted', sop: finishSop(currentTurn(state), 'cancelled')});
 }

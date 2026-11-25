@@ -107,7 +107,16 @@ test('the workbench limits scrolling to the transcript and keeps the composer in
   assert.match(css, /\.ak-transcript\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(css, /\.ak-composer\s*\{[^}]*flex-shrink:\s*0/);
   const app = await read('frontend/agentkit/App.jsx');
-  assert.match(app, /data-agentkit-thread[\s\S]*<Thread[\s\S]*<Composer\s*\/>/);
+  assert.match(app, /data-agentkit-thread[\s\S]*<Thread[\s\S]*<Composer\b/);
+});
+
+test('the board uses the same Pro BI chart adapter and library as the legacy workbench', async () => {
+  const board = await read('frontend/agentkit/components/Board.jsx');
+  assert.match(board, /ProBiChart/);
+  assert.doesNotMatch(board, /function (BarChart|PieChart|LineChart)\b/);
+  const renderer = await read('frontend/agentkit/components/ProBiChart.jsx');
+  assert.match(renderer, /analyticsChartAdapter\.js/);
+  assert.match(renderer, /ProHorizontalBarChart/);
 });
 
 test('hosts can build the handoff URL through one helper', async () => {

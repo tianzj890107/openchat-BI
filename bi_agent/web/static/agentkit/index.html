@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>本体消费展示工作台 · AgentKit</title>
+    <title>硕磐智能分析 Agent · 本体工作台</title>
     <link
       rel="stylesheet"
       href="@@APP_ROOT_PATH@@/static/vendor/agentkit/workbench-agentkit.css?v=@@AGENTKIT_CSS_VERSION@@"
@@ -12,28 +12,20 @@
   <body class="ak-page">
     <!-- First paint: the AgentKit shell with empty panes. React replaces this
          subtree on mount, so the layout never flashes between deployments. -->
-    <div id="agentkit-root" data-agentkit-root="1" aria-busy="true">
-      <div class="ak-shell">
-        <header class="ak-topbar" data-agentkit-handoff>
-          <div class="ak-brand">
-            <span class="ak-brand-mark" aria-hidden="true"></span>
-            <span class="ak-brand-name">本体消费展示工作台</span>
-            <span class="ak-brand-chip">AgentKit</span>
-          </div>
-          <div class="ak-topbar-actions">
-            <button type="button" class="ak-ghost" data-agentkit-layout-toggle aria-label="在对话与结果之间切换">
-              切换视图
-            </button>
-          </div>
-        </header>
+    <div id="agentkit-root" data-agentkit-root="1" data-app-version="@@APP_VERSION@@" aria-busy="true">
+      <div class="ak-shell" data-ak-view="thread">
         <div class="ak-main">
-          <aside class="ak-sessions" data-agentkit-sessions aria-label="会话列表">
-            <div class="ak-skeleton-row"></div>
-            <div class="ak-skeleton-row"></div>
-            <div class="ak-skeleton-row"></div>
+          <aside class="ak-sessions" data-agentkit-sessions aria-label="工作台导航">
+            <header class="ak-brand">
+              <span class="ak-brand-mark" aria-hidden="true">◆</span>
+              <span class="ak-brand-name">智能分析</span>
+              <span class="ak-brand-chip">@@APP_VERSION@@</span>
+            </header>
+            <div class="ak-session-pane"><div class="ak-skeleton-row"></div></div>
+            <div class="ak-nav-footer" data-agentkit-layout-toggle></div>
           </aside>
           <section class="ak-thread" data-agentkit-thread aria-label="对话">
-            <div class="ak-boot">正在加载本体消费展示工作台…</div>
+            <div class="ak-boot" data-agentkit-handoff>正在加载智能分析工作台…</div>
           </section>
           <section class="ak-board" data-agentkit-board aria-label="分析结果">
             <div class="ak-skeleton-card"></div>

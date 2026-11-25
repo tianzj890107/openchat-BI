@@ -341,3 +341,19 @@ test('an accepted scope is confirmed in the page state', () => {
   assert.equal(state.scopeConfirmed.anchor, 'PACK_OPP_COVERAGE');
   assert.equal(state.scopeConfirmed.period, '2026Q3');
 });
+
+test('SOP follows backend steps and survives clarification, rewind and history', () => {
+  let state = startTurn(createWorkbenchState(), {text: '验证 SOP', sessionId: 's'});
+  state = applyEvent(state, {type: 'sop_progress', turn_id: 't1', step: 1, detail: '识别'});
+  state = applyEvent(state, {type: 'sop_progress', turn_id: 't1', step: 4, detail: '取数'});
+  state = applyEvent(state, {type: 'user_choice_requested', turn_id: 't1'});
+  state = applyEvent(state, {type: 'done', turn_id: 't1'});
+  assert.equal(state.turns[0].sop.todos[3].status, 'in_progress');
+  state = resumeTurn(state);
+  state = applyEvent(state, {type: 'sop_progress', turn_id: 't2', step: 3, detail: '重新规划'});
+  state = applyEvent(state, {type: 'done', turn_id: 't2'});
+  const [turn] = turnsFromSnapshot(JSON.parse(JSON.stringify(snapshotFromState(state))));
+  assert.deepEqual(turn.sop.todos.map((item) => item.status),
+    ['completed', 'skipped', 'completed', 'skipped', 'skipped', 'skipped']);
+  assert.equal(turn.sop.todos[2].detail, '重新规划');
+});

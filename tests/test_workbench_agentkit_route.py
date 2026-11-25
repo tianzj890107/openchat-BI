@@ -83,6 +83,8 @@ class WorkbenchAgentkitRouteTests(unittest.TestCase):
         self.assertIn(f'{prefix}/{AGENTKIT_JS}?v=', html)
         self.assertIn(f'{prefix}/{AGENTKIT_CSS}?v=', html)
         self.assertNotIn("@@APP_ROOT_PATH@@", html)
+        self.assertRegex(html, r'data-app-version="ontology-v\d+\.\d+\.\d+"')
+        self.assertNotIn("@@APP_VERSION@@", html)
         # Version tokens are resolved from file mtime, never left frozen.
         self.assertNotIn("@@AGENTKIT_JS_VERSION@@", html)
         self.assertNotIn("@@AGENTKIT_CSS_VERSION@@", html)
