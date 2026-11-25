@@ -117,3 +117,10 @@
   统一入口切到 AgentKit、报告附件分析、历史对齐；复用 preview.env 与 dataset-local 本体，未触碰 8765。
 - 验证：`/healthz`、`/workbench-agentkit` 200；bundle 与本地一致；`/api/sources` 源不变；Node 184 项通过。
 - 主要文件：`DEPLOYMENT.md`（§9）。
+
+### 2026-11-25 恢复 demo2 旧版工作台到 /workbench-legacy
+
+- demo2 当前 `/workbench` 的构建确认仍为 `07ac670`（2026-09-30）：`workbench.js` md5 `e0a0f53e…`、CSS md5 `592a4a68…`，与仓库历史一致，无需重建。
+- 从该提交恢复旧版页面到独立目录：模板 `bi_agent/web/static/workbench-legacy/index.html`，资源 `static/vendor/antd-legacy/{workbench-legacy.js,workbench-legacy.css,lib/vue.global.js,lib/pro-bi-ui.min.js}`；`/workbench-legacy` 改由 `_legacy_workbench_response()` 渲染，保留 `APP_ROOT_PATH` 和固定的历史版本串（`?v=127/162`）。
+- 入口关系：`/`、`/workbench`、`/workbench-agentkit` 均为 AgentKit 新版；`/workbench-legacy` 为 demo2 旧版。原 Pro UI 页面不再占用该兼容入口（其资源保留在 `vendor/antd`）。
+- 验证：路由测试断言旧页资源路径、标题「硕磐智能分析 Agent · 本体工作台」以及 JS/CSS 的 md5 与 demo2 构建一致；新增 jsdom 冒烟用例，三份旧脚本可在 DOM 中启动并渲染导航（“新对话”“智能分析”）。

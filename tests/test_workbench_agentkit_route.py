@@ -18,6 +18,7 @@ AGENTKIT_CSS = "static/vendor/agentkit/workbench-agentkit.css"
 
 def probe(root_path: str) -> dict[str, object]:
     code = r'''
+import hashlib
 import json
 from fastapi.testclient import TestClient
 from bi_agent.web.app import app
@@ -33,6 +34,8 @@ legacy = client.get(url("/workbench-legacy"))
 root = client.get(prefix or "/")
 js = client.get(url("/static/vendor/agentkit/workbench-agentkit.js"))
 css = client.get(url("/static/vendor/agentkit/workbench-agentkit.css"))
+legacy_js = client.get(url("/static/vendor/antd-legacy/workbench-legacy.js"))
+legacy_css = client.get(url("/static/vendor/antd-legacy/workbench-legacy.css"))
 
 print(json.dumps({
     "app_root_path": prefix,
@@ -45,6 +48,10 @@ print(json.dumps({
     "workbench_location": workbench.headers.get("location"),
     "legacy_status": legacy.status_code,
     "legacy_html": legacy.text,
+    "legacy_js_status": legacy_js.status_code,
+    "legacy_js_md5": hashlib.md5(legacy_js.content or b"").hexdigest(),
+    "legacy_css_status": legacy_css.status_code,
+    "legacy_css_md5": hashlib.md5(legacy_css.content or b"").hexdigest(),
     "root_html": root.text,
     "js_status": js.status_code,
     "js_bytes": len(js.content or b""),
@@ -105,9 +112,17 @@ class WorkbenchAgentkitRouteTests(unittest.TestCase):
         legacy = str(result["legacy_html"])
         root_html = str(result["root_html"])
         self.assertEqual(result["legacy_status"], 200)
-        # The regression reference still loads the Pro UI bundle, not AgentKit.
-        self.assertIn("static/vendor/antd/workbench.js", legacy)
+        # /workbench-legacy is the restored demo2-era page (commit 07ac670):
+        # its own bundle under antd-legacy, never the AgentKit one.
+        self.assertIn("vendor/antd-legacy/workbench-legacy.js?v=162", legacy)
+        self.assertIn("vendor/antd-legacy/workbench-legacy.css?v=127", legacy)
+        self.assertIn("硕磐智能分析 Agent · 本体工作台", legacy)
         self.assertNotIn("vendor/agentkit/workbench-agentkit.js", legacy)
+        self.assertEqual(result["legacy_js_status"], 200)
+        self.assertEqual(result["legacy_css_status"], 200)
+        # Byte-identical to what demo2 served (md5 of the 07ac670 build).
+        self.assertEqual(result["legacy_js_md5"], "e0a0f53e2c5778c4d50f99527981b23f")
+        self.assertEqual(result["legacy_css_md5"], "592a4a685841a6439c3edf2a28d747e9")
         self.assertEqual(result["workbench_status"], 200)
         self.assertIsNone(result["workbench_location"])
         self.assertEqual(root_html, result["agentkit_html"])

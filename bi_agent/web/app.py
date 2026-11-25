@@ -1233,6 +1233,34 @@ def _render_workbench_index() -> str:
     return html.replace("</head>", runtime_config + "</head>", 1)
 
 
+_WORKBENCH_LEGACY_TEMPLATE = STATIC_DIR / "workbench-legacy" / "index.html"
+
+
+def _render_workbench_legacy_index() -> str:
+    """Render the restored demo2-era workbench (commit 07ac670) as history.
+
+    The page is kept byte-faithful to what demo2 served: its own bundle/CSS live
+    under ``vendor/antd-legacy`` and the historical ``?v=127/162`` strings stay
+    frozen, because this entry is a regression reference, not a live product.
+    """
+    template = _WORKBENCH_LEGACY_TEMPLATE.read_text(encoding="utf-8")
+    html = template.replace(_APP_ROOT_PATH_TOKEN, APP_ROOT_PATH)
+    runtime_config = (
+        '<script id="app-root-path-config">'
+        "window.APP_ROOT_PATH = "
+        + json.dumps(APP_ROOT_PATH)
+        + ";</script>"
+    )
+    return html.replace("</head>", runtime_config + "</head>", 1)
+
+
+def _legacy_workbench_response() -> HTMLResponse:
+    return HTMLResponse(
+        content=_render_workbench_legacy_index(),
+        headers=dict(_NO_STORE_HEADERS),
+    )
+
+
 def _workbench_response() -> HTMLResponse:
     """Serve the legacy Pro UI workbench for explicit fallback."""
     return HTMLResponse(
@@ -1336,7 +1364,8 @@ def workbench() -> HTMLResponse:
 
 @app.get("/workbench-legacy")
 def workbench_legacy() -> HTMLResponse:
-    return _workbench_response()
+    """Historical demo2-era workbench, restored from git commit 07ac670."""
+    return _legacy_workbench_response()
 
 
 _NO_STORE_HEADERS = {

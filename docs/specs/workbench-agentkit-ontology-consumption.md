@@ -14,7 +14,7 @@
 
 | 区域 | 实现与归属 |
 | --- | --- |
-| 入口和页面壳 | 在当前分析仓的 `frontend/` 实现新入口 `GET /workbench-agentkit`。沿用 `APP_ROOT_PATH`，例如通过 `/api/ontology-agentic-analytics/workbench-agentkit` 访问。同一入口可独立打开，也可由驾驶舱托管。应用根路径和 `/workbench` 使用同一新版页面，旧界面位于 `/workbench-legacy`。 |
+| 入口和页面壳 | 在当前分析仓的 `frontend/` 实现新入口 `GET /workbench-agentkit`。沿用 `APP_ROOT_PATH`，例如通过 `/api/ontology-agentic-analytics/workbench-agentkit` 访问。同一入口可独立打开，也可由驾驶舱托管。应用根路径和 `/workbench` 使用同一新版页面；`/workbench-legacy` 原样提供 demo2 时期的构建（`07ac670`，资源在 `static/workbench-legacy` 与 `static/vendor/antd-legacy`），作为历史对照。 |
 | 左侧导航 | 左上显示现有工作台的「智能分析」及应用版本。会话列表支持新建与恢复，底部提供「数据源」。导航、对话和看板从页面顶部并排开始。 |
 | 中间对话区 | 使用 AgentKit 的 Thread、Composer、Markdown、工具分组、状态和澄清卡。消息列表独立滚动，输入与发送／停止固定在对话区底部。展开工具组，再查看具体调用的入参、返回内容、状态、耗时与错误。工具命中的本体放在产生它的调用详情中，重复命中可在各自调用回看。 |
 | 右侧分析区 | 按问题展示图表和表格，每个图表或表格呈现一次。工具过程和命中本体从对话中的调用查看。窄屏允许切换对话和结果，回到对话时保留输入。 |
@@ -217,7 +217,7 @@ PACK 对照验收时，两种入口使用同一个已核准的本体库和版本
 | 结果 | 交付结论、原因和建议，图表保留来源及深入洞察。每轮支持 HTML、生成并下载 Word 和有宿主时的主页同步。看板中的问题入口与对话定位条均能跳到目标问题。 |
 | 对话 | 支持建议问题填入输入框、澄清上下文、手工补答、已确认的选项及提交失败后原卡重试。无终态断流保留已显示内容、结束执行状态。 |
 | 布局与配置 | 桌面栏宽可拖动和用方向键调整，窄屏续用底部导航。高级本体／Doris 配置放在数据源设置，角色、风格、用户名和主题偏好放在模型设置。模型服务凭据沿用既有模型配置接口。 |
-| 入口 | 应用根路径、`/workbench` 和 `/workbench-agentkit` 都打开新版。保留 `APP_ROOT_PATH`、`?prompt=` 一次性提交和 V6.1 交接，兼容入口 `/workbench-legacy` 可用于历史对照与回退。 |
+| 入口 | 应用根路径、`/workbench` 和 `/workbench-agentkit` 都打开新版。保留 `APP_ROOT_PATH`、`?prompt=` 一次性提交和 V6.1 交接；`/workbench-legacy` 为 demo2 构建（`07ac670`）的字节级恢复，用于历史对照。 |
 
 继续使用工具调用内的本体命中和现行调用详情。看板跳转只定位问题，不跟随对话滚动。独立本体内容页、会话级命中聚合和独立调用记录页不纳入迁移。
 
