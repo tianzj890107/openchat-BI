@@ -124,3 +124,10 @@
 - 从该提交恢复旧版页面到独立目录：模板 `bi_agent/web/static/workbench-legacy/index.html`，资源 `static/vendor/antd-legacy/{workbench-legacy.js,workbench-legacy.css,lib/vue.global.js,lib/pro-bi-ui.min.js}`；`/workbench-legacy` 改由 `_legacy_workbench_response()` 渲染，保留 `APP_ROOT_PATH` 和固定的历史版本串（`?v=127/162`）。
 - 入口关系：`/`、`/workbench`、`/workbench-agentkit` 均为 AgentKit 新版；`/workbench-legacy` 为 demo2 旧版。原 Pro UI 页面不再占用该兼容入口（其资源保留在 `vendor/antd`）。
 - 验证：路由测试断言旧页资源路径、标题「硕磐智能分析 Agent · 本体工作台」以及 JS/CSS 的 md5 与 demo2 构建一致；新增 jsdom 冒烟用例，三份旧脚本可在 DOM 中启动并渲染导航（“新对话”“智能分析”）。
+
+### 2026-11-25 8766 预览更新到 d2c67af
+
+- 补推 GitHub 缺失提交（`5289869`、`d2c67af`）并把 8766 更新到 `agentkit-d2c67af-20261125-1622`：
+  新增 `/workbench-legacy`（demo2 时代页面）、输入区与侧栏交互精简；未触碰 8765。
+- 验证：`/healthz`、`/workbench-agentkit`、`/workbench-legacy`、`/api/sources` 均 200；bundle 与本地一致。
+- 主要文件：`DEPLOYMENT.md`（§9）。

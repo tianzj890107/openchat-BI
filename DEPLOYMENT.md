@@ -472,6 +472,16 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### 2026-11-25 8766 预览更新到 d2c67af（/workbench-legacy 与输入区精简）
+
+- 代码：`d2c67af`（含 `5289869` 恢复 demo2 时代的 `/workbench-legacy` 页面），`git archive` 到
+  `agentkit-d2c67af-20261125-1622`，`RELEASE_COMMIT=d2c67af`。
+- 复用：`preview.env`、`dataset-local` 本体、`.venv` 软链、`dataset` → 原预览 `dataset-preview`。
+- 运行：PID `3072818`，端口 `8766`。
+- 验证：`/healthz`、`/workbench-agentkit`、`/workbench-legacy`、`/api/sources` 均 200（内外网）；
+  `workbench-agentkit.js` 785680 字节与本地一致；Node 套件 185 项通过。
+- 回滚：停 `3072818`，在 `agentkit-3c9a100-20261125-1546` 重新启动 8766。
+
 ### 2026-11-25 8766 预览更新到 3c9a100（报告附件与 AgentKit 统一入口）
 
 - 代码：`3c9a100`（含 `b8ce31e` 把分析入口切到 AgentKit、报告与历史对齐），`git archive` 到
