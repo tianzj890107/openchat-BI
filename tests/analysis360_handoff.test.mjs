@@ -7,6 +7,7 @@ const shared = await read('../bi_agent/web/static/cockpit/insight-components/sha
 const index = await read('../bi_agent/web/static/index.html');
 const {
   withHandoff, withAnalysis360Routes, analysis360ApiPath, isChatRequest, HANDOFF_FIELD,
+  withDirect, DIRECT_FIELD, ASSISTANT,
 } = await import('../bi_agent/web/static/analysis360-handoff.mjs');
 
 test('the handoff id rides on the first chat request only', async () => {
@@ -85,4 +86,27 @@ test('the clause is posted to the server and the page opens with only its id', a
   const failing = {open: () => tab, fetch: async () => ({ok: false, status: 400, json: async () => ({detail: '只有风险、问题和根因支持深度分析'})})};
   await assert.rejects(module.openDeepAnalysis(payload, {root: '/app', win: failing}), /只有风险、问题和根因/);
   assert.deepEqual(calls.at(-1), ['closed']);
+});
+
+test('the cockpit assistant marks every chat request as a direct 360 question', async () => {
+  const sent = [];
+  const fetchImpl = async (url, init) => { sent.push([url, init && init.body]); return {ok: true}; };
+  const wrapped = withDirect(withAnalysis360Routes(fetchImpl));
+  await wrapped('/app/api/chat', {method: 'POST', body: JSON.stringify({message: '本期风险', session_id: 's9'})});
+  await wrapped('/app/api/meta?session_id=s9');
+  assert.equal(ASSISTANT, 'assistant');
+  assert.equal(sent[0][0], '/app/api/analysis360/chat');
+  assert.deepEqual(JSON.parse(sent[0][1]), {message: '本期风险', session_id: 's9', [DIRECT_FIELD]: true});
+  assert.equal(sent[1][1], undefined);
+});
+
+test('the cockpit shows a floating 智能助手 that embeds the 360 workbench', async () => {
+  const cockpit = await read('../bi_agent/web/static/cockpit/index.html');
+  assert.match(cockpit, /static\/cockpit\/assistant\.js\?v=@@COCKPIT_VERSION@@/);
+  const {assistantUrl, ASSISTANT_PATH} = await import('../bi_agent/web/static/cockpit/assistant.js');
+  assert.equal(ASSISTANT_PATH, '/workbench?a360=assistant');
+  assert.equal(assistantUrl('/bi/'), '/bi/workbench?a360=assistant');
+  assert.equal(assistantUrl(''), '/workbench?a360=assistant');
+  const css = await read('../bi_agent/web/static/cockpit/cockpit.css');
+  assert.match(css, /\.cockpit-assistant-fab\{position:fixed;right:24px;bottom:24px/);
 });

@@ -9,6 +9,11 @@ import { waitForWorkbench } from "./url-prompt.mjs";
 
 export const HANDOFF_PARAM = "a360";
 export const HANDOFF_FIELD = "analysis360_handoff";
+// The cockpit's 智能助手 panel embeds this page as  …/workbench?a360=assistant:
+// 360 智能分析 without a card clause.  Each new conversation becomes a 360
+// session on its first question (analysis360_direct).
+export const ASSISTANT = "assistant";
+export const DIRECT_FIELD = "analysis360_direct";
 const MODE_KEY = "eimosp-analysis360-mode";
 
 export function isChatRequest(input, init) {
@@ -57,6 +62,23 @@ export function analysis360ApiPath(url, method) {
   return parsed.pathname + parsed.search + parsed.hash;
 }
 
+// Mark every chat request as a direct 360 question (the server ignores the
+// flag once the session is already a 360 session).
+export function withDirect(fetchImpl) {
+  return function fetchDirect(input, init) {
+    if (isChatRequest(input, init) && init && typeof init.body === "string") {
+      try {
+        const body = JSON.parse(init.body);
+        body[DIRECT_FIELD] = true;
+        return fetchImpl(input, { ...init, body: JSON.stringify(body) });
+      } catch (_) {
+        // Not a JSON body: leave the request untouched.
+      }
+    }
+    return fetchImpl(input, init);
+  };
+}
+
 export function withAnalysis360Routes(fetchImpl) {
   return function fetchForAnalysis360(input, init) {
     const method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
@@ -75,6 +97,15 @@ export function markMode(document, storage) {
 export async function bootHandoff(window, document) {
   const url = new URL(window.location.href);
   const handoffId = (url.searchParams.get(HANDOFF_PARAM) || "").trim();
+  if (handoffId === ASSISTANT) {
+    // Embedded assistant: keep the parameter (a reload stays in this mode) and
+    // do not mark the tab's sessionStorage, which the host cockpit page shares.
+    markMode(document, { setItem() {} });
+    document.title = "智能助手 · 360 智能分析";
+    if (document.documentElement) document.documentElement.dataset.analysis360Assistant = "1";
+    window.fetch = withDirect(withAnalysis360Routes(window.fetch.bind(window)));
+    return false;
+  }
   let stored = false;
   try { stored = window.sessionStorage.getItem(MODE_KEY) === "1"; } catch (_) { /* ignore */ }
   if (handoffId || stored) markMode(document, window.sessionStorage);

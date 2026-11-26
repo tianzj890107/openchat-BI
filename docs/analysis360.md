@@ -35,6 +35,18 @@
 `/static/*`、`/api/analysis360/*`。360 页面自身的聊天和 AskUser 选择分别走
 `POST /api/analysis360/chat`、`POST /api/analysis360/choice`，不会放开通用 `/api/chat`。
 
+## 智能助手入口（2026-11-26）
+
+1. 驾驶舱（360 看板）每个页面右下角有「智能助手」漂浮按钮（`static/cockpit/assistant.js`）。
+2. 点击后在本页弹出面板，内嵌 `…/workbench?a360=assistant`（Ontology Analyst 工作台的 360 模式）：
+   保留工作台的 SOP 步骤展示、对话展示和看板；面板可放大、可在新窗口打开，关闭后对话保留。
+3. 该模式不需要卡片交接：页面的每次聊天请求带 `analysis360_direct=true`，走
+   `POST /api/analysis360/chat`；会话第一次提问时服务端把它建成 360 会话（无交接条款），
+   之后按六步 SOP 从用户的问题本身确定范围。该标记只在 `/api/analysis360/chat` 上生效，通用 `/api/chat` 不受影响。
+4. 本体仍是 `亿纬锂能_流程360全局本体_无投标_V1.0`（`assets/global-ontology.json`，由
+   `docs/亿纬锂能/` 下同名工作簿生成），访问方式按《流程360全局本体_智能分析Agent访问策略_V1.0》的六个接口；
+   数据库取 `.env` 的 `PROCESS360_PG_*`（缺省时 `WORKBENCH_PG_*`），大模型取 `.env` 的 `TEAM_*` 配置。
+
 ## 工具（访问策略的六个接口）
 
 | 工具 | 策略接口 | SOP 步骤 |

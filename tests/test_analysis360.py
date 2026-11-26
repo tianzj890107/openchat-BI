@@ -506,6 +506,24 @@ class TestHandoffEndpoints:
         assert later.status_code == 200
         assert self.web.STATE.sessions["customer-360"].agent_def.name == "analysis360"
 
+    def test_the_cockpit_assistant_starts_a_360_session_from_a_plain_question(self):
+        # 智能助手 (2026-11-26): no card clause; the first question itself starts the 360 session.
+        response = self._chat(dict(message="本期商机推进有哪些风险？", session_id="assistant-1",
+                                   analysis360_direct=True), path="/api/analysis360/chat")
+        assert response.status_code == 200
+        session = self.web.STATE.sessions["assistant-1"]
+        assert session.agent_def.name == "analysis360" and session.analysis360_run.handoff is None
+        first = session.messages[0]["content"]
+        first = first if isinstance(first, str) else json.dumps(first, ensure_ascii=False)
+        assert "本期商机推进有哪些风险" in first and "360 深度分析交接" not in first
+        assert set(tools.TOOL_NAMES) <= set(self.seen["tools"] or [])
+        later = self._chat(dict(message="继续下钻", session_id="assistant-1", analysis360_direct=True),
+                           path="/api/analysis360/chat")
+        assert later.status_code == 200 and self.web.STATE.sessions["assistant-1"] is session
+        # The flag does nothing on the general route: that stays the general agent.
+        self._chat(dict(message="你好", session_id="general-2", analysis360_direct=True))
+        assert self.web.STATE.sessions["general-2"].agent_def.name == "bi-analyst"
+
     def test_a_reaped_or_new_conversation_stays_360_and_an_expired_handoff_is_refused(self):
         created = self._handoff()
         self._chat(dict(message="深度分析", session_id="tab-360", analysis360_handoff=created["id"]))

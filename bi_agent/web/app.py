@@ -852,6 +852,10 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     # Set by the analysis page on the first turn after a card's 深度分析 click.
     analysis360_handoff: Optional[str] = None
+    # Set by the cockpit's 智能助手 panel: a 360 session that starts from the
+    # user's own question instead of a card clause.  Honoured on
+    # /api/analysis360/chat only.
+    analysis360_direct: bool = False
 
 
 class Analysis360HandoffRequest(BaseModel):
@@ -3164,7 +3168,11 @@ def _chat_response(req: ChatRequest, *, analysis360_only: bool = False):
     if analysis360_only:
         key = _session_key(req.session_id)
         if key not in _ANALYSIS360_SESSIONS:
-            raise HTTPException(403, "此入口仅支持360智能分析")
+            if not req.analysis360_direct:
+                raise HTTPException(403, "此入口仅支持360智能分析")
+            # 智能助手: the first turn makes this id a 360 session with no
+            # handed-over clause; the agent starts from the question itself.
+            _ensure_analysis360_session(req.session_id, {})
     session = _ensure_session(req.session_id)
     if analysis360_only and getattr(session, "analysis360_run", None) is None:
         raise HTTPException(403, "此入口仅支持360智能分析")
@@ -4617,6 +4625,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
         cockpit / "task-progress.js",
         cockpit / "publication-client.js",
         cockpit / "page-client.js",
+        cockpit / "assistant.js",
         cockpit / "insight-components" / "index.js",
         cockpit / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json",
         # Card components change on their own; without them a browser keeps
