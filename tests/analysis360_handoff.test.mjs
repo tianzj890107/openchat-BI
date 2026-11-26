@@ -110,3 +110,20 @@ test('the cockpit shows a floating 智能助手 that embeds the 360 workbench', 
   const css = await read('../bi_agent/web/static/cockpit/cockpit.css');
   assert.match(css, /\.cockpit-assistant-fab\{position:fixed;right:24px;bottom:24px/);
 });
+
+test('the 智能助手 keeps the full Ontology Analyst layout, 全屏, and a composer chip that cannot cover the input', async () => {
+  // a360=assistant does not switch the page into the focused 360 layout.
+  assert.match(index, /a360 !== null && a360 !== 'assistant'/);
+  const handoff = await read('../bi_agent/web/static/analysis360-handoff.mjs');
+  const assistantBranch = handoff.slice(handoff.indexOf('if (handoffId === ASSISTANT)'), handoff.indexOf('return false;', handoff.indexOf('if (handoffId === ASSISTANT)')));
+  assert.doesNotMatch(assistantBranch, /markMode/);
+  const panel = await read('../bi_agent/web/static/cockpit/assistant.js');
+  assert.match(panel, /data-action="full"/);
+  assert.match(panel, /requestFullscreen/);
+  const cockpitCss = await read('../bi_agent/web/static/cockpit/cockpit.css');
+  assert.match(cockpitCss, /\.cockpit-assistant\.is-full\{top:0;right:0;bottom:0;left:0/);
+  const built = await read('../bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css');
+  assert.match(built, /\.pro-ui-model-chip\.ant-btn\{max-width:min\(220px,100%\);min-width:0/);
+  assert.match(built, /@container \(max-width:460px\)\{\.pro-ui-composer-hint\{display:none\}\}/);
+  assert.match(index, /workbench\.css\?v=137/);
+});

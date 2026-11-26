@@ -215,9 +215,9 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .cockpit-assistant-fab:hover{background:var(--cockpit-primary-active)}
 .cockpit-assistant-fab:focus-visible{outline:2px solid var(--cockpit-primary);outline-offset:3px}
 .cockpit-assistant-fab.is-open{background:var(--cockpit-primary-active)}
-.cockpit-assistant{position:fixed;right:24px;bottom:80px;z-index:901;display:flex;flex-direction:column;width:min(760px,calc(100vw - 48px));height:min(860px,calc(100vh - 104px));background:var(--cockpit-surface);border:1px solid var(--cockpit-divider);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.18);overflow:hidden}
+.cockpit-assistant{position:fixed;right:24px;bottom:80px;z-index:901;display:flex;flex-direction:column;width:min(1360px,calc(100vw - 48px));height:calc(100vh - 104px);background:var(--cockpit-surface);border:1px solid var(--cockpit-divider);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.18);overflow:hidden}
 .cockpit-assistant[hidden]{display:none}
-.cockpit-assistant.is-wide{width:calc(100vw - 48px)}
+.cockpit-assistant.is-full{top:0;right:0;bottom:0;left:0;z-index:1001;width:100vw;height:100vh;border:0;border-radius:0}
 .cockpit-assistant__head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 16px;border-bottom:1px solid var(--cockpit-divider)}
 .cockpit-assistant__title{display:flex;flex-direction:column;min-width:0}
 .cockpit-assistant__title strong{font-size:15px;color:var(--cockpit-text)}
@@ -230,6 +230,5 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .cockpit-assistant__frame{display:block;width:100%;height:100%;border:0}
 @media (max-width:640px){
   .cockpit-assistant-fab{right:16px;bottom:16px}
-  .cockpit-assistant,.cockpit-assistant.is-wide{right:16px;bottom:72px;width:calc(100vw - 32px);height:calc(100vh - 96px)}
-  .cockpit-assistant__action[data-action="expand"]{display:none}
+  .cockpit-assistant{right:16px;bottom:72px;width:calc(100vw - 32px);height:calc(100vh - 96px)}
 }

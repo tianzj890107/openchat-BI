@@ -7452,14 +7452,19 @@ body.pro-ui-workbench-body .attach-chip {
 
 .pro-ui-composer-tools {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
   gap: 3px;
+  overflow: hidden;
 }
 
+/* The model chip (团队 API …) shrinks with the composer instead of running
+ * into the hint and the input row (narrow panels such as the cockpit 智能助手). */
 .pro-ui-model-chip.ant-btn {
-  max-width: min(220px, 38vw);
+  max-width: min(220px, 100%);
+  min-width: 0;
   padding-inline: 7px;
   color: var(--pro-ui-muted);
   font-size: 11px;
@@ -7503,6 +7508,16 @@ body.pro-ui-workbench-body .attach-chip {
   color: var(--pro-ui-subtle);
   font-size: 10px;
   white-space: nowrap;
+}
+
+.pro-ui-composer-footer {
+  container-type: inline-size;
+}
+
+@container (max-width: 460px) {
+  .pro-ui-composer-hint {
+    display: none;
+  }
 }
 
 /* ---------- Status + workflow ---------- */

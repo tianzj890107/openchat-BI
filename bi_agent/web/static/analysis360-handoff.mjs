@@ -98,10 +98,11 @@ export async function bootHandoff(window, document) {
   const url = new URL(window.location.href);
   const handoffId = (url.searchParams.get(HANDOFF_PARAM) || "").trim();
   if (handoffId === ASSISTANT) {
-    // Embedded assistant: keep the parameter (a reload stays in this mode) and
-    // do not mark the tab's sessionStorage, which the host cockpit page shares.
-    markMode(document, { setItem() {} });
-    document.title = "智能助手 · 360 智能分析";
+    // Embedded assistant: the full Ontology Analyst page (sidebar, conversation,
+    // dashboard), only its chat goes to the 360 agent.  The parameter stays (a
+    // reload keeps the mode) and the tab's sessionStorage, which the host
+    // cockpit page shares, is not marked.
+    document.title = "智能助手 · Ontology Analyst";
     if (document.documentElement) document.documentElement.dataset.analysis360Assistant = "1";
     window.fetch = withDirect(withAnalysis360Routes(window.fetch.bind(window)));
     return false;

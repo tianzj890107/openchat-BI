@@ -42,7 +42,7 @@ export function mountAssistant(doc = document, win = window) {
         <small>Ontology Analyst · 流程360全局本体</small>
       </div>
       <div class="cockpit-assistant__actions">
-        <button type="button" class="cockpit-assistant__action" data-action="expand" aria-pressed="false" title="放大">放大</button>
+        <button type="button" class="cockpit-assistant__action" data-action="full" aria-pressed="false" title="全屏">全屏</button>
         <a class="cockpit-assistant__action" data-action="window" href="${url}" target="_blank" rel="noopener" title="在新窗口打开">新窗口</a>
         <button type="button" class="cockpit-assistant__action cockpit-assistant__close" data-action="close" aria-label="关闭智能助手" title="关闭">×</button>
       </div>
@@ -50,14 +50,15 @@ export function mountAssistant(doc = document, win = window) {
     <div class="cockpit-assistant__body"></div>`;
 
   const body = panel.querySelector('.cockpit-assistant__body');
-  const expand = panel.querySelector('[data-action="expand"]');
+  const full = panel.querySelector('[data-action="full"]');
   let frame = null;
 
   function open() {
     if (!frame) {
       frame = doc.createElement('iframe');
       frame.className = 'cockpit-assistant__frame';
-      frame.title = '智能助手 · 360 智能分析';
+      frame.title = '智能助手 · Ontology Analyst';
+      frame.setAttribute('allow', 'fullscreen; clipboard-write');
       frame.src = url;
       body.appendChild(frame);
     }
@@ -65,7 +66,23 @@ export function mountAssistant(doc = document, win = window) {
     fab.setAttribute('aria-expanded', 'true');
     fab.classList.add('is-open');
   }
+  function setFull(on) {
+    panel.classList.toggle('is-full', on);
+    full.setAttribute('aria-pressed', String(on));
+    full.textContent = on ? '退出全屏' : '全屏';
+    full.title = on ? '退出全屏' : '全屏';
+  }
+  function toggleFull() {
+    const on = !panel.classList.contains('is-full');
+    setFull(on);
+    // Browser fullscreen when allowed; the panel also fills the window without it.
+    try {
+      if (on && panel.requestFullscreen && !doc.fullscreenElement) panel.requestFullscreen().catch(() => {});
+      else if (!on && doc.fullscreenElement === panel && doc.exitFullscreen) doc.exitFullscreen().catch(() => {});
+    } catch (_) { /* fullscreen not available */ }
+  }
   function close() {
+    if (panel.classList.contains('is-full')) toggleFull();
     panel.hidden = true;
     fab.setAttribute('aria-expanded', 'false');
     fab.classList.remove('is-open');
@@ -73,15 +90,15 @@ export function mountAssistant(doc = document, win = window) {
   }
   fab.addEventListener('click', () => (panel.hidden ? open() : close()));
   panel.querySelector('[data-action="close"]').addEventListener('click', close);
-  expand.addEventListener('click', () => {
-    const wide = !panel.classList.contains('is-wide');
-    panel.classList.toggle('is-wide', wide);
-    expand.setAttribute('aria-pressed', String(wide));
-    expand.textContent = wide ? '还原' : '放大';
-    expand.title = wide ? '还原' : '放大';
+  full.addEventListener('click', toggleFull);
+  // Leaving browser fullscreen with Esc also leaves the panel's 全屏 state.
+  doc.addEventListener('fullscreenchange', () => {
+    if (!doc.fullscreenElement && panel.classList.contains('is-full')) setFull(false);
   });
   doc.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !panel.hidden) close();
+    if (event.key === 'Escape' && !panel.hidden && !doc.fullscreenElement) {
+      if (panel.classList.contains('is-full')) setFull(false); else close();
+    }
   });
 
   doc.body.append(panel, fab);

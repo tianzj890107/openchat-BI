@@ -12,9 +12,14 @@
 
 ### 2026-11-26 360 看板：右下角“智能助手”内嵌 Ontology Analyst（360 智能分析）
 
-- 驾驶舱各页面右下角新增“智能助手”漂浮按钮；点击后在本页弹出面板，内嵌 Ontology Analyst 工作台的 360 模式
-  （`/workbench?a360=assistant`），保留工作台原有的 SOP 步骤展示、对话展示和看板；面板可放大、可新窗口打开，
-  关闭后对话保留，Esc 关闭；手机宽度下面板占满屏宽（两侧 16px）。
+- 驾驶舱各页面右下角新增“智能助手”漂浮按钮；点击后在本页弹出面板，内嵌原版 Ontology Analyst 页面
+  （`/workbench?a360=assistant`）：左侧导航与配置、中间会话（含 SOP 步骤）、右侧看板，不再使用卡片深度分析的
+  精简布局（11-26 修订）。面板默认宽至 1360px、高度随窗口；“全屏”按钮进入浏览器全屏（不支持时铺满窗口），
+  可新窗口打开，关闭后对话保留，Esc 退出全屏或关闭；手机宽度下面板占满屏宽（两侧 16px）。
+- （11-26 修订）会话输入框底部的模型按钮（“团队 API（环境配置）…”）在较窄的会话栏中会压到“Enter 发送”提示
+  和输入区：改为随输入框宽度收缩、超长省略，输入框窄于 460px 时隐藏发送提示。修改源码
+  `frontend/src/workbench.css`，并同步到已构建的 `static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css`
+  （本机无前端依赖，未重新构建），样式版本升到 `v=137`；普通工作台同样生效。
 - 智能助手不需要卡片“深度分析”交接：工作台在该模式下给每次聊天带 `analysis360_direct`，经
   `/api/analysis360/chat` 首次提问即把会话建成 360 会话（无交接条款），由 analysis360 Agent 按
   《流程360全局本体_智能分析Agent访问策略_V1.0》的六步 SOP 和六个接口分析；本体为
@@ -23,8 +28,11 @@
 - 主要文件：`bi_agent/web/static/cockpit/{assistant.js,index.html,cockpit.css}`、`bi_agent/web/static/analysis360-handoff.mjs`、
   `bi_agent/web/static/index.html`、`bi_agent/web/app.py`、`docs/analysis360.md`、
   `tests/{test_analysis360.py,analysis360_handoff.test.mjs}`。
-- 验证：analysis360 与客户入口 Python 测试 43 项通过；驾驶舱与 analysis360 Node 测试 145 项通过；Web 相关 Python
-  测试中 2 项为既有失败（插槽说明哈希、SOP 状态映射）。未启动服务在浏览器中查看，未连接客户数据库和大模型实跑。
+- 验证：analysis360 与客户入口 Python 测试通过；驾驶舱与 analysis360 Node 测试 146 项通过；Web 相关 Python
+  测试中 2 项为既有失败（插槽说明哈希、SOP 状态映射）；前端测试 3 项为既有失败。用临时工作目录（演示 SQLite 与
+  本体副本，不触碰项目会话数据）启动本地服务，以无头 Chrome 截图核对：面板为三栏布局、全屏铺满、模型按钮不再
+  压住输入区；在助手中提问后请求进入 `/api/analysis360/chat` 并显示 6 步 SOP（本机无模型密钥，回答报未配置）。
+  未连接客户数据库和大模型实跑。
 
 ### 2026-11-23 首页经营看板：红区报价卡片标题与单数取整
 
