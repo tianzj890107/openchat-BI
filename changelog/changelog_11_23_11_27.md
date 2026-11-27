@@ -10,10 +10,6 @@
 - 每条记录说明用户可见变化、涉及页面/场景和主要文件，并注明改动时间。
 - 未完成、未验证的事项不要写成已完成。
 
-### 2026-11-27 储小策智能助手 AgentKit 迁移规格
-
-- 从 GitHub `feature/20251031-20261126` 拉出独立功能分支，记录 AgentKit 组件引入、驾驶舱停靠和看板切换、360 聊天与历史回看、客户入口限制及回退条件。规格列出 9 项产品验收和后续红测顺序。[迁移规格](../docs/specs/chuxiaoce-agentkit-workbench.md)
-
 ### 2026-11-26 360 看板：右下角“储小策智能助手”，会话停靠在看板左侧（360 智能分析）
 
 - （11-26 修订，取代当天的弹出面板/全屏方案）驾驶舱各页面右下角为“储小策智能助手”按钮，参照
@@ -61,41 +57,6 @@
 
 ### 2026-11-27 储小策智能助手迁移到 AgentKit 嵌入工作台
 
-- 助手复用现有 `GET /workbench?a360=assistant&view=chat|board` 入口（普通 `/workbench` 展示页不变，没有新增路由），用 React 18 + `@assistant-ui/react@0.14.14`
-  装配 AgentKit 的 Thread、SOP 条、工具折叠、Composer 与按轮对话看板；资源单独构建到
-  `static/vendor/agentkit/workbench-agentkit-embed.{js,css}`，不覆盖通用工作台产物。
-- 驾驶舱右下角入口改指新页；宿主与子页沿用 `closed/home/board` 状态机，首次打开携带 `view`，通过 `ready` 握手重收状态，
-  收起保留 iframe 与同一会话。子页只接受校验过 origin、source window、`source=cockpit-assistant` 和枚举值的消息；
-  「返回主页 / 显示对话看板 / 收起」回传 request，旧 `/workbench?a360=assistant` 页面保留可回退。
-- 对话直接使用 360 契约：`POST /api/analysis360/chat`（`analysis360_direct: true`、显式 `session_id`）和
-  `/api/analysis360/choice`；SOP、流式正文、工具结果、澄清失败重试沿用现有 SSE 事件与 `state.js` reducer，
-  同一会话的多轮、澄清续流及晚到帧按 `turn_id` 归并。
-- 嵌入页左侧保留约 420px 会话栏（新对话 + 历史分析，本地保存最近 8 个会话的轮次快照），右侧在对话与对话看板间切换；
-  首屏保留「储小策，我帮你」「看目标 · 看差距 · 看趋势」，输入框贴底并显示团队模型短名。
-- 客户入口继续使用原有 `/workbench`（含 `APP_ROOT_PATH` 前缀），不新增第二条助手路由；通用聊天与会话接口仍被 404 拦截；
-  页面复用安全渲染，不迁移或改写历史文件，回退只切换入口地址。
-- 主要文件：`bi_agent/web/app.py`、`bi_agent/web/customer.py`、`bi_agent/web/static/cockpit/assistant.js`、
-  `frontend/agentkit/{embed.jsx,embed-main.jsx,embedBridge.js}`、`frontend/vite.agentkit-embed.config.js`、
-  `frontend/agentkit/{Thread,Board,SopBar}` 等复用组件、`tests/{chuxiaoce_agentkit_embed,chuxiaoce_agentkit_dom}.test.mjs`、
-  `tests/test_chuxiaoce_agentkit_entry.py`。
-- 验证：新增 10 项验收测试（宿主 URL/握手/会话恢复/360 请求体/DOM 欢迎语与看板），Node 155 项、相关 Python 55 项通过；
-  构建产物已重建。未连接真实 360 服务、客户数据库和大模型做浏览器实跑。
-
-### 2026-11-27 储小策助手验收修复：默认可提问、澄清可重试、360 证据看板与刷新恢复
-
-- 布局：`view=board` 下同时渲染左侧对话列（SOP、消息、输入框）和右侧对话看板，历史列表与「新对话」常驻；
-  默认打开即可直接提问，不再只看得到历史列表。
-- 澄清失败：提交选择返回 503 时保留澄清卡与已选项，`choice_failed` 把原 pendingChoice 恢复并显示错误，
-  再次提交发送相同 `choice_ids/choice_labels`，不再只剩「重试本轮」。
-- 看板适配：360 工具返回的证据 JSON（`columns`/`rows`/`rowCount`/`previewRows`/`evidenceId`）转成一张表格卡，
-  行数组和对象行都支持；已有原生 `table` 规范时不重复生成。
-- 历史与恢复：新增 `/api/analysis360/history`（POST 保存、GET 列表、GET 单条，会话 ID 校验），
-  前端在每轮结束后同步服务端，刷新后按 `session_id` 从本地快照/服务端记录恢复轮次和待澄清卡；
-  客户入口继续放行 `/api/analysis360/*`。
-- 入口与版本开关：助手继续走 `/workbench?a360=assistant`，普通 `/workbench` 返回原展示页；
-  新增 `WORKBENCH_ASSISTANT_UI=legacy` 服务端开关：同一 URL 下服务端返回旧工作台页，
-  回退不改 iframe 地址、不新增路由。
-- 主要文件：`frontend/agentkit/{embed.jsx,embedBridge.js,results.js,agentkit-theme.css}`、
-  `bi_agent/web/app.py`、`bi_agent/web/static/cockpit/assistant.js`、`tests/{chuxiaoce_agentkit_dom,chuxiaoce_agentkit_results}.test.mjs`、
-  `tests/test_chuxiaoce_agentkit_{entry,history}.py`。
-- 验证：Node 160 项通过；相关 Python 58 项通过；嵌入构建产物已重建。
+- 助手使用现有 `GET /workbench?a360=assistant&view=chat|board`，由驾驶舱右下角打开。默认视图显示对话、输入框和看板，保留欢迎语。主页与看板双向切换和收起沿用同一 iframe。设置 `WORKBENCH_ASSISTANT_UI=legacy` 后同一 URL 可回退到旧助手。
+- 现有嵌入版接入 360 聊天、澄清重试、查询证据表格，以及按会话 ID 恢复历史轮次和待澄清卡。客户入口仍限制通用聊天和会话接口。实现位于 `frontend/agentkit/{embed.jsx,embedBridge.js,results.js}`、`bi_agent/web/app.py` 和 `bi_agent/web/static/cockpit/assistant.js`。已记录 Node 160 项、相关 Python 58 项通过及重建产物。
+- （11-27 规格修订）明确打开助手必须挂载与分析 Agent 共用的完整工作台。补充默认三栏、导航、拖动分隔条、完整 Composer、交接和本体图的验收，约定客户模式下模型与数据源只读、未授权的附件上传隐藏。完整工作台重构待实施。[迁移规格](../docs/specs/chuxiaoce-agentkit-workbench.md)
