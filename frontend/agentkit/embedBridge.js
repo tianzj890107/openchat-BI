@@ -2,7 +2,7 @@
 // 嵌入页与宿主同源；每条消息都校验 origin、source window、source 字段和枚举值。
 
 export const MESSAGE_SOURCE = 'cockpit-assistant';
-export const ASSISTANT_PATH = '/workbench-agentkit?a360=assistant';
+export const ASSISTANT_PATH = '/workbench?a360=assistant';
 export const ASSISTANT_VIEWS = Object.freeze(['chat', 'board']);
 export const SESSION_KEY = 'chuxiaoce.assistant.session';
 

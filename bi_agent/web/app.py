@@ -1403,23 +1403,19 @@ def _assistant_ui_mode() -> str:
     return "legacy" if value == "legacy" else "agentkit"
 
 
-@app.get("/workbench-agentkit")
-def workbench_agentkit(a360: str = "") -> HTMLResponse:
-    # The customer entry only serves the embedded assistant at this route.
-    if a360 != "assistant":
-        raise HTTPException(404, "仅支持 a360=assistant 的助手入口")
-    return HTMLResponse(
-        content=_render_agentkit_assistant_index(),
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
-
-
 @app.get("/workbench")
-def workbench() -> HTMLResponse:
+def workbench(request: Request) -> HTMLResponse:
+    # The cockpit's 储小策助手 reuses this entry: only the assistant mode swaps
+    # the page, the display workbench at plain /workbench is untouched.
+    if request.query_params.get("a360") == "assistant" and _assistant_ui_mode() != "legacy":
+        return HTMLResponse(
+            content=_render_agentkit_assistant_index(),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
     return _workbench_response()
 
 
@@ -4760,10 +4756,6 @@ def _cockpit_html(page: str) -> HTMLResponse:
         .replace("@@COCKPIT_BUSINESS_PERIOD@@", _cockpit_business_period())
         .replace("@@COCKPIT_SNAPSHOT_DATE@@", _cockpit_snapshot_date())
     )
-    assistant_ui = (
-        f'<meta name="assistant-ui" content="{_assistant_ui_mode()}">'
-    )
-    html = html.replace("</head>", assistant_ui + "</head>", 1)
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 

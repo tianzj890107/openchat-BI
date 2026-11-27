@@ -31,19 +31,13 @@ export function readRequest(event, origin) {
   return REQUESTS.includes(data.request) ? data.request : null;
 }
 
-export const ASSISTANT_PATH = '/workbench-agentkit?a360=assistant';
-export const LEGACY_ASSISTANT_PATH = '/workbench?a360=assistant';
+export const ASSISTANT_PATH = '/workbench?a360=assistant';
 
-// Server-side switch (meta assistant-ui): rollback only changes the iframe URL.
-export function assistantPath(ui) {
-  return ui === 'legacy' ? LEGACY_ASSISTANT_PATH : ASSISTANT_PATH;
-}
 export const ASSISTANT_NAME = '储小策智能助手';
 export const VIEWS = Object.freeze(['closed', 'home', 'board']);
 
-export function assistantUrl(root, view, ui) {
-  const path = assistantPath(ui);
-  return `${String(root || '').replace(/\/+$/, '')}${path}&view=${view === 'board' ? 'board' : 'chat'}`;
+export function assistantUrl(root, view) {
+  return `${String(root || '').replace(/\/+$/, '')}${ASSISTANT_PATH}&view=${view === 'board' ? 'board' : 'chat'}`;
 }
 
 // The child announces readiness so the host can push its current view even
@@ -64,9 +58,7 @@ export function mountAssistant(doc = document, win = window) {
   if (!doc.body || doc.getElementById('cockpit-assistant-fab')) return null;
   const meta = doc.querySelector('meta[name="app-root"]');
   const root = meta ? meta.getAttribute('content') || '' : '';
-  const uiMeta = doc.querySelector('meta[name="assistant-ui"]');
-  const ui = uiMeta ? uiMeta.getAttribute('content') || 'agentkit' : 'agentkit';
-  const url = assistantUrl(root.startsWith('@@') ? '' : root, 'chat', ui);
+  const url = assistantUrl(root.startsWith('@@') ? '' : root, 'chat');
   const origin = win.location.origin;
 
   const fab = doc.createElement('button');
@@ -100,7 +92,7 @@ export function mountAssistant(doc = document, win = window) {
       frame.className = 'cockpit-assistant__frame';
       frame.title = ASSISTANT_NAME;
       frame.setAttribute('allow', 'clipboard-write');
-      frame.src = assistantUrl(root, workbenchView(view), ui);
+      frame.src = assistantUrl(root, workbenchView(view));
       panel.appendChild(frame);
     }
     panel.hidden = !open;

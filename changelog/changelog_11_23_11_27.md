@@ -61,7 +61,7 @@
 
 ### 2026-11-27 储小策智能助手迁移到 AgentKit 嵌入工作台
 
-- 新增独立入口 `GET /workbench-agentkit?a360=assistant&view=chat|board`，用 React 18 + `@assistant-ui/react@0.14.14`
+- 助手复用现有 `GET /workbench?a360=assistant&view=chat|board` 入口（普通 `/workbench` 展示页不变，没有新增路由），用 React 18 + `@assistant-ui/react@0.14.14`
   装配 AgentKit 的 Thread、SOP 条、工具折叠、Composer 与按轮对话看板；资源单独构建到
   `static/vendor/agentkit/workbench-agentkit-embed.{js,css}`，不覆盖通用工作台产物。
 - 驾驶舱右下角入口改指新页；宿主与子页沿用 `closed/home/board` 状态机，首次打开携带 `view`，通过 `ready` 握手重收状态，
@@ -72,7 +72,7 @@
   同一会话的多轮、澄清续流及晚到帧按 `turn_id` 归并。
 - 嵌入页左侧保留约 420px 会话栏（新对话 + 历史分析，本地保存最近 8 个会话的轮次快照），右侧在对话与对话看板间切换；
   首屏保留「储小策，我帮你」「看目标 · 看差距 · 看趋势」，输入框贴底并显示团队模型短名。
-- 客户入口白名单放行 `/workbench-agentkit`（含 `APP_ROOT_PATH` 前缀），通用聊天与会话接口仍被 404 拦截；
+- 客户入口继续使用原有 `/workbench`（含 `APP_ROOT_PATH` 前缀），不新增第二条助手路由；通用聊天与会话接口仍被 404 拦截；
   页面复用安全渲染，不迁移或改写历史文件，回退只切换入口地址。
 - 主要文件：`bi_agent/web/app.py`、`bi_agent/web/customer.py`、`bi_agent/web/static/cockpit/assistant.js`、
   `frontend/agentkit/{embed.jsx,embed-main.jsx,embedBridge.js}`、`frontend/vite.agentkit-embed.config.js`、
@@ -92,9 +92,9 @@
 - 历史与恢复：新增 `/api/analysis360/history`（POST 保存、GET 列表、GET 单条，会话 ID 校验），
   前端在每轮结束后同步服务端，刷新后按 `session_id` 从本地快照/服务端记录恢复轮次和待澄清卡；
   客户入口继续放行 `/api/analysis360/*`。
-- 入口校验与版本开关：`GET /workbench-agentkit` 仅接受 `a360=assistant`，缺失或无效返回 404；
-  新增 `WORKBENCH_ASSISTANT_UI=legacy` 服务端开关，驾驶舱页面注入 `meta[name=assistant-ui]`，
-  宿主按开关只切换 iframe 地址，回退不改其他逻辑。
+- 入口与版本开关：助手继续走 `/workbench?a360=assistant`，普通 `/workbench` 返回原展示页；
+  新增 `WORKBENCH_ASSISTANT_UI=legacy` 服务端开关：同一 URL 下服务端返回旧工作台页，
+  回退不改 iframe 地址、不新增路由。
 - 主要文件：`frontend/agentkit/{embed.jsx,embedBridge.js,results.js,agentkit-theme.css}`、
   `bi_agent/web/app.py`、`bi_agent/web/static/cockpit/assistant.js`、`tests/{chuxiaoce_agentkit_dom,chuxiaoce_agentkit_results}.test.mjs`、
   `tests/test_chuxiaoce_agentkit_{entry,history}.py`。

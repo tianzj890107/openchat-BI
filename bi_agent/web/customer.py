@@ -22,7 +22,7 @@ class CustomerSurface:
         if path in {'/','/cockpit','/cockpit/'}:
             from starlette.responses import RedirectResponse
             return await RedirectResponse(self.prefix+'/cockpit/overview',status_code=307)(scope,receive,send)
-        allowed = (path in {'/','/health','/healthz','/workbench','/workbench-agentkit','/api/meta','/api/session/reset',
+        allowed = (path in {'/','/health','/healthz','/workbench','/api/meta','/api/session/reset',
                             '/api/mcp','/api/mcp/health','/api/mcp/process360'}
                    or path.startswith(('/cockpit/','/api/cockpit/','/api/process360/','/api/mcp/artifacts/',
                                        '/api/analysis360/','/static/','/charts/')))
