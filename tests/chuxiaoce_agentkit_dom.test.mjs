@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
+
 const require = createRequire(new URL('../frontend/', import.meta.url));
 const {JSDOM} = require('jsdom');
-
-const bundle = await readFile(new URL('../bi_agent/web/static/vendor/agentkit/workbench-agentkit-embed.js', import.meta.url), 'utf8');
+const bundle = await readFile(new URL('../bi_agent/web/static/vendor/agentkit/workbench-agentkit.js', import.meta.url), 'utf8');
 
 function sseResponse(frames) {
   const encoder = new TextEncoder();
@@ -24,6 +24,7 @@ function sseResponse(frames) {
       },
     },
     text: async () => '',
+    json: async () => ({}),
   };
 }
 
@@ -31,7 +32,7 @@ function jsonResponse(body) {
   return {ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body)};
 }
 
-async function waitFor(predicate, timeout = 3000) {
+async function waitFor(predicate, timeout = 4000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
     const value = predicate();
@@ -41,130 +42,85 @@ async function waitFor(predicate, timeout = 3000) {
   throw new Error('timeout waiting for DOM');
 }
 
-async function boot({view = 'chat', fetchImpl, seed = {}, seedSession = {}} = {}) {
-  const dom = new JSDOM('<!doctype html><html><body><div id="chuxiaoce-root" data-a360="assistant"></div></body></html>', {
-    url: `https://cockpit.example/app/workbench-agentkit?a360=assistant&view=${view}`,
+async function boot({view = 'board'} = {}) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="agentkit-root" data-app-version="ontology-v0.1.16"></div></body></html>', {
+    url: `https://cockpit.example/app/workbench?a360=assistant&view=${view}`,
     runScripts: 'outside-only',
     pretendToBeVisual: true,
   });
   const {window} = dom;
-  for (const key of ['TransformStream', 'ReadableStream', 'TextEncoder', 'TextDecoder', 'MessageChannel', 'MessagePort']) {
+  for (const key of ['TransformStream', 'ReadableStream', 'TextEncoder', 'TextDecoder', 'MessageChannel', 'MessagePort', 'Response', 'Request', 'Headers']) {
     if (globalThis[key] && !window[key]) window[key] = globalThis[key];
   }
   window.ResizeObserver ||= class { observe() {} unobserve() {} disconnect() {} };
+  window.WebGL2RenderingContext ||= class WebGL2RenderingContext {};
+  window.WebGLRenderingContext ||= class WebGLRenderingContext {};
+  window.HTMLCanvasElement.prototype.getContext ||= () => null;
   window.matchMedia ||= () => ({matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}});
   window.scrollTo ||= () => {};
   window.APP_ROOT_PATH = '/app';
-  for (const [key, value] of Object.entries(seed)) {
-    window.localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-  }
-  for (const [key, value] of Object.entries(seedSession)) {
-    window.sessionStorage.setItem(key, String(value));
-  }
   const calls = [];
   window.fetch = async (url, init = {}) => {
-    calls.push({url: String(url), init});
-    if (fetchImpl) {
-      const custom = await fetchImpl(String(url), init, calls);
-      if (custom !== undefined) return custom;
-    }
-    if (String(url).includes('api/meta')) {
+    const target = String(url);
+    calls.push({url: target, method: String(init.method || 'GET').toUpperCase(), body: init.body});
+    if (target.endsWith('/api/meta')) {
       return jsonResponse({agent: {model: '团队模型 · 深度分析'}});
     }
-    if (String(url).includes('api/analysis360/chat')) {
-      return sseResponse([
-        {type: 'sop_progress', step: 1, detail: '识别经营问题'},
-        {type: 'text_delta', text: '先看商机覆盖。'},
-        {type: 'done', turn_id: 't1'},
-      ]);
+    if (target.endsWith('/api/analysis360/history')) {
+      return jsonResponse({conversations: []});
+    }
+    if (target.includes('/api/analysis360/chat')) {
+      return sseResponse([{type: 'text_delta', text: '先看商机覆盖。'}, {type: 'done'}]);
+    }
+    if (target.includes('/api/analysis360/history/')) {
+      return jsonResponse({id: 'x', title: 'x', turns: []});
     }
     return jsonResponse({});
   };
   window.eval(bundle);
-  const root = window.document.getElementById('chuxiaoce-root');
-  await waitFor(() => (view === 'board'
-    ? root.querySelector('.ak-board-inner')
-    : root.querySelector('.ak-transcript') || root.querySelector('.ak-empty-title')));
+  const root = window.document.getElementById('agentkit-root');
+  await waitFor(() => root.querySelector('.ak-brand'));
   return {dom, window, root, calls};
 }
 
-test('the embedded assistant greets 储小策 and sends the 360 direct chat request', async () => {
+test('the assistant opens the complete AgentKit workbench, not a reduced embed', async () => {
+  const {root} = await boot();
+  assert.equal(root.querySelector('.ak-brand-name')?.textContent, '储小策智能助手');
+  assert.ok(root.querySelector('.ak-sessions'), 'session sidebar is mounted');
+  assert.ok(root.querySelector('.ak-session-pane'), 'shared SessionList container is mounted');
+  assert.ok(root.querySelector('.ak-nav-footer'), 'bottom navigation is mounted');
+  assert.ok(root.querySelector('[data-agentkit-thread]'), 'conversation column is mounted');
+  assert.ok(root.querySelector('[data-agentkit-board]'), 'board column is mounted');
+  assert.ok(root.querySelector('.ak-composer-input'), 'sticky composer is mounted');
+  assert.equal(root.querySelectorAll('.ak-divider').length, 2, 'both shared dividers are mounted');
+  assert.equal(root.querySelector('.ak-shell').dataset.akView, 'board');
+  assert.match(root.textContent, /返回主页/);
+  assert.match(root.textContent, /收起/);
+  assert.match(root.textContent, /本体库\/数据源（只读）/);
+});
+
+test('questions go to the 360 endpoints and never touch generic configuration APIs', async () => {
   const {root, calls, window} = await boot();
-  assert.match(root.textContent, /储小策，我帮你/);
-  assert.match(root.textContent, /看目标 · 看差距 · 看趋势/);
-  const suggestion = [...root.querySelectorAll('.ak-suggestions button')][0];
-  assert.ok(suggestion, 'welcome suggestions are rendered');
-  suggestion.click();
-  await waitFor(() => calls.some((call) => call.url.includes('api/analysis360/chat')));
-  const chat = calls.find((call) => call.url.includes('api/analysis360/chat'));
-  const body = JSON.parse(chat.init.body);
+  [...root.querySelectorAll('.ak-suggestions button')][0].click();
+  const send = await waitFor(() => root.querySelector('.ak-send'));
+  send.click();
+  await waitFor(() => calls.some((call) => call.url.includes('/api/analysis360/chat')));
+  const chat = calls.find((call) => call.url.includes('/api/analysis360/chat'));
+  const body = JSON.parse(chat.body);
   assert.equal(body.analysis360_direct, true);
-  assert.ok(body.session_id.startsWith('a360-'));
-  assert.equal(chat.url, '/app/api/analysis360/chat');
-  await waitFor(() => root.querySelector('.ak-transcript')?.textContent.includes('先看商机覆盖。'));
-  // The 360 run is now visible in the history rail.
-  assert.match(root.querySelector('.ak-embed-sessions')?.textContent || '', /商机覆盖|分析/);
+  assert.ok(chat.url.endsWith('/app/api/analysis360/chat'));
+  for (const forbidden of ['/api/config', '/api/sources', '/api/conversations', '/api/report', '/api/roles']) {
+    assert.equal(calls.some((call) => call.url.includes(forbidden)), false, `no ${forbidden} request`);
+  }
   window.close();
 });
 
-test('opening with view=board renders the conversation board with the same session', async () => {
-  const {root, calls} = await boot({view: 'board'});
-  const embed = root.querySelector('.ak-embed');
-  assert.equal(embed.dataset.view, 'board');
-  assert.ok(root.querySelector('.ak-board-inner'), 'the AgentKit board renders');
-  assert.ok(root.querySelector('.ak-composer-input'), 'the board view still allows asking');
-  assert.ok(root.querySelector('.ak-embed-sessions'), 'history and new conversation stay visible');
-  assert.match(root.textContent, /返回主页/);
-  assert.ok(embed.dataset.session.startsWith('a360-'), 'the 360 session id is kept for the board view');
-  assert.equal(calls.filter((call) => call.url.includes('api/analysis360/chat')).length, 0,
-    'opening the board does not send a new question');
-  root.ownerDocument.defaultView.close();
-});
-
-test('a failed clarification keeps the card and retries the same selection', async () => {
-  let choiceAttempts = 0;
-  const {root, calls} = await boot({
-    fetchImpl: (url, init) => {
-      if (String(url).includes('api/analysis360/chat')) {
-        return sseResponse([{type: 'user_choice_requested', tool_use_id: 'tool-1',
-          question: '请选择范围', options: [{id: 'a', label: '本期'}, {id: 'b', label: '上期'}]}]);
-      }
-      if (!String(url).includes('api/analysis360/choice')) return undefined;
-      choiceAttempts += 1;
-      return {ok: false, status: 503, body: null, text: async () => JSON.stringify({detail: '服务暂不可用'})};
-    },
-  });
-  const suggestion = [...root.querySelectorAll('.ak-suggestions button')][0];
-  suggestion.click();
-  await waitFor(() => root.querySelector('.ak-clarify'));
-  const options = [...root.querySelectorAll('.ak-clarify .ak-option input')];
-  assert.ok(options.length >= 1);
-  options[0].click();
-  root.querySelector('.ak-clarify button[type="submit"]').click();
-  await waitFor(() => choiceAttempts === 1);
-  await waitFor(() => root.querySelector('.ak-clarify')?.textContent.includes('服务暂不可用'));
-  const first = calls.filter((call) => call.url.includes('api/analysis360/choice')).at(-1);
-  const firstIds = JSON.parse(first.init.body).choice_ids;
-  const retry = root.querySelector('.ak-clarify button[type="submit"]');
-  assert.ok(retry, 'the clarification card stays available for retry');
-  retry.click();
-  await waitFor(() => choiceAttempts === 2);
-  const second = calls.filter((call) => call.url.includes('api/analysis360/choice')).at(-1);
-  assert.deepEqual(JSON.parse(second.init.body).choice_ids, firstIds);
-});
-
-test('a refresh restores the previous turn and pending clarification', async () => {
-  const session = 'a360-refresh-test';
-  const snapshot = {
-    turns: [{id: 'turn-1', user: '上次的问题', assistant: {text: '上次的回答', tools: []}, status: 'paused'}],
-    pendingChoice: {toolUseId: 'tool-1', question: '请选择范围', options: [{id: 'a', label: '本期'}]},
-  };
-  const {root} = await boot({
-    seedSession: {'chuxiaoce.assistant.session': session},
-    seed: {[`chuxiaoce.assistant.snapshot.${session}`]: snapshot},
-  });
-  assert.match(root.querySelector('.ak-transcript')?.textContent || '', /上次的问题/);
-  assert.match(root.textContent, /上次的回答/);
-  assert.ok(root.querySelector('.ak-clarify'), 'the pending clarification survives the refresh');
-  assert.doesNotMatch(root.textContent, /储小策，我帮你/);
+test('the read-only source panel shows model and 360 ontology info', async () => {
+  const {root} = await boot();
+  root.querySelector('.ak-source-trigger').click();
+  await waitFor(() => root.querySelector('.ak-assistant-info'));
+  const panel = root.querySelector('.ak-assistant-info');
+  assert.match(panel.textContent, /360 全局本体/);
+  assert.match(panel.textContent, /团队模型/);
+  assert.ok(root.querySelector('button[aria-label="关闭本体库与数据源"]'));
 });

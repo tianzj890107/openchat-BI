@@ -1620,3 +1620,12 @@
   .ak-embed[data-view="board"] .ak-embed-body { grid-template-columns: minmax(0, 1fr); }
   .ak-embed[data-view="board"] .ak-embed-board { border-left: 0; border-top: 1px solid var(--ak-line, #e5e7eb); }
 }
+
+/* 储小策助手：常驻的返回/看板/收起操作条 */
+.ak-assistant-head { display: flex; justify-content: flex-end; gap: 8px; padding: 4px 12px 0; }
+/* 储小策助手：客户入口的只读本体/数据源信息 */
+.ak-assistant-info { position: fixed; inset: 10% 20% auto; z-index: 40; background: var(--ak-bg, #fff);
+  border: 1px solid var(--ak-line, #e5e7eb); border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,.18); padding: 16px; }
+.ak-assistant-info header { display: flex; align-items: center; justify-content: space-between; }
+.ak-assistant-info h2 { font-size: 15px; margin: 0; }
+.ak-assistant-info p { color: var(--ak-muted, #6b7280); font-size: 13px; margin: 10px 0 0; }

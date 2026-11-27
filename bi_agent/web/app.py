@@ -1376,8 +1376,8 @@ def _render_agentkit_assistant_index() -> str:
     only switches the chat / conversation-board view over postMessage.
     """
     root = APP_ROOT_PATH
-    js = f"{root}/static/vendor/agentkit/workbench-agentkit-embed.js?v={_agentkit_asset_version('workbench-agentkit-embed.js')}"
-    css = f"{root}/static/vendor/agentkit/workbench-agentkit-embed.css?v={_agentkit_asset_version('workbench-agentkit-embed.css')}"
+    js = f"{root}/static/vendor/agentkit/workbench-agentkit.js?v={_agentkit_asset_version('workbench-agentkit.js')}"
+    css = f"{root}/static/vendor/agentkit/workbench-agentkit.css?v={_agentkit_asset_version('workbench-agentkit.css')}"
     import json as _json
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -1390,7 +1390,7 @@ def _render_agentkit_assistant_index() -> str:
   <script>window.APP_ROOT_PATH = {_json.dumps(root)};</script>
 </head>
 <body>
-  <div id="chuxiaoce-root" data-app-version="{APP_VERSION}" data-a360="assistant" aria-busy="true"></div>
+  <div id="agentkit-root" data-app-version="{APP_VERSION}" data-a360="assistant" aria-busy="true"></div>
   <script src="{js}"></script>
 </body>
 </html>

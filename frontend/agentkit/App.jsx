@@ -53,7 +53,7 @@ function newSessionId(handoff) {
   return handoff?.handoffId ? `agentkit-${handoff.handoffId}-${stamp}` : `agentkit-${stamp}`;
 }
 
-export default function App({version}) {
+export default function App({version, assistant = false}) {
   const handoff = useMemo(() => parseHandoff(window.location.search), []);
   const scope = useMemo(() => scopeFromHandoff(handoff), [handoff]);
   const [handoffVisible, setHandoffVisible] = useState(handoff.active);
@@ -69,14 +69,23 @@ export default function App({version}) {
   const [jump, setJump] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState("");
-  const [view, setView] = useState("thread");
+  const [view, setView] = useState(() => (
+    assistant && new URLSearchParams(window.location.search).get("view") === "board" ? "board" : "thread"
+  ));
   const [graphHit, setGraphHit] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [assistantModel, setAssistantModel] = useState("");
   const [workbench, setWorkbench] = useState(() => createWorkbenchState());
   // A card handoff keeps one session across refreshes; free entry gets a new one.
-  const [sessionId, setSessionId] = useState(
-    () => resolveHandoffSession(handoff, safeSessionStorage()) || newSessionId(handoff),
-  );
+  const [sessionId, setSessionId] = useState(() => {
+    if (assistant) {
+      try {
+        const stored = window.sessionStorage.getItem("chuxiaoce.assistant.session");
+        if (stored) return stored;
+      } catch { /* restricted storage */ }
+    }
+    return resolveHandoffSession(handoff, safeSessionStorage()) || newSessionId(handoff);
+  });
   const [sourcePreference, setSourcePreference] = useState(readSourcePreference);
   const [notice, setNotice] = useState("");
   const controllerRef = useRef(null);
@@ -118,6 +127,13 @@ export default function App({version}) {
   useEffect(() => {
     refreshConversations();
   }, [refreshConversations]);
+
+  useEffect(() => {
+    if (!assistant) return;
+    try {
+      window.sessionStorage.setItem("chuxiaoce.assistant.session", sessionId);
+    } catch { /* restricted storage */ }
+  }, [assistant, sessionId]);
 
   const runStream = useCallback(async (session, opener, choice = false) => {
     const controller = new AbortController();
@@ -162,13 +178,13 @@ export default function App({version}) {
       setNotice("");
       setWorkbench((previous) => startTurn(previous, {text: value, sessionId, attachments}));
       runStream(sessionId, async (options) => {
-        await ensureSettings(sessionId, options.signal);
+        if (!assistant) await ensureSettings(sessionId, options.signal);
         if (options.signal.aborted) return;
         dirtyRef.current = true;
         await streamChat({...options, message, visibleText: value, scope, mode});
       });
     },
-    [ensureSettings, report, runStream, scope, sessionId],
+    [assistant, ensureSettings, report, runStream, scope, sessionId],
   );
 
   const choose = useCallback(
@@ -377,6 +393,16 @@ export default function App({version}) {
     }
   }, []);
 
+  const restoredAssistant = useRef(false);
+  useEffect(() => {
+    if (!assistant || restoredAssistant.current) return;
+    let id = "";
+    try { id = window.sessionStorage.getItem("chuxiaoce.assistant.session") || ""; } catch { id = ""; }
+    if (!id) return;
+    restoredAssistant.current = true;
+    void selectConversation(id, id);
+  }, [assistant, selectConversation]);
+
   // A refresh of the same card reopens the conversation it already produced
   // instead of showing an empty transcript with a reused session id.
   useEffect(() => {
@@ -470,6 +496,35 @@ export default function App({version}) {
     else restartWithoutHandoff();
   }, [restartWithoutHandoff]);
 
+  const postHost = useCallback((payload) => {
+    window.parent?.postMessage(payload, window.location.origin);
+  }, []);
+
+  useEffect(() => {
+    if (!assistant) return undefined;
+    let cancelled = false;
+    requestJson("api/meta").then((meta) => {
+      if (!cancelled) setAssistantModel(String(meta?.agent?.model || "团队模型"));
+    }, () => {});
+    return () => { cancelled = true; };
+  }, [assistant]);
+
+  useEffect(() => {
+    if (!assistant) return undefined;
+    const origin = window.location.origin;
+    postHost({source: "cockpit-assistant", type: "ready"});
+    const currentView = () => (view === "board" ? "board" : "chat");
+    const onMessage = (event) => {
+      if (event.origin !== origin || event.source !== window.parent) return;
+      const data = event.data;
+      if (data?.source !== "cockpit-assistant") return;
+      if (data.type === "view") setView(data.view === "board" ? "board" : "thread");
+      else if (data.type === "ready") postHost({source: "cockpit-assistant", type: "view", view: currentView()});
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [assistant, postHost, view]);
+
   const runtime = useAgentkitRuntime({
     turns: workbench.turns,
     running: workbench.status === "streaming",
@@ -497,7 +552,7 @@ export default function App({version}) {
         <aside className="ak-sessions" data-agentkit-sessions aria-label="工作台导航">
           <header className="ak-brand">
             <span className="ak-brand-mark" aria-hidden="true">◆</span>
-            <span className="ak-brand-name">智能分析</span>
+            <span className="ak-brand-name">{assistant ? "储小策智能助手" : "智能分析"}</span>
             {version ? <span className="ak-brand-chip">{version}</span> : null}
           </header>
           <div className="ak-session-pane">
@@ -517,12 +572,28 @@ export default function App({version}) {
                   onClick={() => setView(key)}>{label}</button>
               ))}
             </div>
-            <button type="button" className="ak-ghost ak-source-trigger" aria-haspopup="dialog"
-              onClick={() => setSettingsOpen(true)}>切换本体库/数据源</button>
+            {assistant ? (
+              <button type="button" className="ak-ghost ak-source-trigger" aria-haspopup="dialog"
+                onClick={() => setSettingsOpen(true)}>本体库/数据源（只读）</button>
+            ) : (
+              <button type="button" className="ak-ghost ak-source-trigger" aria-haspopup="dialog"
+                onClick={() => setSettingsOpen(true)}>切换本体库/数据源</button>
+            )}
           </nav>
         </aside>
 
         <section className="ak-thread" data-agentkit-thread aria-label="对话">
+          {assistant ? (
+            <div className="ak-assistant-head">
+              {view === "board" ? (
+                <button type="button" className="ak-ghost" onClick={() => postHost({source: "cockpit-assistant", type: "request", request: "home"})}>返回主页</button>
+              ) : (
+                <button type="button" className="ak-ghost" onClick={() => postHost({source: "cockpit-assistant", type: "request", request: "board"})}>显示对话看板</button>
+              )}
+              <button type="button" className="ak-ghost" aria-label="收起助手"
+                onClick={() => postHost({source: "cockpit-assistant", type: "request", request: "close"})}>收起</button>
+            </div>
+          ) : null}
           <SopBar key={`sop:${sessionId}`} sop={workbench.turns.at(-1)?.sop} status={workbench.status} />
           {handoffVisible ? (
             <HandoffBanner
@@ -558,7 +629,7 @@ export default function App({version}) {
               if (lastUser) send(lastUser.user);
             }}
           />
-          <Composer key={`composer:${sessionId}`} busy={blocked} mode={runtimeMode} sessionId={sessionId} onSavePreferences={applyPreferences}
+          <Composer key={`composer:${sessionId}`} busy={blocked} mode={runtimeMode} sessionId={sessionId} assistant={assistant} onSavePreferences={applyPreferences}
             report={report} reportChanging={reportChanging} onAttachments={setAttachments} onUpload={uploadAttachments}
             onWithDb={setReportDatabase} onGenerate={generateReport}
             onPrefillIfEmpty={(value) => {
@@ -577,7 +648,18 @@ export default function App({version}) {
       {graphHit ? (
         <OntologyGraph hit={graphHit} sessionId={sessionId} onClose={() => setGraphHit(null)} />
       ) : null}
-      {settingsOpen ? (
+      {settingsOpen && assistant ? (
+        <div className="ak-assistant-info" role="dialog" aria-label="本体库与数据源（只读）">
+          <header>
+            <h2>本体库与数据源</h2>
+            <button type="button" className="ak-ghost" aria-label="关闭本体库与数据源" onClick={() => setSettingsOpen(false)}>关闭</button>
+          </header>
+          <p>360 全局本体：由客户配置提供，只读。</p>
+          <p>团队模型：{assistantModel || "团队模型"}（只读）</p>
+          <p>数据源绑定与模型参数写入在客户入口不可用。</p>
+        </div>
+      ) : null}
+      {settingsOpen && !assistant ? (
         <SourceSettings
           sessionId={sessionId}
           preference={workbench.turns.length ? null : sourcePreference}

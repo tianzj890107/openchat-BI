@@ -9,7 +9,7 @@ import {modelKey, ModelSettings} from "./Settings.jsx";
  * AgentKit composer: assistant-ui's composer primitives own the input state,
  * Enter/Shift+Enter behaviour, and the send/stop pair driven by thread state.
  */
-export default function Composer({busy, mode, sessionId, onSavePreferences, report, reportChanging, onAttachments,
+export default function Composer({busy, mode, sessionId, assistant = false, onSavePreferences, report, reportChanging, onAttachments,
   onUpload, onWithDb, onGenerate, onPrefillIfEmpty}) {
   const [config, setConfig] = useState(null);
   const [open, setOpen] = useState(false);
@@ -33,18 +33,18 @@ export default function Composer({busy, mode, sessionId, onSavePreferences, repo
   return (
     <div className="ak-composer-dock">
     <ComposerPrimitive.Root className="ak-composer">
-      <AttachmentList reports={report.active_reports || []} busy={busy}
+      {assistant ? null : <AttachmentList reports={report.active_reports || []} busy={busy}
         onRemove={async (id) => {
           setAttachmentNotice("");
           try { await onAttachments(report.active_reports.filter((file) => file.id !== id).map((file) => file.id)); }
           catch (error) { setAttachmentNotice(error.message); }
-        }} />
+        }} />}
       {reportChanging ? <p className="ak-attachment-notice" role="status">正在更新附件或报表配置…</p> : null}
       {attachmentNotice ? <p className="ak-attachment-notice" role="status">{attachmentNotice}</p> : null}
       <div className="ak-composer-entry">
-        <ReportControls context={report} busy={busy} onUpload={onUpload} onWithDb={onWithDb}
+        {assistant ? null : <ReportControls context={report} busy={busy} onUpload={onUpload} onWithDb={onWithDb}
           onClearContext={() => onAttachments([])}
-          onOpenDialog={setAttachmentDialog} onNotice={setAttachmentNotice} onPrefillIfEmpty={onPrefillIfEmpty} />
+          onOpenDialog={setAttachmentDialog} onNotice={setAttachmentNotice} onPrefillIfEmpty={onPrefillIfEmpty} />}
         <ComposerPrimitive.Input
           className="ak-composer-input"
           rows={2}
@@ -53,10 +53,16 @@ export default function Composer({busy, mode, sessionId, onSavePreferences, repo
         />
       </div>
       <div className="ak-composer-actions">
-        <button type="button" className="ak-model-select" aria-label={`模型设置：${label}`} aria-haspopup="dialog"
-          title={label} onClick={() => setOpen(true)}>
-          <span>{shortLabel}</span><ChevronDown size={13} aria-hidden="true" />
-        </button>
+        {assistant ? (
+          <span className="ak-model-select" aria-label={`当前模型：${label}`} title={label} data-readonly="1">
+            <span>{shortLabel}</span>
+          </span>
+        ) : (
+          <button type="button" className="ak-model-select" aria-label={`模型设置：${label}`} aria-haspopup="dialog"
+            title={label} onClick={() => setOpen(true)}>
+            <span>{shortLabel}</span><ChevronDown size={13} aria-hidden="true" />
+          </button>
+        )}
         <AuiIf condition={(state) => state.thread.isRunning}>
           <ComposerPrimitive.Cancel className="ak-stop">停止</ComposerPrimitive.Cancel>
         </AuiIf>
@@ -65,13 +71,13 @@ export default function Composer({busy, mode, sessionId, onSavePreferences, repo
         </AuiIf>
       </div>
     </ComposerPrimitive.Root>
-    {attachmentDialog === "recent" ? <AttachmentPicker active={report.active_reports || []}
+    {!assistant && attachmentDialog === "recent" ? <AttachmentPicker active={report.active_reports || []}
       onChange={async (ids) => {
         await onAttachments(ids);
         if (ids.length) onPrefillIfEmpty("请分析上传的附件。");
       }} onClose={() => setAttachmentDialog("")} /> : null}
     {attachmentDialog === "generate" ? <ReportWizard onGenerate={onGenerate} onClose={() => setAttachmentDialog("")} /> : null}
-    {open ? <ModelSettings config={config} onSaved={(data) => setConfig({data})} sessionId={sessionId} onSavePreferences={onSavePreferences}
+    {!assistant && open ? <ModelSettings config={config} onSaved={(data) => setConfig({data})} sessionId={sessionId} onSavePreferences={onSavePreferences}
       busy={busy} onClose={() => setOpen(false)} /> : null}
     </div>
   );

@@ -27,14 +27,14 @@ def test_customer_surface_keeps_the_single_workbench_entry() -> None:
     app = Starlette(routes=[
         Route("/healthz", ready),
         Route("/workbench", ready),
-        Route("/static/vendor/agentkit/workbench-agentkit-embed.js", ready),
+        Route("/static/vendor/agentkit/workbench-agentkit.js", ready),
         Route("/workbench-agentkit", ready),
         Route("/api/chat", ready),
         Route("/api/conversations", ready),
     ])
     client = TestClient(CustomerSurface(app))
     assert client.get("/workbench").status_code == 200
-    assert client.get("/static/vendor/agentkit/workbench-agentkit-embed.js").status_code == 200
+    assert client.get("/static/vendor/agentkit/workbench-agentkit.js").status_code == 200
     # No second assistant route: /workbench-agentkit is not a customer entry.
     assert client.get("/workbench-agentkit").status_code == 404
     assert client.get("/api/chat").status_code == 404
@@ -57,7 +57,7 @@ def url(path):
     return prefix + path if prefix else path
 assistant = client.get(url("/workbench?a360=assistant&view=chat"))
 display = client.get(url("/workbench"))
-asset = client.get(url("/static/vendor/agentkit/workbench-agentkit-embed.js"))
+asset = client.get(url("/static/vendor/agentkit/workbench-agentkit.js"))
 legacy = client.get(url("/workbench?a360=old-handoff"))
 print(json.dumps({
     "root": prefix,
@@ -85,11 +85,12 @@ class AssistantEntryTests(unittest.TestCase):
         for root_path in ("", PREFIX):
             result = _probe(root_path)
             self.assertEqual(result["assistant_status"], 200, result)
-            self.assertIn("workbench-agentkit-embed.js", result["assistant_html"])
+            self.assertIn("workbench-agentkit.js", result["assistant_html"])
+            self.assertIn('id="agentkit-root"', result["assistant_html"])
             self.assertIn("data-a360", result["assistant_html"])
             self.assertEqual(result["display_status"], 200, result)
             self.assertIn("vendor/antd/workbench.js", result["display_html"])
-            self.assertNotIn("workbench-agentkit-embed.js", result["display_html"])
+            self.assertNotIn("workbench-agentkit.js", result["display_html"])
             self.assertEqual(result["legacy_status"], 200, result)
             self.assertEqual(result["asset_status"], 200, result)
             self.assertGreater(result["asset_bytes"], 1000)
@@ -98,7 +99,7 @@ class AssistantEntryTests(unittest.TestCase):
         result = _probe("", assistant_ui="legacy")
         self.assertEqual(result["assistant_status"], 200)
         self.assertIn("vendor/antd/workbench.js", result["assistant_html"])
-        self.assertNotIn("workbench-agentkit-embed.js", result["assistant_html"])
+        self.assertNotIn("workbench-agentkit.js", result["assistant_html"])
 
 
 if __name__ == "__main__":

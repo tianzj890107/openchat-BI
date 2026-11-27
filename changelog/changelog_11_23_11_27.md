@@ -60,3 +60,18 @@
 - 助手使用现有 `GET /workbench?a360=assistant&view=chat|board`，由驾驶舱右下角打开。默认视图显示对话、输入框和看板，保留欢迎语。主页与看板双向切换和收起沿用同一 iframe。设置 `WORKBENCH_ASSISTANT_UI=legacy` 后同一 URL 可回退到旧助手。
 - 现有嵌入版接入 360 聊天、澄清重试、查询证据表格，以及按会话 ID 恢复历史轮次和待澄清卡。客户入口仍限制通用聊天和会话接口。实现位于 `frontend/agentkit/{embed.jsx,embedBridge.js,results.js}`、`bi_agent/web/app.py` 和 `bi_agent/web/static/cockpit/assistant.js`。已记录 Node 160 项、相关 Python 58 项通过及重建产物。
 - （11-27 规格修订）明确打开助手必须挂载与分析 Agent 共用的完整工作台。补充默认三栏、导航、拖动分隔条、完整 Composer、交接和本体图的验收，约定客户模式下模型与数据源只读、未授权的附件上传隐藏。完整工作台重构待实施。[迁移规格](../docs/specs/chuxiaoce-agentkit-workbench.md)
+
+### 2026-11-27 储小策助手改用完整 AgentKit 工作台（替换精简嵌入页）
+
+- 打开助手即完整工作台：品牌、会话侧栏、新建/历史、底部「会话/对话/看板」导航、Thread/SOP、贴底完整
+  Composer、Board、两条可拖动的 `PanelDivider`、按业务数据挂载的 `HandoffBanner`、`OntologyGraph` 和
+  设置入口，全部沿用 `App.jsx` 共享组件树；删除独立 embed 页面、embed 构建配置和 `.ak-embed` 布局。
+- 360 适配层：`/api/chat` → `/api/analysis360/chat`（自动带 `analysis360_direct`）、`/api/choice` →
+  `/api/analysis360/choice`，会话列表/激活/保存映射到 `/api/analysis360/history`；配置、数据源、报表和
+  角色写入在适配层直接拦截，不产生通用接口的网络请求。
+- 客户只读：设置入口改为只读的「本体库与数据源（只读）」面板，展示 360 全局本体与团队模型；
+  Composer 保留短模型名，隐藏报表上传、附件、模型设置与参数写入。
+- 入口继续使用 `/workbench?a360=assistant`；宿主 `view=board|chat` 控制完整工作台/窄栏，刷新按
+  `session_id` 从 360 历史恢复；旧 `/workbench` 展示页、旧交接链接和 `WORKBENCH_ASSISTANT_UI=legacy` 回退保留。
+- 验证：Node 153 项、相关 Python 58 项通过；DOM 契约检查品牌、侧栏、底部导航、对话、输入框、看板、
+  两条分隔条、只读面板，以及仅调用 360/`meta` 的网络白名单。此前精简嵌入页的实现已被本条替代。
