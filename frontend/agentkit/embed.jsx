@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import React, {useCallback, useEffect, useRef, useState} from "react";
 import {AssistantRuntimeProvider, AuiIf, ComposerPrimitive} from "@assistant-ui/react";
 
 import {readEventStream, requestJson, withBasePath} from "./api.js";
@@ -10,8 +10,8 @@ import SopBar from "./components/SopBar.jsx";
 import Thread from "./components/Thread.jsx";
 import {useAgentkitRuntime} from "./runtime.js";
 import {
-  initialView, isAssistant, isReady, readCurrentSession, readHostView, rememberSession,
-  requestMessage, resumeSession, viewMessage,
+  initialView, isReady, readHostView, readSnapshot, rememberSession, removeSnapshot,
+  requestMessage, resumeSession, viewMessage, writeSnapshot,
 } from "./embedBridge.js";
 
 const HISTORY_KEY = "chuxiaoce.assistant.history";
@@ -43,14 +43,29 @@ function titleOf(turns) {
   return first.length > 32 ? `${first.slice(0, 32)}…` : first;
 }
 
-/** One 储小策 session: 360 SSE transport, host bridge and the shared board. */
-export default function EmbedApp({version}) {
+function restoreWorkbench(sessionId) {
+  const snapshot = readSnapshot(sessionId);
+  if (!snapshot || !Array.isArray(snapshot.turns) || !snapshot.turns.length) return createWorkbenchState();
+  return {
+    ...createWorkbenchState(),
+    sessionId,
+    turns: snapshot.turns,
+    status: snapshot.pendingChoice ? "paused" : "idle",
+    pendingChoice: snapshot.pendingChoice || null,
+  };
+}
+
+/** 储小策嵌入式助手：360 SSE + AgentKit 组件，宿主持有 chat/board 视图。 */
+export default function EmbedApp() {
   const [hostView, setHostView] = useState(() => initialView(window.location.search));
-  const [sessionId, setSessionId] = useState(() => resumeSession(sessionStorage, makeSessionId));
-  const [workbench, setWorkbench] = useState(() => createWorkbenchState());
+  const [boot] = useState(() => {
+    const id = resumeSession(sessionStorage, makeSessionId);
+    return {id, workbench: restoreWorkbench(id)};
+  });
+  const [sessionId, setSessionId] = useState(boot.id);
+  const [workbench, setWorkbench] = useState(boot.workbench);
   const [history, setHistory] = useState(readHistory);
   const [jump, setJump] = useState(null);
-  const [notice, setNotice] = useState("");
   const [modelLabel, setModelLabel] = useState("");
   const controllerRef = useRef(null);
   const stateRef = useRef(workbench);
@@ -69,6 +84,17 @@ export default function EmbedApp({version}) {
     );
     return () => { cancelled = true; };
   }, []);
+
+  // Keep the current turn and a pending clarification across a refresh; only
+  // terminal/paused states are written so a reload never resurrects a stub.
+  useEffect(() => {
+    if (workbench.status === "streaming") return;
+    if (!workbench.turns.length && !workbench.pendingChoice) return;
+    writeSnapshot(sessionId, {
+      turns: workbench.turns,
+      pendingChoice: workbench.pendingChoice || null,
+    });
+  }, [sessionId, workbench]);
 
   // The host sends chat/board; the child requests home/board/close. Every
   // message is checked for origin, window and the shared envelope.
@@ -90,29 +116,57 @@ export default function EmbedApp({version}) {
   }, []);
 
   const persist = useCallback((id, turns) => {
+    const title = titleOf(turns);
     setHistory((previous) => {
       const next = [
-        {id, title: titleOf(turns), updated: new Date().toISOString(), turns},
+        {id, title, updated: new Date().toISOString(), turns},
         ...previous.filter((item) => item.id !== id),
       ];
       writeHistory(next);
       return next;
     });
+    // The server copy lets another browser/process reopen the same 360 record.
+    fetch(withBasePath("api/analysis360/history"), {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: id, title, turns}),
+    }).catch(() => {});
   }, []);
 
-  const runStream = useCallback(async (opener) => {
+  useEffect(() => {
+    let cancelled = false;
+    requestJson("api/analysis360/history").then((data) => {
+      if (cancelled || !Array.isArray(data?.conversations)) return;
+      setHistory((previous) => {
+        const merged = [...previous];
+        for (const item of data.conversations) {
+          const existing = merged.find((entry) => entry.id === item.id);
+          if (existing) existing.title = existing.title || item.title;
+          else merged.push({id: item.id, title: item.title, updated: item.updated, turns: []});
+        }
+        writeHistory(merged);
+        return merged;
+      });
+    }, () => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const runStream = useCallback(async (opener, {choice = false} = {}) => {
     const controller = new AbortController();
     controllerRef.current = controller;
+    const fail = (message) => setWorkbench((previous) => applyEvent(previous,
+      choice ? {type: "choice_failed", message} : {type: "error", message}));
     try {
       await opener(controller.signal, (event) => {
-        if (controllerRef.current === controller || event.type === "error") {
-          setWorkbench((previous) => applyEvent(previous, event));
+        if (controllerRef.current !== controller && event.type !== "error") return;
+        if (choice && event.type === "error") {
+          fail(event.message || "补充条件提交失败，请重试。");
+          return;
         }
+        setWorkbench((previous) => applyEvent(previous, event));
       });
     } catch (error) {
-      if (error?.name !== "AbortError") {
-        setWorkbench((previous) => applyEvent(previous, {type: "error", message: error.message}));
-      }
+      if (error?.name !== "AbortError") fail(error.message);
     } finally {
       if (controllerRef.current === controller) controllerRef.current = null;
       if (!controller.signal.aborted) persist(sessionId, stateRef.current.turns);
@@ -132,13 +186,7 @@ export default function EmbedApp({version}) {
   const send = useCallback((text) => {
     const value = String(text || "").trim();
     if (!value || controllerRef.current || stateRef.current.status === "paused") return;
-    setNotice("");
     setWorkbench((previous) => startTurn(previous, {text: value, sessionId}));
-    setHistory((previous) => {
-      const next = previous.filter((item) => item.id !== sessionId);
-      writeHistory(next);
-      return next;
-    });
     runStream((signal, onEvent) => ask(value, signal, onEvent));
   }, [ask, runStream, sessionId]);
 
@@ -156,7 +204,7 @@ export default function EmbedApp({version}) {
         signal,
       });
       await readEventStream(response, onEvent);
-    });
+    }, {choice: true});
   }, [runStream, sessionId]);
 
   const stop = useCallback(() => {
@@ -173,13 +221,20 @@ export default function EmbedApp({version}) {
     onCancel: stop,
   });
 
-  const currentTurnId = workbench.turns.at(-1)?.id;
   const openSession = (entry) => {
     if (entry.id === sessionId) return;
     persist(sessionId, stateRef.current.turns);
     setSessionId(entry.id);
-    setWorkbench({...createWorkbenchState(), sessionId: entry.id, turns: entry.turns || []});
-    setNotice("");
+    const local = restoreWorkbench(entry.id);
+    setWorkbench(local);
+    setJump(null);
+    if (!local.turns.length) {
+      requestJson(`api/analysis360/history/${encodeURIComponent(entry.id)}`).then((record) => {
+        if (record && Array.isArray(record.turns) && record.turns.length) {
+          setWorkbench({...createWorkbenchState(), sessionId: entry.id, turns: record.turns});
+        }
+      }, () => {});
+    }
   };
   const newSession = () => {
     if (controllerRef.current) return;
@@ -187,8 +242,9 @@ export default function EmbedApp({version}) {
     const next = makeSessionId();
     setSessionId(next);
     rememberSession(sessionStorage, next);
+    removeSnapshot(sessionId);
     setWorkbench(createWorkbenchState());
-    setNotice("");
+    setJump(null);
   };
 
   const welcome = (
@@ -224,7 +280,6 @@ export default function EmbedApp({version}) {
               </li>
             )) : <li className="ak-embed-empty">还没有历史分析，先提出一个经营问题。</li>}
           </ol>
-          <p className="ak-embed-note" role="status">{notice}</p>
         </aside>
 
         <section className="ak-embed-main">
@@ -239,43 +294,44 @@ export default function EmbedApp({version}) {
           </header>
 
           <div className="ak-embed-body">
+            <div className="ak-embed-chat">
+              <SopBar key={`sop:${sessionId}`} sop={workbench.turns.at(-1)?.sop} status={workbench.status} />
+              <Thread turns={workbench.turns} status={workbench.status} error={workbench.error}
+                pendingChoice={workbench.pendingChoice} onChoose={choose} onStop={stop}
+                onRetry={() => { const last = workbench.turns.at(-1)?.user; if (last) send(last); }}
+                jump={jump} onPrefill={(prompt) => runtime.thread.composer.setText(prompt)}
+                mode="data" name="储小策" welcome={welcome} />
+              <div className="ak-composer-dock">
+                <ComposerPrimitive.Root className="ak-composer">
+                  <div className="ak-composer-entry">
+                    <ComposerPrimitive.Input className="ak-composer-input" rows={2}
+                      placeholder="描述你的经营问题，例如：本期商机覆盖风险最高的三个客户是谁？" aria-label="输入问题" />
+                  </div>
+                  <div className="ak-composer-actions">
+                    <span className="ak-model-select" title={modelLabel || "团队模型"} aria-label={`当前模型：${modelLabel || "团队模型"}`}>
+                      {String(modelLabel || "团队模型").split(" · ")[0]}
+                    </span>
+                    <AuiIf condition={(state) => state.thread.isRunning}>
+                      <ComposerPrimitive.Cancel className="ak-stop">停止</ComposerPrimitive.Cancel>
+                    </AuiIf>
+                    <AuiIf condition={(state) => !state.thread.isRunning}>
+                      <ComposerPrimitive.Send className="ak-send">发送</ComposerPrimitive.Send>
+                    </AuiIf>
+                  </div>
+                </ComposerPrimitive.Root>
+                {workbench.status === "error" && workbench.error ? (
+                  <p className="ak-embed-error" role="alert">{workbench.error}</p>
+                ) : null}
+              </div>
+            </div>
             {hostView === "board" ? (
-              <Board turns={workbench.turns} status={workbench.status} busy={busy}
-                onJump={(id) => { setHostView("chat"); setJump({id}); }}
-                onPrefill={(prompt) => runtime.thread.composer.setText(prompt)}
-                onInsight={null} />
-            ) : (
-              <>
-                <SopBar key={`sop:${sessionId}`} sop={workbench.turns.at(-1)?.sop} status={workbench.status} />
-                <Thread turns={workbench.turns} status={workbench.status} error={workbench.error}
-                  pendingChoice={workbench.pendingChoice} onChoose={choose} onStop={stop}
-                  onRetry={() => { const last = workbench.turns.at(-1)?.user; if (last) send(last); }}
-                  jump={jump} onPrefill={(prompt) => runtime.thread.composer.setText(prompt)}
-                  mode="data" name="储小策" welcome={welcome} />
-                <div className="ak-composer-dock">
-                  <ComposerPrimitive.Root className="ak-composer">
-                    <div className="ak-composer-entry">
-                      <ComposerPrimitive.Input className="ak-composer-input" rows={2}
-                        placeholder="描述你的经营问题，例如：本期商机覆盖风险最高的三个客户是谁？" aria-label="输入问题" />
-                    </div>
-                    <div className="ak-composer-actions">
-                      <span className="ak-model-select" title={modelLabel || "团队模型"} aria-label={`当前模型：${modelLabel || "团队模型"}`}>
-                        {String(modelLabel || "团队模型").split(" · ")[0]}
-                      </span>
-                      <AuiIf condition={(state) => state.thread.isRunning}>
-                        <ComposerPrimitive.Cancel className="ak-stop">停止</ComposerPrimitive.Cancel>
-                      </AuiIf>
-                      <AuiIf condition={(state) => !state.thread.isRunning}>
-                        <ComposerPrimitive.Send className="ak-send">发送</ComposerPrimitive.Send>
-                      </AuiIf>
-                    </div>
-                  </ComposerPrimitive.Root>
-                  {workbench.status === "error" && workbench.error ? (
-                    <p className="ak-embed-error" role="alert">{workbench.error}</p>
-                  ) : null}
-                </div>
-              </>
-            )}
+              <div className="ak-embed-board" aria-label="当前对话看板">
+                <Board turns={workbench.turns} status={workbench.status} busy={busy}
+                  onJump={(id) => { setHostView("chat"); setJump({id}); }}
+                  onPrefill={(prompt) => runtime.thread.composer.setText(prompt)}
+                  onInsight={null} />
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

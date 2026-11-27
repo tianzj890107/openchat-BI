@@ -1603,3 +1603,20 @@
   .ak-embed { grid-template-columns: minmax(0, 1fr); }
   .ak-embed-sessions { display: none; }
 }
+
+/* 嵌入助手：board 视图 = 会话栏 + 对话列 + 对话看板；chat 视图只保留对话列 */
+.ak-embed-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.ak-embed-chat { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.ak-embed-board { display: none; }
+.ak-embed[data-view="board"] .ak-embed-body {
+  display: grid;
+  grid-template-columns: minmax(340px, 1fr) minmax(0, 1.15fr);
+}
+.ak-embed[data-view="board"] .ak-embed-board {
+  display: block; min-width: 0; min-height: 0; overflow: auto;
+  border-left: 1px solid var(--ak-line, #e5e7eb);
+}
+@media (max-width: 900px) {
+  .ak-embed[data-view="board"] .ak-embed-body { grid-template-columns: minmax(0, 1fr); }
+  .ak-embed[data-view="board"] .ak-embed-board { border-left: 0; border-top: 1px solid var(--ak-line, #e5e7eb); }
+}

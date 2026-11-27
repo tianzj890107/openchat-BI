@@ -46,7 +46,7 @@ def test_customer_surface_allows_the_agentkit_assistant_entry() -> None:
     assert prefixed.get(PREFIX + "/api/chat").status_code == 404
 
 
-def _probe(root_path: str) -> dict:
+def _probe(root_path: str, assistant_ui: str = "") -> dict:
     code = r'''
 import json
 from fastapi.testclient import TestClient
@@ -57,19 +57,28 @@ prefix = app.root_path or ""
 def url(path):
     return prefix + path if prefix else path
 page = client.get(url("/workbench-agentkit?a360=assistant"))
+missing = client.get(url("/workbench-agentkit"))
+invalid = client.get(url("/workbench-agentkit?a360=evil"))
 asset = client.get(url("/static/vendor/agentkit/workbench-agentkit-embed.js"))
 legacy = client.get(url("/workbench"))
+cockpit = client.get(url("/cockpit/overview"))
 print(json.dumps({
     "root": prefix,
     "page_status": page.status_code,
     "html": page.text,
+    "missing_status": missing.status_code,
+    "invalid_status": invalid.status_code,
     "asset_status": asset.status_code,
     "asset_bytes": len(asset.content),
     "legacy_status": legacy.status_code,
+    "cockpit_status": cockpit.status_code,
+    "cockpit_html": cockpit.text,
 }))
 '''
     env = os.environ.copy()
     env["APP_ROOT_PATH"] = root_path
+    if assistant_ui:
+        env["WORKBENCH_ASSISTANT_UI"] = assistant_ui
     completed = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env,
                                capture_output=True, text=True, timeout=180)
     assert completed.returncode == 0, completed.stderr[-2000:]
@@ -86,6 +95,14 @@ class AssistantEntryTests(unittest.TestCase):
             self.assertGreater(result["asset_bytes"], 1000)
             self.assertEqual(result["legacy_status"], 200, result)
             self.assertIn("data-a360", result["html"])
+            self.assertEqual(result["missing_status"], 404, result)
+            self.assertEqual(result["invalid_status"], 404, result)
+            self.assertEqual(result["cockpit_status"], 200, result)
+            self.assertIn('name="assistant-ui" content="agentkit"', result["cockpit_html"])
+
+    def test_server_switch_selects_the_legacy_assistant_page(self) -> None:
+        result = _probe("", assistant_ui="legacy")
+        self.assertIn('name="assistant-ui" content="legacy"', result["cockpit_html"])
 
 
 if __name__ == "__main__":

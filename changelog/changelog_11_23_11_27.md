@@ -80,3 +80,22 @@
   `tests/test_chuxiaoce_agentkit_entry.py`。
 - 验证：新增 10 项验收测试（宿主 URL/握手/会话恢复/360 请求体/DOM 欢迎语与看板），Node 155 项、相关 Python 55 项通过；
   构建产物已重建。未连接真实 360 服务、客户数据库和大模型做浏览器实跑。
+
+### 2026-11-27 储小策助手验收修复：默认可提问、澄清可重试、360 证据看板与刷新恢复
+
+- 布局：`view=board` 下同时渲染左侧对话列（SOP、消息、输入框）和右侧对话看板，历史列表与「新对话」常驻；
+  默认打开即可直接提问，不再只看得到历史列表。
+- 澄清失败：提交选择返回 503 时保留澄清卡与已选项，`choice_failed` 把原 pendingChoice 恢复并显示错误，
+  再次提交发送相同 `choice_ids/choice_labels`，不再只剩「重试本轮」。
+- 看板适配：360 工具返回的证据 JSON（`columns`/`rows`/`rowCount`/`previewRows`/`evidenceId`）转成一张表格卡，
+  行数组和对象行都支持；已有原生 `table` 规范时不重复生成。
+- 历史与恢复：新增 `/api/analysis360/history`（POST 保存、GET 列表、GET 单条，会话 ID 校验），
+  前端在每轮结束后同步服务端，刷新后按 `session_id` 从本地快照/服务端记录恢复轮次和待澄清卡；
+  客户入口继续放行 `/api/analysis360/*`。
+- 入口校验与版本开关：`GET /workbench-agentkit` 仅接受 `a360=assistant`，缺失或无效返回 404；
+  新增 `WORKBENCH_ASSISTANT_UI=legacy` 服务端开关，驾驶舱页面注入 `meta[name=assistant-ui]`，
+  宿主按开关只切换 iframe 地址，回退不改其他逻辑。
+- 主要文件：`frontend/agentkit/{embed.jsx,embedBridge.js,results.js,agentkit-theme.css}`、
+  `bi_agent/web/app.py`、`bi_agent/web/static/cockpit/assistant.js`、`tests/{chuxiaoce_agentkit_dom,chuxiaoce_agentkit_results}.test.mjs`、
+  `tests/test_chuxiaoce_agentkit_{entry,history}.py`。
+- 验证：Node 160 项通过；相关 Python 58 项通过；嵌入构建产物已重建。

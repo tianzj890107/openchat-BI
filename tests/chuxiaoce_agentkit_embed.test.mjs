@@ -6,16 +6,20 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const assistantSource = await read('../bi_agent/web/static/cockpit/assistant.js');
 const embedEntry = await read('../frontend/agentkit/embed.jsx');
 const bridge = await import('../frontend/agentkit/embedBridge.js');
+const assistant = await import('../bi_agent/web/static/cockpit/assistant.js');
 
 test('the cockpit opens the AgentKit assistant page, not the legacy workbench', () => {
   assert.match(assistantSource, /\/workbench-agentkit\?a360=assistant/);
-  assert.doesNotMatch(assistantSource, /ASSISTANT_PATH = '\/workbench\?a360=assistant'/);
-  assert.match(assistantSource, /ASSISTANT_PATH = '\/workbench-agentkit\?a360=assistant'/);
+  assert.doesNotMatch(assistantSource, /^export const ASSISTANT_PATH = '\/workbench\?/m);
+  assert.match(assistantSource, /^export const ASSISTANT_PATH = '\/workbench-agentkit\?a360=assistant'/m);
+  assert.match(assistantSource, /LEGACY_ASSISTANT_PATH = '\/workbench\?a360=assistant'/);
 });
 
 test('the first open carries the host view and later switches reuse the frame', async () => {
   assert.equal(bridge.assistantUrl('/app', 'board'), '/app/workbench-agentkit?a360=assistant&view=board');
   assert.equal(bridge.assistantUrl('', 'chat'), '/workbench-agentkit?a360=assistant&view=chat');
+  assert.equal(assistant.assistantPath('legacy'), '/workbench?a360=assistant');
+  assert.equal(assistant.assistantUrl('/app', 'board', 'legacy'), '/app/workbench?a360=assistant&view=board');
   assert.equal(bridge.initialView('?a360=assistant&view=board'), 'board');
   assert.equal(bridge.initialView('?a360=assistant'), 'chat');
   assert.equal(bridge.initialView('?a360=assistant&view=chat'), 'chat');

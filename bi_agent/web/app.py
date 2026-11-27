@@ -10,6 +10,7 @@ import socket
 import threading
 import time
 import uuid
+from datetime import datetime
 from html import escape
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as UpstreamRequest
@@ -1396,8 +1397,17 @@ def _render_agentkit_assistant_index() -> str:
 """
 
 
+def _assistant_ui_mode() -> str:
+    """Server-side front-end switch: agentkit (default) or the legacy page."""
+    value = os.environ.get("WORKBENCH_ASSISTANT_UI", "agentkit").strip().lower()
+    return "legacy" if value == "legacy" else "agentkit"
+
+
 @app.get("/workbench-agentkit")
-def workbench_agentkit() -> HTMLResponse:
+def workbench_agentkit(a360: str = "") -> HTMLResponse:
+    # The customer entry only serves the embedded assistant at this route.
+    if a360 != "assistant":
+        raise HTTPException(404, "仅支持 a360=assistant 的助手入口")
     return HTMLResponse(
         content=_render_agentkit_assistant_index(),
         headers={
@@ -3243,6 +3253,60 @@ def chat(req: ChatRequest):
     return _chat_response(req)
 
 
+ANALYSIS360_HISTORY_DIR = Path("dataset/analysis360-history")
+
+
+def _analysis360_history_path(session_id: str) -> Path:
+    safe = re.fullmatch(r"[A-Za-z0-9_-]{1,64}", str(session_id or ""))
+    if not safe:
+        raise HTTPException(400, "无效的 360 会话 ID")
+    root = project_path(STATE.cwd or os.getcwd(), ANALYSIS360_HISTORY_DIR)
+    root.mkdir(parents=True, exist_ok=True)
+    return root / f"{safe.group(0)}.json"
+
+
+class Analysis360HistoryRequest(BaseModel):
+    session_id: str
+    title: str = ""
+    turns: List[dict] = []
+
+
+@app.get("/api/analysis360/history")
+def list_analysis360_history() -> JSONResponse:
+    """360 conversation snapshots that survive a refresh/process restart."""
+    root = project_path(STATE.cwd or os.getcwd(), ANALYSIS360_HISTORY_DIR)
+    items = []
+    if root.is_dir():
+        for path in sorted(root.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:40]:
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            items.append({"id": path.stem, "title": value.get("title") or "360 分析",
+                          "updated": value.get("updated") or ""})
+    return JSONResponse({"conversations": items})
+
+
+@app.get("/api/analysis360/history/{session_id}")
+def get_analysis360_history(session_id: str) -> JSONResponse:
+    path = _analysis360_history_path(session_id)
+    if not path.is_file():
+        raise HTTPException(404, "未找到该 360 会话")
+    return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+
+
+@app.post("/api/analysis360/history")
+def save_analysis360_history(req: Analysis360HistoryRequest) -> JSONResponse:
+    path = _analysis360_history_path(req.session_id)
+    value = {"id": req.session_id, "title": req.title[:120] or "360 分析",
+             "updated": datetime.now().astimezone().isoformat(timespec="seconds"),
+             "turns": req.turns[:40]}
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+    return JSONResponse({"ok": True, "id": req.session_id})
+
+
 @app.post("/api/analysis360/chat")
 def analysis360_chat(req: ChatRequest):
     """The customer 360 workbench can chat without exposing the general agent."""
@@ -4696,6 +4760,10 @@ def _cockpit_html(page: str) -> HTMLResponse:
         .replace("@@COCKPIT_BUSINESS_PERIOD@@", _cockpit_business_period())
         .replace("@@COCKPIT_SNAPSHOT_DATE@@", _cockpit_snapshot_date())
     )
+    assistant_ui = (
+        f'<meta name="assistant-ui" content="{_assistant_ui_mode()}">'
+    )
+    html = html.replace("</head>", assistant_ui + "</head>", 1)
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 

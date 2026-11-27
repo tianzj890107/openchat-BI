@@ -68,3 +68,27 @@ export function resumeSession(storage, makeId) {
   rememberSession(storage, created);
   return created;
 }
+
+const SNAPSHOT_PREFIX = "chuxiaoce.assistant.snapshot.";
+
+export function readSnapshot(sessionId, storage = globalThis.localStorage) {
+  try {
+    const raw = storage?.getItem(SNAPSHOT_PREFIX + sessionId);
+    const value = raw ? JSON.parse(raw) : null;
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeSnapshot(sessionId, value, storage = globalThis.localStorage) {
+  try {
+    if (sessionId) storage?.setItem(SNAPSHOT_PREFIX + sessionId, JSON.stringify(value));
+  } catch { /* restricted storage */ }
+}
+
+export function removeSnapshot(sessionId, storage = globalThis.localStorage) {
+  try {
+    if (sessionId) storage?.removeItem(SNAPSHOT_PREFIX + sessionId);
+  } catch { /* restricted storage */ }
+}

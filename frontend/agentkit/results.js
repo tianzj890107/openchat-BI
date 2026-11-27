@@ -100,6 +100,40 @@ export function multiDimModel(spec) {
   };
 }
 
+function parsedToolOutput(output) {
+  if (output && typeof output === "object") return output;
+  if (typeof output !== "string") return null;
+  const text = output.trim();
+  if (!text || !/^[[{]/.test(text)) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+// The 360 tools answer with evidence JSON ({columns, rows, evidenceId, ...})
+// rather than the workbench's <TABLE_SPEC> block; adapt it into one card.
+function tableFrom360Output(tool) {
+  const data = parsedToolOutput(tool?.output);
+  if (!data || !Array.isArray(data.columns) || !Array.isArray(data.rows) || !data.rows.length) return null;
+  const columns = data.columns
+    .map((column) => (column && typeof column === "object"
+      ? column.label ?? column.key ?? column.code ?? column.column
+      : column))
+    .filter((column) => column !== null && column !== undefined && column !== "");
+  if (!columns.length) return null;
+  const rows = data.rows.map((row) => (Array.isArray(row) ? row : columns.map((column) => row?.[column])));
+  const notes = [];
+  if (data.rowCount) notes.push(`${data.rowCount} 行`);
+  if (data.previewRows && data.rowCount > data.previewRows) notes.push(`预览 ${data.previewRows} 行`);
+  if (data.evidenceId) notes.push(`证据 ${data.evidenceId}`);
+  return tableModel({
+    id: `${tool.id}:360-table`,
+    title: tool.name ? `${tool.name} 结果` : "查询结果",
+    columns,
+    rows,
+    summary: notes.join(" · "),
+    source_note: data.queryStatus || "",
+  });
+}
+
 /** One tool call may return a table, a chart, or several charts. */
 export function toolBoardItems(tool) {
   const items = [];
@@ -118,6 +152,10 @@ export function toolBoardItems(tool) {
   if (!chart && nested.chart && !Array.isArray(tool?.multiChart)) {
     const fallback = chartModel(nested.chart);
     if (fallback) items.push({...fallback, id: `${tool.id}:output-chart`, toolId: tool.id});
+  }
+  if (!table && !nested.table) {
+    const adapted = tableFrom360Output(tool);
+    if (adapted) items.push({...adapted, toolId: tool.id});
   }
   return items;
 }
