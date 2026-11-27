@@ -104,10 +104,11 @@ test('the cockpit docks 储小策智能助手 from a bottom-right button', async
   const cockpit = await read('../bi_agent/web/static/cockpit/index.html');
   assert.match(cockpit, /static\/cockpit\/assistant\.js\?v=@@COCKPIT_VERSION@@/);
   const assistant = await import('../bi_agent/web/static/cockpit/assistant.js');
-  assert.equal(assistant.ASSISTANT_PATH, '/workbench?a360=assistant');
+  assert.equal(assistant.ASSISTANT_PATH, '/workbench-agentkit?a360=assistant');
   assert.equal(assistant.ASSISTANT_NAME, '储小策智能助手');
-  assert.equal(assistant.assistantUrl('/bi/'), '/bi/workbench?a360=assistant');
-  assert.equal(assistant.assistantUrl(''), '/workbench?a360=assistant');
+  assert.equal(assistant.assistantUrl('/bi/'), '/bi/workbench-agentkit?a360=assistant&view=chat');
+  assert.equal(assistant.assistantUrl(''), '/workbench-agentkit?a360=assistant&view=chat');
+  assert.equal(assistant.assistantUrl('/bi/', 'board'), '/bi/workbench-agentkit?a360=assistant&view=board');
   // Opening shows the conversation's 看板 (board); 返回主页 keeps only the
   // conversation docked left of the cockpit board (home → workbench chat).
   assert.equal(assistant.workbenchView('board'), 'board');

@@ -58,3 +58,25 @@
   `tests/cockpit_data_client.test.mjs`。
 - 验证：驾驶舱 Node 测试 137 项通过；元数据与资源契约测试中 3 项为既有失败（组件元数据、vendor 清单、插槽说明哈希），
   其余通过。未在浏览器中查看实际看板。
+
+### 2026-11-27 储小策智能助手迁移到 AgentKit 嵌入工作台
+
+- 新增独立入口 `GET /workbench-agentkit?a360=assistant&view=chat|board`，用 React 18 + `@assistant-ui/react@0.14.14`
+  装配 AgentKit 的 Thread、SOP 条、工具折叠、Composer 与按轮对话看板；资源单独构建到
+  `static/vendor/agentkit/workbench-agentkit-embed.{js,css}`，不覆盖通用工作台产物。
+- 驾驶舱右下角入口改指新页；宿主与子页沿用 `closed/home/board` 状态机，首次打开携带 `view`，通过 `ready` 握手重收状态，
+  收起保留 iframe 与同一会话。子页只接受校验过 origin、source window、`source=cockpit-assistant` 和枚举值的消息；
+  「返回主页 / 显示对话看板 / 收起」回传 request，旧 `/workbench?a360=assistant` 页面保留可回退。
+- 对话直接使用 360 契约：`POST /api/analysis360/chat`（`analysis360_direct: true`、显式 `session_id`）和
+  `/api/analysis360/choice`；SOP、流式正文、工具结果、澄清失败重试沿用现有 SSE 事件与 `state.js` reducer，
+  同一会话的多轮、澄清续流及晚到帧按 `turn_id` 归并。
+- 嵌入页左侧保留约 420px 会话栏（新对话 + 历史分析，本地保存最近 8 个会话的轮次快照），右侧在对话与对话看板间切换；
+  首屏保留「储小策，我帮你」「看目标 · 看差距 · 看趋势」，输入框贴底并显示团队模型短名。
+- 客户入口白名单放行 `/workbench-agentkit`（含 `APP_ROOT_PATH` 前缀），通用聊天与会话接口仍被 404 拦截；
+  页面复用安全渲染，不迁移或改写历史文件，回退只切换入口地址。
+- 主要文件：`bi_agent/web/app.py`、`bi_agent/web/customer.py`、`bi_agent/web/static/cockpit/assistant.js`、
+  `frontend/agentkit/{embed.jsx,embed-main.jsx,embedBridge.js}`、`frontend/vite.agentkit-embed.config.js`、
+  `frontend/agentkit/{Thread,Board,SopBar}` 等复用组件、`tests/{chuxiaoce_agentkit_embed,chuxiaoce_agentkit_dom}.test.mjs`、
+  `tests/test_chuxiaoce_agentkit_entry.py`。
+- 验证：新增 8 项验收测试（宿主 URL/握手/会话恢复/360 请求体/DOM 欢迎语与看板），Node 155 项、相关 Python 55 项通过；
+  构建产物已重建。未连接真实 360 服务、客户数据库和大模型做浏览器实跑。

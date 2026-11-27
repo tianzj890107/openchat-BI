@@ -31,12 +31,21 @@ export function readRequest(event, origin) {
   return REQUESTS.includes(data.request) ? data.request : null;
 }
 
-export const ASSISTANT_PATH = '/workbench?a360=assistant';
+export const ASSISTANT_PATH = '/workbench-agentkit?a360=assistant';
 export const ASSISTANT_NAME = '储小策智能助手';
 export const VIEWS = Object.freeze(['closed', 'home', 'board']);
 
-export function assistantUrl(root) {
-  return `${String(root || '').replace(/\/+$/, '')}${ASSISTANT_PATH}`;
+export function assistantUrl(root, view) {
+  return `${String(root || '').replace(/\/+$/, '')}${ASSISTANT_PATH}&view=${view === 'board' ? 'board' : 'chat'}`;
+}
+
+// The child announces readiness so the host can push its current view even
+// when the frame loads after the first postMessage.
+export function isReady(event, origin, sourceWindow) {
+  if (!event || event.origin !== origin) return false;
+  if (!sourceWindow || event.source !== sourceWindow) return false;
+  const data = event.data;
+  return Boolean(data && data.source === MESSAGE_SOURCE && data.type === 'ready');
 }
 
 // The cockpit view → the workbench view (home shows the conversation only).
@@ -82,7 +91,7 @@ export function mountAssistant(doc = document, win = window) {
       frame.className = 'cockpit-assistant__frame';
       frame.title = ASSISTANT_NAME;
       frame.setAttribute('allow', 'clipboard-write');
-      frame.src = `${url}&view=${workbenchView(view)}`;
+      frame.src = assistantUrl(root, workbenchView(view));
       panel.appendChild(frame);
     }
     panel.hidden = !open;
@@ -106,7 +115,7 @@ export function mountAssistant(doc = document, win = window) {
   win.addEventListener('message', event => {
     if (!frame || event.source !== frame.contentWindow) return;
     const data = event.data;
-    if (data && data.source === MESSAGE_SOURCE && data.type === 'ready') {
+    if (isReady(event, origin, frame.contentWindow)) {
       post();
       return;
     }

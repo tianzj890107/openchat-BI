@@ -1357,6 +1357,57 @@ def analysis_nav_prototype_page() -> FileResponse:
     return _no_cache_file(_html_page("new_analysis_nav_chat_board.html"))
 
 
+_ASSISTANT_ASSET_DIR = STATIC_DIR / "vendor" / "agentkit"
+
+
+def _agentkit_asset_version(name: str) -> str:
+    try:
+        stat = (_ASSISTANT_ASSET_DIR / name).stat()
+        return f"{int(stat.st_mtime)}-{stat.st_size}"
+    except OSError:
+        return "0"
+
+
+def _render_agentkit_assistant_index() -> str:
+    """The 储小策 embedded assistant page (AgentKit components, host iframe).
+
+    It is a separate entry from /workbench: the cockpit frame owns the layout and
+    only switches the chat / conversation-board view over postMessage.
+    """
+    root = APP_ROOT_PATH
+    js = f"{root}/static/vendor/agentkit/workbench-agentkit-embed.js?v={_agentkit_asset_version('workbench-agentkit-embed.js')}"
+    css = f"{root}/static/vendor/agentkit/workbench-agentkit-embed.css?v={_agentkit_asset_version('workbench-agentkit-embed.css')}"
+    import json as _json
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="app-root" content="{root}">
+  <title>储小策智能助手</title>
+  <link rel="stylesheet" href="{css}">
+  <script>window.APP_ROOT_PATH = {_json.dumps(root)};</script>
+</head>
+<body>
+  <div id="chuxiaoce-root" data-app-version="{APP_VERSION}" data-a360="assistant" aria-busy="true"></div>
+  <script src="{js}"></script>
+</body>
+</html>
+"""
+
+
+@app.get("/workbench-agentkit")
+def workbench_agentkit() -> HTMLResponse:
+    return HTMLResponse(
+        content=_render_agentkit_assistant_index(),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @app.get("/workbench")
 def workbench() -> HTMLResponse:
     return _workbench_response()
