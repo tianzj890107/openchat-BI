@@ -35,16 +35,22 @@
 `/static/*`、`/api/analysis360/*`。360 页面自身的聊天和 AskUser 选择分别走
 `POST /api/analysis360/chat`、`POST /api/analysis360/choice`，不会放开通用 `/api/chat`。
 
-## 智能助手入口（2026-11-26）
+## 储小策智能助手入口（2026-11-26）
 
-1. 驾驶舱（360 看板）每个页面右下角有「智能助手」漂浮按钮（`static/cockpit/assistant.js`）。
-2. 点击后在本页弹出面板，内嵌 `…/workbench?a360=assistant`：完整的 Ontology Analyst 页面
-   （左侧导航与配置、中间会话含 SOP 步骤、右侧看板），不使用卡片深度分析的精简布局；面板可全屏
-   （浏览器全屏，不支持时铺满窗口）、可在新窗口打开，关闭后对话保留。
-3. 该模式不需要卡片交接：页面的每次聊天请求带 `analysis360_direct=true`，走
+1. 驾驶舱（360 看板）每个页面右下角有「储小策智能助手」按钮（`static/cockpit/assistant.js`）。
+2. 点击后会话栏（420px）内嵌在看板左侧，内容为 `…/workbench?a360=assistant`：不显示工作台左侧导航与配置，
+   只保留会话和看板两列。打开时右侧的 360 看板切换为当前对话的看板（`board` 视图）；对话看板右上角
+   「返回主页」让右侧回到驾驶舱主页看板（`home` 视图，会话仍停靠在左侧）；会话栏右上角「显示对话看板」
+   再次召唤对话看板，「‹」或再次点击右下角按钮收起助手，收起后对话保留。
+3. 会话输入框的模型按钮（团队 API / 环境配置）右侧有「历史对话」下拉，列出最近会话并可开始新对话
+   （复用工作台运行时的最近会话列表）；空会话显示“储小策，我帮你 / 看目标 · 看差距 · 看趋势”，不显示提示问题。
+4. 驾驶舱与工作台用同源 `postMessage` 通信（`source=cockpit-assistant`）：驾驶舱发 `view`（`chat`/`board`），
+   工作台发 `request`（`board`/`home`/`close`）；工作台侧的实现与样式在
+   `static/analysis360-assistant.{mjs,css}`，未改动前端 React 构建产物。
+5. 该模式不需要卡片交接：页面的每次聊天请求带 `analysis360_direct=true`，走
    `POST /api/analysis360/chat`；会话第一次提问时服务端把它建成 360 会话（无交接条款），
    之后按六步 SOP 从用户的问题本身确定范围。该标记只在 `/api/analysis360/chat` 上生效，通用 `/api/chat` 不受影响。
-4. 本体仍是 `亿纬锂能_流程360全局本体_无投标_V1.0`（`assets/global-ontology.json`，由
+6. 本体仍是 `亿纬锂能_流程360全局本体_无投标_V1.0`（`assets/global-ontology.json`，由
    `docs/亿纬锂能/` 下同名工作簿生成），访问方式按《流程360全局本体_智能分析Agent访问策略_V1.0》的六个接口；
    数据库取 `.env` 的 `PROCESS360_PG_*`（缺省时 `WORKBENCH_PG_*`），大模型取 `.env` 的 `TEAM_*` 配置。
 

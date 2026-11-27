@@ -6,10 +6,11 @@
 // visible prompt is the clause's title; the clause context itself stays on
 // the server.
 import { waitForWorkbench } from "./url-prompt.mjs";
+import { mountAssistantMode } from "./analysis360-assistant.mjs?v=1";
 
 export const HANDOFF_PARAM = "a360";
 export const HANDOFF_FIELD = "analysis360_handoff";
-// The cockpit's 智能助手 panel embeds this page as  …/workbench?a360=assistant:
+// The cockpit's 储小策智能助手 embeds this page as  …/workbench?a360=assistant:
 // 360 智能分析 without a card clause.  Each new conversation becomes a 360
 // session on its first question (analysis360_direct).
 export const ASSISTANT = "assistant";
@@ -98,12 +99,12 @@ export async function bootHandoff(window, document) {
   const url = new URL(window.location.href);
   const handoffId = (url.searchParams.get(HANDOFF_PARAM) || "").trim();
   if (handoffId === ASSISTANT) {
-    // Embedded assistant: the full Ontology Analyst page (sidebar, conversation,
-    // dashboard), only its chat goes to the 360 agent.  The parameter stays (a
-    // reload keeps the mode) and the tab's sessionStorage, which the host
-    // cockpit page shares, is not marked.
-    document.title = "智能助手 · Ontology Analyst";
-    if (document.documentElement) document.documentElement.dataset.analysis360Assistant = "1";
+    // Embedded 储小策智能助手: the conversation (and, on request, its 看板)
+    // docked in the cockpit; the sidebar is hidden and only the chat goes to
+    // the 360 agent.  The parameter stays (a reload keeps the mode) and the
+    // tab's sessionStorage, which the host cockpit page shares, is not marked.
+    document.title = "储小策智能助手";
+    mountAssistantMode(window, document);
     window.fetch = withDirect(withAnalysis360Routes(window.fetch.bind(window)));
     return false;
   }

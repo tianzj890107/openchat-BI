@@ -209,26 +209,22 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .stage-risk-analysis__decided{margin-left:4px;color:var(--cockpit-text-help);font-size:12px;font-weight:400}
 .stage-risk-analysis__judgement>summary{font-weight:600;color:var(--cockpit-text)}
 
-/* 智能助手: floating entry to the embedded Ontology Analyst (360 智能分析). */
-.cockpit-assistant-fab{position:fixed;right:24px;bottom:24px;z-index:900;display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 18px 0 14px;border:0;border-radius:22px;background:var(--cockpit-primary);color:#fff;font-size:14px;font-weight:600;box-shadow:0 6px 16px var(--cockpit-primary-30);cursor:pointer}
-.cockpit-assistant-fab svg{width:20px;height:20px}
-.cockpit-assistant-fab:hover{background:var(--cockpit-primary-active)}
+/* 储小策智能助手: bottom-right entry; the conversation docks on the left of the 360 看板.
+ * board: the conversation and its own 看板 cover the cockpit (返回主页 brings the board back);
+ * home: the conversation stays on the left and the cockpit board moves right of it. */
+:root{--cockpit-assistant-w:420px}
+.cockpit-assistant-fab{position:fixed;right:24px;bottom:24px;z-index:1002;display:inline-flex;align-items:center;gap:10px;height:46px;padding:5px 18px 5px 6px;border:1px solid #4c9dff;border-radius:26px;background:linear-gradient(100deg,#0877ed,#1676e6);color:#fff;font-size:14px;font-weight:600;line-height:1;white-space:nowrap;box-shadow:0 3px 10px rgba(22,118,230,.17);cursor:pointer}
+.cockpit-assistant-fab__icon{display:flex;align-items:center;justify-content:center;flex:0 0 34px;width:34px;height:34px;border-radius:50%;background:#fff;color:#4d86b8;font-size:13px;font-weight:700;box-shadow:0 1px 3px rgba(0,76,144,.13)}
+.cockpit-assistant-fab:hover,.cockpit-assistant-fab.is-open{background:linear-gradient(100deg,#066bdb,#0c65cf);border-color:#1676e6;box-shadow:0 4px 14px rgba(22,118,230,.26)}
 .cockpit-assistant-fab:focus-visible{outline:2px solid var(--cockpit-primary);outline-offset:3px}
-.cockpit-assistant-fab.is-open{background:var(--cockpit-primary-active)}
-.cockpit-assistant{position:fixed;right:24px;bottom:80px;z-index:901;display:flex;flex-direction:column;width:min(1360px,calc(100vw - 48px));height:calc(100vh - 104px);background:var(--cockpit-surface);border:1px solid var(--cockpit-divider);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.18);overflow:hidden}
+.cockpit-assistant{position:fixed;top:0;bottom:0;left:0;z-index:1001;box-sizing:border-box;width:var(--cockpit-assistant-w);background:var(--cockpit-surface,#fff);box-shadow:4px 0 16px rgba(0,0,0,.06);overflow:hidden}
 .cockpit-assistant[hidden]{display:none}
-.cockpit-assistant.is-full{top:0;right:0;bottom:0;left:0;z-index:1001;width:100vw;height:100vh;border:0;border-radius:0}
-.cockpit-assistant__head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 16px;border-bottom:1px solid var(--cockpit-divider)}
-.cockpit-assistant__title{display:flex;flex-direction:column;min-width:0}
-.cockpit-assistant__title strong{font-size:15px;color:var(--cockpit-text)}
-.cockpit-assistant__title small{font-size:12px;color:var(--cockpit-text-help)}
-.cockpit-assistant__actions{display:flex;align-items:center;gap:4px;flex:none}
-.cockpit-assistant__action{display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid var(--cockpit-input-border);border-radius:4px;background:var(--cockpit-surface);color:var(--cockpit-text-secondary);font-size:13px;text-decoration:none;cursor:pointer}
-.cockpit-assistant__action:hover{color:var(--cockpit-primary);border-color:var(--cockpit-primary)}
-.cockpit-assistant__close{width:28px;justify-content:center;padding:0;font-size:18px;line-height:1}
-.cockpit-assistant__body{flex:1;min-height:0;background:var(--cockpit-background)}
+.cockpit-assistant[data-view="board"]{right:0;width:auto;box-shadow:none}
 .cockpit-assistant__frame{display:block;width:100%;height:100%;border:0}
-@media (max-width:640px){
+html.cockpit-assistant-docked body{padding-left:var(--cockpit-assistant-w)}
+html[data-cockpit-assistant="board"] body{overflow:hidden}
+@media (max-width:900px){
   .cockpit-assistant-fab{right:16px;bottom:16px}
-  .cockpit-assistant{right:16px;bottom:72px;width:calc(100vw - 32px);height:calc(100vh - 96px)}
+  html.cockpit-assistant-docked body{padding-left:0}
+  .cockpit-assistant[data-view="home"]{width:100vw}
 }

@@ -9,9 +9,14 @@
       // the document before React mounts so the first paint already hides the
       // global navigation and shows only the conversation + dashboard.
       try {
-        // The cockpit 智能助手 (a360=assistant) keeps the full Ontology Analyst
-        // layout: sidebar, conversation and dashboard.
-        const a360 = new URLSearchParams(location.search).get('a360');
+        // The cockpit 储小策智能助手 (a360=assistant) is docked in the cockpit:
+        // no sidebar, the conversation alone or with its 看板 (view=board).
+        const params = new URLSearchParams(location.search);
+        const a360 = params.get('a360');
+        if (a360 === 'assistant') {
+          document.documentElement.dataset.analysis360Assistant = '1';
+          document.documentElement.dataset.a360View = params.get('view') === 'board' ? 'board' : 'chat';
+        }
         if ((a360 !== null && a360 !== 'assistant')
             || (a360 === null && sessionStorage.getItem('eimosp-analysis360-mode') === '1')) {
           document.documentElement.dataset.analysis360 = '1';
@@ -21,6 +26,7 @@
     <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHJlY3Qgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iNCIgZmlsbD0iIzM2NzQ1YyIvPjxwYXRoIGQ9Ik04IDNsMS40IDMuMkwxMi42IDcgMTAgOS4ybC43IDMuM0w4IDEwLjhsLTIuNyAxLjcuNy0zLjNMMy40IDdsMy4yLS44TDggM3oiIGZpbGw9IiNmZmYiLz48L3N2Zz4=" />
     <link rel="preload" href="@@APP_ROOT_PATH@@/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css?v=137" as="style" fetchpriority="high" onload="this.onload=null;this.rel='stylesheet'" />
     <noscript><link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css?v=137" /></noscript>
+    <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/analysis360-assistant.css?v=1" />
     <style>
       /* Keep the first paint useful while React and the deferred workbench
        * bundle are being fetched. React replaces this subtree on mount. */
@@ -91,6 +97,6 @@
     <script src="@@APP_ROOT_PATH@@/static/vendor/antd/lib/pro-bi-ui.min.js?v=2"></script>
     <script src="@@APP_ROOT_PATH@@/static/vendor/antd/workbench.js?v=171" defer></script>
     <script type="module" src="@@APP_ROOT_PATH@@/static/url-prompt.mjs?v=1"></script>
-    <script type="module" src="@@APP_ROOT_PATH@@/static/analysis360-handoff.mjs?v=4"></script>
+    <script type="module" src="@@APP_ROOT_PATH@@/static/analysis360-handoff.mjs?v=5"></script>
   </body>
 </html>
