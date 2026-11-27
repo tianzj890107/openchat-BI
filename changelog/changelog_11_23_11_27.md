@@ -78,5 +78,5 @@
   `frontend/agentkit/{embed.jsx,embed-main.jsx,embedBridge.js}`、`frontend/vite.agentkit-embed.config.js`、
   `frontend/agentkit/{Thread,Board,SopBar}` 等复用组件、`tests/{chuxiaoce_agentkit_embed,chuxiaoce_agentkit_dom}.test.mjs`、
   `tests/test_chuxiaoce_agentkit_entry.py`。
-- 验证：新增 8 项验收测试（宿主 URL/握手/会话恢复/360 请求体/DOM 欢迎语与看板），Node 155 项、相关 Python 55 项通过；
+- 验证：新增 10 项验收测试（宿主 URL/握手/会话恢复/360 请求体/DOM 欢迎语与看板），Node 155 项、相关 Python 55 项通过；
   构建产物已重建。未连接真实 360 服务、客户数据库和大模型做浏览器实跑。
